@@ -1,26 +1,28 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
 from database.database import Base
 from datetime import datetime
 
 
-class User(Base):
-    __tablename__ = "users"
+class RegistrationRequest(Base):
+    __tablename__ = "registration_requests"
 
     id = Column(Integer, primary_key=True, index=True)
 
     full_name = Column(String(100), nullable=False)
 
-    username = Column(String(100), unique=True, nullable=False)
-
     email = Column(String(150), unique=True, nullable=False)
 
     phone_number = Column(String(15), nullable=False)
 
-    password = Column(String(255), nullable=False)
-
-    role_id = Column(
+    requested_role_id = Column(
         Integer,
         ForeignKey("roles.id"),
+        nullable=False
+    )
+
+    city_id = Column(
+        Integer,
+        ForeignKey("cities.id"),
         nullable=False
     )
 
@@ -30,14 +32,9 @@ class User(Base):
         nullable=False
     )
 
-    is_first_login = Column(
-        Boolean,
-        default=True
-    )
-
-    is_active = Column(
-        Boolean,
-        default=True
+    status = Column(
+        String(20),
+        default="Pending"
     )
 
     created_at = Column(
