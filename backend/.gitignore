@@ -13,3 +13,8 @@ __pycache__/
 
 # Uploaded files
 uploads/
+
+.env
+venv/
+__pycache__/
+*.pyc
