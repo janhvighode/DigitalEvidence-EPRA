@@ -43,23 +43,36 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
       body: Stack(
         children: [
           const BackgroundDesign(),
+
           SafeArea(
             child: Center(
               child: Padding(
                 padding: Responsive.pagePadding(context),
                 child: SizedBox(
                   width: Responsive.cardWidth(context),
+
                   child: GlassCard(
                     child: mobile
-                        ? const Center(
-                            child: Text("Mobile UI Coming Soon"),
+                        // MOBILE / ANDROID
+                        ? SingleChildScrollView(
+                            child: buildRightPanel(
+                              mobile: true,
+                            ),
                           )
+
+                        // DESKTOP / CHROME
                         : Row(
                             children: [
-                              const LeftPanel(),
+                              const Expanded(
+                                flex: 3,
+                                child: LeftPanel(),
+                              ),
+
                               Expanded(
                                 flex: 2,
-                                child: buildRightPanel(),
+                                child: buildRightPanel(
+                                  mobile: false,
+                                ),
                               ),
                             ],
                           ),
@@ -73,113 +86,128 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     );
   }
 
-  Widget buildRightPanel() {
+  Widget buildRightPanel({
+    required bool mobile,
+  }) {
     return Container(
-      decoration: const BoxDecoration(
+      width: double.infinity,
+      decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.only(
-          topRight: Radius.circular(28),
-          bottomRight: Radius.circular(28),
-        ),
+
+        // Mobile par all corners rounded.
+        // Desktop par right side rounded.
+        borderRadius: mobile
+            ? BorderRadius.circular(22)
+            : const BorderRadius.only(
+                topRight: Radius.circular(28),
+                bottomRight: Radius.circular(28),
+              ),
       ),
-      padding: const EdgeInsets.symmetric(
-        horizontal: 40,
-        vertical: 35,
+
+      padding: EdgeInsets.symmetric(
+        horizontal: mobile ? 22 : 40,
+        vertical: mobile ? 30 : 35,
       ),
-      child: SingleChildScrollView(
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Center(
-                child: Text(
-                  "Create Account",
-                  style: TextStyle(
-                    fontSize: 32,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.primary,
-                  ),
+
+      child: Form(
+        key: _formKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Center(
+              child: Text(
+                "Create Account",
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 32,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.primary,
                 ),
               ),
+            ),
 
-              const SizedBox(height: 10),
+            const SizedBox(height: 10),
 
-              const Center(
-                child: Text(
-                  "Complete your Profile",
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: AppColors.grey,
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 35),
-
-              const Text(
-                "Full Name",
+            const Center(
+              child: Text(
+                "Complete your Profile",
+                textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 16,
-                  fontWeight: FontWeight.w600,
+                  color: AppColors.grey,
                 ),
               ),
+            ),
 
-              const SizedBox(height: 8),
+            const SizedBox(height: 35),
 
-              buildTextField(
-                controller: fullNameController,
-                hint: "Enter your full name",
-                icon: Icons.person_outline,
+            // FULL NAME
+            const Text(
+              "Full Name",
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
               ),
+            ),
 
-              const SizedBox(height: 25),
+            const SizedBox(height: 8),
 
-              const Text(
-                "Email Address",
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
+            buildTextField(
+              controller: fullNameController,
+              hint: "Enter your full name",
+              icon: Icons.person_outline,
+            ),
+
+            const SizedBox(height: 25),
+
+            // EMAIL
+            const Text(
+              "Email Address",
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
               ),
+            ),
 
-              const SizedBox(height: 8),
+            const SizedBox(height: 8),
 
-              buildTextField(
-                controller: emailController,
-                hint: "Enter your email",
-                icon: Icons.email_outlined,
-                keyboardType: TextInputType.emailAddress,
+            buildTextField(
+              controller: emailController,
+              hint: "Enter your email",
+              icon: Icons.email_outlined,
+              keyboardType: TextInputType.emailAddress,
+            ),
+
+            const SizedBox(height: 25),
+
+            // PHONE NUMBER
+            const Text(
+              "Phone Number",
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
               ),
+            ),
 
-              const SizedBox(height: 25),
+            const SizedBox(height: 8),
 
-              const Text(
-                "Phone Number",
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
+            buildTextField(
+              controller: phoneController,
+              hint: "Enter your phone number",
+              icon: Icons.phone_outlined,
+              keyboardType: TextInputType.phone,
+            ),
 
-              const SizedBox(height: 8),
+            const SizedBox(height: 40),
 
-              buildTextField(
-                controller: phoneController,
-                hint: "Enter your phone number",
-                icon: Icons.phone_outlined,
-                keyboardType: TextInputType.phone,
-              ),
+            GlowButton(
+              title: "Register",
+              onPressed: onRegisterPressed,
+            ),
 
-              const SizedBox(height: 40),
-
-              GlowButton(
-                title: "Register",
-                onPressed: onRegisterPressed,
-              ),
-              const SizedBox(height: 20),
-            ],
-          ),
+            const SizedBox(height: 10),
+          ],
         ),
       ),
     );
@@ -194,11 +222,13 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     return TextFormField(
       controller: controller,
       keyboardType: keyboardType,
+
       validator: (value) {
         if (value == null || value.trim().isEmpty) {
           return "This field is required";
         }
 
+        // EMAIL VALIDATION
         if (keyboardType == TextInputType.emailAddress) {
           final emailRegex =
               RegExp(r'^[\w\.-]+@([\w-]+\.)+[\w-]{2,4}$');
@@ -208,15 +238,22 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
           }
         }
 
+        // PHONE VALIDATION
         if (keyboardType == TextInputType.phone) {
-          if (value.trim().length != 10) {
-            return "Enter a valid phone number";
+          final phone = value.trim();
+
+          if (!RegExp(r'^[0-9]{10}$').hasMatch(phone)) {
+            return "Enter a valid 10 digit phone number";
           }
         }
 
         return null;
       },
-      decoration: _inputDecoration(hint, icon),
+
+      decoration: _inputDecoration(
+        hint,
+        icon,
+      ),
     );
   }
 
@@ -226,24 +263,44 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   ) {
     return InputDecoration(
       hintText: hint,
+
       prefixIcon: Icon(
         icon,
         color: AppColors.primary,
       ),
+
       filled: true,
       fillColor: Colors.grey.shade100,
+
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(15),
         borderSide: BorderSide.none,
       ),
+
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(15),
         borderSide: BorderSide.none,
       ),
+
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(15),
         borderSide: const BorderSide(
           color: AppColors.primary,
+          width: 2,
+        ),
+      ),
+
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(15),
+        borderSide: const BorderSide(
+          color: Colors.red,
+        ),
+      ),
+
+      focusedErrorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(15),
+        borderSide: const BorderSide(
+          color: Colors.red,
           width: 2,
         ),
       ),

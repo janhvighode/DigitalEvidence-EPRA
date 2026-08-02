@@ -48,20 +48,23 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: SizedBox(
                   width: Responsive.cardWidth(context),
                   child: GlassCard(
-                    child: mobile
-                        ? const Center(
-                            child: Text("Mobile UI Coming Soon"),
-                          )
-                        : Row(
-                            children: [
-                              const LeftPanel(),
-                              Expanded(
-                                flex: 2,
-                                child: buildRightPanel(),
-                              ),
-                            ],
-                          ),
-                  ),
+  child: mobile
+      ? SingleChildScrollView(
+          child: buildRightPanel(),
+        )
+      : Row(
+          children: [
+            const Expanded(
+              flex: 3,
+              child: LeftPanel(),
+            ),
+            Expanded(
+              flex: 2,
+              child: buildRightPanel(),
+            ),
+          ],
+        ),
+),
                 ),
               ),
             ),
