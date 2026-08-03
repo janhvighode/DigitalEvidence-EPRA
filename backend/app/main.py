@@ -20,6 +20,8 @@ from routes.change_password import router as change_password_router
 from routes.login import router as login_router
 from models.password_reset_otp import PasswordResetOTP
 from routes.forgot_password import router as forgot_password_router
+from routes.dashboard import router as dashboard_router
+
 
 app = FastAPI(
     title="Smart Digital Evidence Prioritization System API"
@@ -38,6 +40,7 @@ app.include_router(admin_router)
 app.include_router(change_password_router)
 app.include_router(login_router)
 app.include_router(forgot_password_router)
+app.include_router(dashboard_router)
 
 @app.get("/")
 def home():
