@@ -16,7 +16,7 @@ class DEPSApp extends StatelessWidget {
       theme: ThemeData(
         useMaterial3: true,
       ),
-      home:  CreateAccountScreen(),
+      home: const CreateAccountScreen(),
     );
   }
 }

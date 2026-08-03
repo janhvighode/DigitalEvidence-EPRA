@@ -17,7 +17,6 @@ class RoleSelectionScreen extends StatefulWidget {
 }
 
 class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
-
   String? selectedRole;
   String? selectedState;
   String? selectedCity;
@@ -54,269 +53,339 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
 
   @override
   Widget build(BuildContext context) {
-
     final bool mobile = Responsive.isMobile(context);
 
     return Scaffold(
       body: Stack(
         children: [
-
           const BackgroundDesign(),
 
           SafeArea(
-            child: Center(
-              child: Padding(
-                padding: Responsive.pagePadding(context),
-                child: SizedBox(
-                  width: Responsive.cardWidth(context),
+            child: mobile
+                ? _buildMobileLayout()
+                : _buildDesktopLayout(),
+          ),
+        ],
+      ),
+    );
+  }
 
-                  child: GlassCard(
-                    child: mobile
+  // ================= MOBILE LAYOUT =================
 
-                        ? const Center(
-                            child: Text(
-                              "Mobile UI Coming Soon",
-                            ),
-                          )
+  Widget _buildMobileLayout() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Center(
+        child: GlassCard(
+          child: buildRightPanel(isMobile: true),
+        ),
+      ),
+    );
+  }
 
-                        : Row(
-                            children: [
+  // ================= DESKTOP / CHROME LAYOUT =================
 
-                              const LeftPanel(),
-
-                              Expanded(
-                                flex: 2,
-                                child: buildRightPanel(),
-                              ),
-
-                            ],
-                          ),
+  Widget _buildDesktopLayout() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          padding: Responsive.pagePadding(context),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: Responsive.cardWidth(context),
+                minHeight: 650,
+              ),
+              child: GlassCard(
+                child: IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Expanded(
+                        flex: 3,
+                        child: LeftPanel(),
+                      ),
+                      Expanded(
+                        flex: 2,
+                        child: buildRightPanel(isMobile: false),
+                      ),
+                    ],
                   ),
                 ),
               ),
             ),
           ),
+        );
+      },
+    );
+  }
 
-        ],
+  // ================= RIGHT PANEL =================
+
+  Widget buildRightPanel({required bool isMobile}) {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: isMobile
+            ? BorderRadius.circular(22)
+            : const BorderRadius.only(
+                topRight: Radius.circular(28),
+                bottomRight: Radius.circular(28),
+              ),
+      ),
+      padding: EdgeInsets.symmetric(
+        horizontal: isMobile ? 22 : 40,
+        vertical: isMobile ? 30 : 35,
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Text(
+                "Create Account",
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: isMobile ? 27 : 32,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.primary,
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 10),
+
+            const Center(
+              child: Text(
+                "Select your role and location",
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: AppColors.grey,
+                  fontSize: 16,
+                ),
+              ),
+            ),
+
+            SizedBox(height: isMobile ? 28 : 35),
+
+            // ROLE
+            _buildLabel("Select Role"),
+
+            const SizedBox(height: 8),
+
+            buildRoleDropdown(),
+
+            const SizedBox(height: 22),
+
+            // STATE
+            _buildLabel("Select State"),
+
+            const SizedBox(height: 8),
+
+            buildStateDropdown(),
+
+            const SizedBox(height: 22),
+
+            // CITY
+            _buildLabel("Select City"),
+
+            const SizedBox(height: 8),
+
+            buildCityDropdown(),
+
+            const SizedBox(height: 22),
+
+            // BRANCH
+            _buildLabel("Select Branch"),
+
+            const SizedBox(height: 8),
+
+            buildBranchDropdown(),
+
+            const SizedBox(height: 32),
+
+            // NEXT BUTTON
+            GlowButton(
+              title: "Next",
+              onPressed: onNextPressed,
+            ),
+
+            const SizedBox(height: 10),
+          ],
+        ),
       ),
     );
   }
-Widget buildRightPanel() {
-  return Container(
-    decoration: const BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.only(
-        topRight: Radius.circular(28),
-        bottomRight: Radius.circular(28),
-      ),
-    ),
-    padding: const EdgeInsets.symmetric(
-      horizontal: 40,
-      vertical: 35,
-    ),
-    child: SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
 
-          const Center(
-            child: Text(
-              "Create Account",
-              style: TextStyle(
-                fontSize: 32,
-                fontWeight: FontWeight.bold,
-                color: AppColors.primary,
-              ),
-            ),
-          ),
+  // ================= LABEL =================
 
-          const SizedBox(height: 10),
-
-          const Center(
-            child: Text(
-              "Select your role and location",
-              style: TextStyle(
-                color: AppColors.grey,
-                fontSize: 16,
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 35),
-
-          const Text(
-            "Select Role",
-            style: TextStyle(
-              fontWeight: FontWeight.w600,
-              fontSize: 16,
-            ),
-          ),
-
-          const SizedBox(height: 8),
-
-          buildRoleDropdown(),
-
-          const SizedBox(height: 25),
-
-          const Text(
-            "Select State",
-            style: TextStyle(
-              fontWeight: FontWeight.w600,
-              fontSize: 16,
-            ),
-          ),
-
-          const SizedBox(height: 8),
-
-          buildStateDropdown(),
-
-          const SizedBox(height: 25),
-
-          const Text(
-            "Select City",
-            style: TextStyle(
-              fontWeight: FontWeight.w600,
-              fontSize: 16,
-            ),
-          ),
-
-          const SizedBox(height: 8),
-        
-          buildCityDropdown(),
-
-const SizedBox(height: 25),
-
-const Text(
-  "Select Branch",
-  style: TextStyle(
-    fontWeight: FontWeight.w600,
-    fontSize: 16,
-  ),
-),
-
-const SizedBox(height: 8),
-
-buildBranchDropdown(),
-
-          const SizedBox(height: 40),
-
-          GlowButton(
-            title: "Next",
-            onPressed: onNextPressed,
-          ),
-        ],
-      ),
-    ),
-  );
-}
-Widget buildRoleDropdown() {
-  return DropdownButtonFormField<String>(
-    value: selectedRole,
-    decoration: _inputDecoration("Select Role"),
-    items: roles.map((role) {
-      return DropdownMenuItem(
-        value: role,
-        child: Text(role),
-      );
-    }).toList(),
-    onChanged: (value) {
-      setState(() {
-        selectedRole = value;
-      });
-    },
-  );
-}
-
-Widget buildStateDropdown() {
-  return DropdownButtonFormField<String>(
-    value: selectedState,
-    decoration: _inputDecoration("Select State"),
-    items: states.map((state) {
-      return DropdownMenuItem(
-        value: state,
-        child: Text(state),
-      );
-    }).toList(),
-    onChanged: (value) {
-      setState(() {
-        selectedState = value;
-      });
-    },
-  );
-}
-
-Widget buildCityDropdown() {
-  return DropdownButtonFormField<String>(
-    value: selectedCity,
-    decoration: _inputDecoration("Select City"),
-    items: locations.keys.map((city) {
-      return DropdownMenuItem(
-        value: city,
-        child: Text(city),
-      );
-    }).toList(),
-    onChanged: (value) {
-      setState(() {
-        selectedCity = value;
-        selectedLocation = null;
-      });
-    },
-  );
-}
-
-Widget buildBranchDropdown() {
-  return DropdownButtonFormField<String>(
-    value: selectedLocation,
-    decoration: _inputDecoration("Select Branch"),
-    items: selectedCity == null
-        ? []
-        : locations[selectedCity]!.map((branch) {
-            return DropdownMenuItem(
-              value: branch,
-              child: Text(branch),
-            );
-          }).toList(),
-    onChanged: selectedCity == null
-        ? null
-        : (value) {
-            setState(() {
-              selectedLocation = value;
-            });
-          },
-  );
-}
-
-InputDecoration _inputDecoration(String hint) {
-  return InputDecoration(
-    hintText: hint,
-    filled: true,
-    fillColor: Colors.grey.shade100,
-    border: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(15),
-      borderSide: BorderSide.none,
-    ),
-  );
-}
-void onNextPressed() {
-  if (selectedRole == null ||
-      selectedState == null ||
-      selectedCity == null ||
-      selectedLocation == null) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text("Please fill all the fields"),
+  Widget _buildLabel(String text) {
+    return Text(
+      text,
+      style: const TextStyle(
+        fontWeight: FontWeight.w600,
+        fontSize: 16,
       ),
     );
-    return;
   }
 
-  Navigator.push(
-    context,
-    MaterialPageRoute(
-      builder: (context) => const RegistrationScreen(),
-    ),
-  );
-}
+  // ================= ROLE DROPDOWN =================
 
+  Widget buildRoleDropdown() {
+    return DropdownButtonFormField<String>(
+      value: selectedRole,
+      isExpanded: true,
+      decoration: _inputDecoration("Select Role"),
+      items: roles.map((role) {
+        return DropdownMenuItem<String>(
+          value: role,
+          child: Text(
+            role,
+            overflow: TextOverflow.ellipsis,
+          ),
+        );
+      }).toList(),
+      onChanged: (value) {
+        setState(() {
+          selectedRole = value;
+        });
+      },
+    );
+  }
 
+  // ================= STATE DROPDOWN =================
+
+  Widget buildStateDropdown() {
+    return DropdownButtonFormField<String>(
+      value: selectedState,
+      isExpanded: true,
+      decoration: _inputDecoration("Select State"),
+      items: states.map((state) {
+        return DropdownMenuItem<String>(
+          value: state,
+          child: Text(
+            state,
+            overflow: TextOverflow.ellipsis,
+          ),
+        );
+      }).toList(),
+      onChanged: (value) {
+        setState(() {
+          selectedState = value;
+        });
+      },
+    );
+  }
+
+  // ================= CITY DROPDOWN =================
+
+  Widget buildCityDropdown() {
+    return DropdownButtonFormField<String>(
+      value: selectedCity,
+      isExpanded: true,
+      decoration: _inputDecoration("Select City"),
+      items: locations.keys.map((city) {
+        return DropdownMenuItem<String>(
+          value: city,
+          child: Text(
+            city,
+            overflow: TextOverflow.ellipsis,
+          ),
+        );
+      }).toList(),
+      onChanged: (value) {
+        setState(() {
+          selectedCity = value;
+
+          // Reset branch when city changes
+          selectedLocation = null;
+        });
+      },
+    );
+  }
+
+  // ================= BRANCH DROPDOWN =================
+
+  Widget buildBranchDropdown() {
+    final List<String> branches = selectedCity == null
+        ? <String>[]
+        : locations[selectedCity] ?? <String>[];
+
+    return DropdownButtonFormField<String>(
+      value: selectedLocation,
+      isExpanded: true,
+      decoration: _inputDecoration("Select Branch"),
+      items: branches.map((branch) {
+        return DropdownMenuItem<String>(
+          value: branch,
+          child: Text(
+            branch,
+            overflow: TextOverflow.ellipsis,
+          ),
+        );
+      }).toList(),
+      onChanged: selectedCity == null
+          ? null
+          : (value) {
+              setState(() {
+                selectedLocation = value;
+              });
+            },
+    );
+  }
+
+  // ================= INPUT DESIGN =================
+
+  InputDecoration _inputDecoration(String hint) {
+    return InputDecoration(
+      hintText: hint,
+      filled: true,
+      fillColor: Colors.grey.shade100,
+      contentPadding: const EdgeInsets.symmetric(
+        horizontal: 16,
+        vertical: 16,
+      ),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(15),
+        borderSide: BorderSide.none,
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(15),
+        borderSide: BorderSide.none,
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(15),
+        borderSide: const BorderSide(
+          color: AppColors.primary,
+          width: 1.5,
+        ),
+      ),
+    );
+  }
+
+  // ================= NEXT BUTTON =================
+
+  void onNextPressed() {
+    if (selectedRole == null ||
+        selectedState == null ||
+        selectedCity == null ||
+        selectedLocation == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Please fill all the fields"),
+        ),
+      );
+
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const RegistrationScreen(),
+      ),
+    );
+  }
 }
