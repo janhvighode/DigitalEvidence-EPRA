@@ -8,6 +8,7 @@ from models.city import City
 from models.cyber_cell import CyberCell
 from models.registration_request import RegistrationRequest
 from models.user import User
+from models.case import Case
 
 # Import routes
 from routes.auth import router as auth_router
@@ -20,6 +21,21 @@ from routes.change_password import router as change_password_router
 from routes.login import router as login_router
 from models.password_reset_otp import PasswordResetOTP
 from routes.forgot_password import router as forgot_password_router
+from routes.dashboard import router as dashboard_router
+from routes.case_routes import router as case_router
+from routes.user_management_routes import router as user_management_router
+from routes.case_activity_routes import router as case_activity_router
+from models.case_timeline import CaseTimeline
+from routes.report_routes import router as report_router
+from routes.report_routes import router as report_router
+from models.notification import Notification
+from routes.notification_routes import router as notification_router
+from routes.profile_routes import router as profile_router
+from models.settings import Settings
+from routes.settings_routes import router as settings_router
+from models.system_statistics import SystemStatistics
+from routes.system_statistics_routes import router as statistics_router
+
 
 app = FastAPI(
     title="Smart Digital Evidence Prioritization System API"
@@ -38,6 +54,16 @@ app.include_router(admin_router)
 app.include_router(change_password_router)
 app.include_router(login_router)
 app.include_router(forgot_password_router)
+app.include_router(dashboard_router)
+app.include_router(case_router)
+app.include_router(user_management_router)
+app.include_router(case_activity_router)
+app.include_router(report_router)
+app.include_router(report_router)
+app.include_router(notification_router)
+app.include_router(profile_router)
+app.include_router(settings_router)
+app.include_router(statistics_router)
 
 @app.get("/")
 def home():
