@@ -1,0 +1,111 @@
+{
+    "IMAGE": {
+        "decision_path": [
+            "semantic",
+            "authenticity",
+            "context",
+            "investigation",
+            "behaviour"
+        ]
+    },
+
+    "EMAIL": {
+        "decision_path": [
+            "behaviour",
+            "semantic",
+            "authenticity",
+            "context",
+            "investigation"
+        ]
+    },
+
+    "EXECUTABLE": {
+        "decision_path": [
+            "authenticity",
+            "behaviour",
+            "investigation",
+            "context",
+            "semantic"
+        ]
+    },
+
+    "PDF": {
+        "decision_path": [
+            "context",
+            "investigation",
+            "authenticity",
+            "semantic",
+            "behaviour"
+        ]
+    },
+
+    "VIDEO": {
+        "decision_path": [
+            "semantic",
+            "context",
+            "investigation",
+            "authenticity",
+            "behaviour"
+        ]
+    },
+
+    "AUDIO": {
+        "decision_path": [
+            "semantic",
+            "behaviour",
+            "context",
+            "investigation",
+            "authenticity"
+        ]
+    },
+
+    "DOCUMENT": {
+        "decision_path": [
+            "semantic",
+            "context",
+            "authenticity",
+            "investigation",
+            "behaviour"
+        ]
+    },
+
+    "DATABASE": {
+        "decision_path": [
+            "context",
+            "investigation",
+            "authenticity",
+            "behaviour",
+            "semantic"
+        ]
+    },
+
+    "LOG": {
+        "decision_path": [
+            "behaviour",
+            "investigation",
+            "context",
+            "authenticity",
+            "semantic"
+        ]
+    },
+
+    "ARCHIVE": {
+        "decision_path": [
+            "authenticity",
+            "context",
+            "investigation",
+            "semantic",
+            "behaviour"
+        ]
+    },
+
+    "UNKNOWN": {
+        "decision_path": [
+            "authenticity",
+            "context",
+            "semantic",
+            "behaviour",
+            "investigation"
+        ]
+    }
+}

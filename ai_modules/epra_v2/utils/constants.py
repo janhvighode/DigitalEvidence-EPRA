@@ -1,0 +1,12 @@
+"""
+Global constants used by EPRA V2.
+"""
+
+MAX_SCORE = 100.0
+MIN_SCORE = 0.0
+
+CRITICAL = "CRITICAL"
+HIGH = "HIGH"
+MEDIUM = "MEDIUM"
+LOW = "LOW"
+VERY_LOW = "VERY LOW"
