@@ -6,6 +6,7 @@ import '../../widgets/background_design.dart';
 import '../../widgets/glass_card.dart';
 import '../../widgets/glow_button.dart';
 import '../../widgets/left_panel.dart';
+import '../dashboard/dashboard_screen.dart';
 
 class ChangePasswordScreen extends StatefulWidget {
   const ChangePasswordScreen({super.key});
@@ -47,13 +48,11 @@ class _ChangePasswordScreenState
 
   @override
   Widget build(BuildContext context) {
-
     final bool mobile = Responsive.isMobile(context);
 
     return Scaffold(
       body: Stack(
         children: [
-
           const BackgroundDesign(),
 
           SafeArea(
@@ -63,23 +62,27 @@ class _ChangePasswordScreenState
                 child: SizedBox(
                   width: Responsive.cardWidth(context),
                   child: GlassCard(
-  child: mobile
-      ? SingleChildScrollView(
-          child: buildRightPanel(),
-        )
-      : Row(
-          children: [
-            const Expanded(
-              flex: 3,
-              child: LeftPanel(),
-            ),
-            Expanded(
-              flex: 2,
-              child: buildRightPanel(),
-            ),
-          ],
-        ),
-),
+                    child: mobile
+                        ? SingleChildScrollView(
+                            child: buildRightPanel(
+                              isMobile: true,
+                            ),
+                          )
+                        : Row(
+                            children: [
+                              const Expanded(
+                                flex: 3,
+                                child: LeftPanel(),
+                              ),
+                              Expanded(
+                                flex: 2,
+                                child: buildRightPanel(
+                                  isMobile: false,
+                                ),
+                              ),
+                            ],
+                          ),
+                  ),
                 ),
               ),
             ),
@@ -89,18 +92,23 @@ class _ChangePasswordScreenState
     );
   }
 
-  Widget buildRightPanel() {
+  Widget buildRightPanel({
+    required bool isMobile,
+  }) {
     return Container(
-      decoration: const BoxDecoration(
+      width: double.infinity,
+      decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.only(
-          topRight: Radius.circular(28),
-          bottomRight: Radius.circular(28),
-        ),
+        borderRadius: isMobile
+            ? BorderRadius.circular(22)
+            : const BorderRadius.only(
+                topRight: Radius.circular(28),
+                bottomRight: Radius.circular(28),
+              ),
       ),
-      padding: const EdgeInsets.symmetric(
-        horizontal: 40,
-        vertical: 35,
+      padding: EdgeInsets.symmetric(
+        horizontal: isMobile ? 22 : 40,
+        vertical: isMobile ? 30 : 35,
       ),
       child: SingleChildScrollView(
         child: Form(
@@ -108,10 +116,10 @@ class _ChangePasswordScreenState
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-
               const Center(
                 child: Text(
                   "Change Password",
+                  textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 32,
                     fontWeight: FontWeight.bold,
@@ -207,7 +215,9 @@ class _ChangePasswordScreenState
               const Text("• One number"),
               const Text("• One special character"),
               const Text("• No spaces"),
-              const Text("• Must be different from current password"),
+              const Text(
+                "• Must be different from current password",
+              ),
 
               const SizedBox(height: 35),
 
@@ -215,6 +225,7 @@ class _ChangePasswordScreenState
                 title: "Change Password",
                 onPressed: onChangePasswordPressed,
               ),
+
               const SizedBox(height: 20),
             ],
           ),
@@ -223,16 +234,27 @@ class _ChangePasswordScreenState
     );
   }
 
+  // ============================================================
+  // USERNAME
+  // ============================================================
+
   Widget buildUsernameField() {
     return TextFormField(
       controller: usernameController,
+
+      // Username backend/login se automatically aayega.
       readOnly: true,
+
       decoration: _inputDecoration(
         hint: "Username",
         icon: Icons.person_outline,
       ),
     );
   }
+
+  // ============================================================
+  // CURRENT PASSWORD
+  // ============================================================
 
   Widget buildCurrentPasswordField() {
     return buildPasswordField(
@@ -247,6 +269,10 @@ class _ChangePasswordScreenState
     );
   }
 
+  // ============================================================
+  // NEW PASSWORD
+  // ============================================================
+
   Widget buildNewPasswordField() {
     return buildPasswordField(
       controller: newPasswordController,
@@ -259,6 +285,10 @@ class _ChangePasswordScreenState
       },
     );
   }
+
+  // ============================================================
+  // CONFIRM PASSWORD
+  // ============================================================
 
   Widget buildConfirmPasswordField() {
     return buildPasswordField(
@@ -273,6 +303,10 @@ class _ChangePasswordScreenState
     );
   }
 
+  // ============================================================
+  // PASSWORD FIELD
+  // ============================================================
+
   Widget buildPasswordField({
     required TextEditingController controller,
     required String hint,
@@ -282,9 +316,41 @@ class _ChangePasswordScreenState
     return TextFormField(
       controller: controller,
       obscureText: obscure,
+
       validator: (value) {
         if (value == null || value.isEmpty) {
           return "This field is required";
+        }
+
+        if (controller == newPasswordController) {
+          if (value.length < 12) {
+            return "Password must contain at least 12 characters";
+          }
+
+          if (!RegExp(r'[A-Z]').hasMatch(value)) {
+            return "Add at least one uppercase letter";
+          }
+
+          if (!RegExp(r'[a-z]').hasMatch(value)) {
+            return "Add at least one lowercase letter";
+          }
+
+          if (!RegExp(r'[0-9]').hasMatch(value)) {
+            return "Add at least one number";
+          }
+
+          if (!RegExp(r'[!@#$%^&*(),.?":{}|<>]')
+              .hasMatch(value)) {
+            return "Add at least one special character";
+          }
+
+          if (value.contains(' ')) {
+            return "Password must not contain spaces";
+          }
+
+          if (value == currentPasswordController.text) {
+            return "New password must be different";
+          }
         }
 
         if (controller == confirmPasswordController &&
@@ -294,18 +360,25 @@ class _ChangePasswordScreenState
 
         return null;
       },
+
       decoration: _inputDecoration(
         hint: hint,
         icon: Icons.lock_outline,
         suffixIcon: IconButton(
           icon: Icon(
-            obscure ? Icons.visibility_off : Icons.visibility,
+            obscure
+                ? Icons.visibility_off
+                : Icons.visibility,
           ),
           onPressed: onToggle,
         ),
       ),
     );
   }
+
+  // ============================================================
+  // INPUT DESIGN
+  // ============================================================
 
   InputDecoration _inputDecoration({
     required String hint,
@@ -314,21 +387,27 @@ class _ChangePasswordScreenState
   }) {
     return InputDecoration(
       hintText: hint,
+
       prefixIcon: Icon(
         icon,
         color: AppColors.primary,
       ),
+
       suffixIcon: suffixIcon,
+
       filled: true,
       fillColor: Colors.grey.shade100,
+
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(15),
         borderSide: BorderSide.none,
       ),
+
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(15),
         borderSide: BorderSide.none,
       ),
+
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(15),
         borderSide: const BorderSide(
@@ -336,20 +415,51 @@ class _ChangePasswordScreenState
           width: 2,
         ),
       ),
+
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(15),
+        borderSide: const BorderSide(
+          color: Colors.red,
+        ),
+      ),
+
+      focusedErrorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(15),
+        borderSide: const BorderSide(
+          color: Colors.red,
+          width: 2,
+        ),
+      ),
     );
   }
+
+  // ============================================================
+  // CHANGE PASSWORD
+  // ============================================================
 
   void onChangePasswordPressed() {
     if (!_formKey.currentState!.validate()) {
       return;
     }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          "Ready for Change Password API integration.",
-        ),
+    // TEMPORARY FRONTEND FLOW
+    //
+    // Backend integration ke baad:
+    // Change Password API
+    //          ↓
+    // API Success
+    //          ↓
+    // Dashboard
+    //
+    // Abhi UI testing ke liye successful validation ke
+    // baad directly Dashboard open hoga.
+
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const DashboardScreen(),
       ),
+      (route) => false,
     );
   }
 }
