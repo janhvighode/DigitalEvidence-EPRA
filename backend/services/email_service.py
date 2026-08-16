@@ -2,6 +2,7 @@ import os
 from dotenv import load_dotenv
 
 load_dotenv()
+
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -26,22 +27,34 @@ def send_email(
     message["Subject"] = subject
 
     message.attach(
-    MIMEText(body, "html")
+        MIMEText(body, "html")
     )
 
     try:
+        # DEBUGGING
+        print(f"Attempting to send email to: {receiver_email}")
+        print(f"SENDER_EMAIL configured: {bool(SENDER_EMAIL)}")
+        print(f"SENDER_PASSWORD configured: {bool(SENDER_PASSWORD)}")
+        print(f"Trying to connect to {SMTP_SERVER}:{SMTP_PORT}...")
 
         server = smtplib.SMTP(
-            "smtp.gmail.com",
-            587
+        SMTP_SERVER,
+        SMTP_PORT,
+        timeout=20
         )
 
+        print("SMTP connection successful")
+
         server.starttls()
+
+        print("Connecting to Gmail SMTP...")
 
         server.login(
             SENDER_EMAIL,
             SENDER_PASSWORD
         )
+
+        print("Gmail login successful")
 
         server.sendmail(
             SENDER_EMAIL,
@@ -51,10 +64,9 @@ def send_email(
 
         server.quit()
 
+        print("Email sent successfully")
         return True
 
     except Exception as e:
-
-        print(e)
-
+        print(f"EMAIL ERROR: {type(e).__name__}: {e}")
         return False
