@@ -1,71 +1,58 @@
 import os
+import requests
 from dotenv import load_dotenv
 
 load_dotenv()
 
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-
-SMTP_SERVER = "smtp.gmail.com"
-SMTP_PORT = 587
-
+BREVO_API_KEY = os.getenv("BREVO_API_KEY")
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")
-SENDER_PASSWORD = os.getenv("SENDER_PASSWORD")
 
 
-def send_email(
-    receiver_email: str,
-    subject: str,
-    body: str
-):
+def send_email(receiver_email: str, subject: str, body: str):
 
-    message = MIMEMultipart()
+    url = "https://api.brevo.com/v3/smtp/email"
 
-    message["From"] = SENDER_EMAIL
-    message["To"] = receiver_email
-    message["Subject"] = subject
+    headers = {
+        "accept": "application/json",
+        "api-key": BREVO_API_KEY,
+        "content-type": "application/json"
+    }
 
-    message.attach(
-        MIMEText(body, "html")
-    )
+    data = {
+        "sender": {
+            "email": SENDER_EMAIL,
+            "name": "Digital Evidence EPRA"
+        },
+        "to": [
+            {
+                "email": receiver_email
+            }
+        ],
+        "subject": subject,
+        "htmlContent": body
+    }
 
     try:
-        # DEBUGGING
-        print(f"Attempting to send email to: {receiver_email}")
+        print(f"Sending email to: {receiver_email}")
+        print(f"BREVO_API_KEY configured: {bool(BREVO_API_KEY)}")
         print(f"SENDER_EMAIL configured: {bool(SENDER_EMAIL)}")
-        print(f"SENDER_PASSWORD configured: {bool(SENDER_PASSWORD)}")
-        print(f"Trying to connect to {SMTP_SERVER}:{SMTP_PORT}...")
 
-        server = smtplib.SMTP(
-        SMTP_SERVER,
-        SMTP_PORT,
-        timeout=20
+        response = requests.post(
+            url,
+            headers=headers,
+            json=data,
+            timeout=20
         )
 
-        print("SMTP connection successful")
+        print(f"Brevo response status: {response.status_code}")
+        print(f"Brevo response: {response.text}")
 
-        server.starttls()
+        if response.status_code in [200, 201, 202]:
+            print("Email sent successfully through Brevo")
+            return True
 
-        print("Connecting to Gmail SMTP...")
-
-        server.login(
-            SENDER_EMAIL,
-            SENDER_PASSWORD
-        )
-
-        print("Gmail login successful")
-
-        server.sendmail(
-            SENDER_EMAIL,
-            receiver_email,
-            message.as_string()
-        )
-
-        server.quit()
-
-        print("Email sent successfully")
-        return True
+        print("Brevo failed to send email")
+        return False
 
     except Exception as e:
         print(f"EMAIL ERROR: {type(e).__name__}: {e}")
