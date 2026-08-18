@@ -29,8 +29,8 @@ def update_user(db: Session, user_id: int, user_data):
     if user_data.phone_number is not None:
         user.phone_number = user_data.phone_number
 
-    if user_data.cyber_cell is not None:
-        user.cyber_cell = user_data.cyber_cell
+    if user_data.cyber_cell_id is not None:
+        user.cyber_cell_id = user_data.cyber_cell_id
 
     db.commit()
     db.refresh(user)
