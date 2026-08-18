@@ -22,28 +22,19 @@ def get_case_board(db: Session):
         "Under Review": [],
         "Closed": []
     }
-
     for case, investigator_name in cases:
 
-       board[case.status].append({
+        board[case.status].append({
+            "id": case.id,
+            "case_id": case.case_id,
+            "title": case.title,
+            "investigator_name": investigator_name,
+            "priority": case.priority,
+            "status": case.status,
+            "created_at": case.created_at
+        })
 
-        "id": case.id,
-
-        "case_id": case.case_id,
-
-        "title": case.title,
-
-        "investigator_name": investigator_name,
-
-        "priority": case.priority,
-
-        "status": case.status,
-
-        "created_at": case.created_at
-
-    })
-
-    from models.user import User
+    return board
 
 
 def get_case_details(db: Session, case_id: int):
@@ -117,4 +108,4 @@ def assign_investigator(db: Session, case_id: int, investigator_id: int):
         "investigator_name": investigator.full_name
     }
 
-    return board
+    
