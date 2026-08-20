@@ -9,6 +9,7 @@ class ProfileResponse(BaseModel):
     email: str
     phone_number: Optional[str]
     role: str
+    cyber_cell_id: int
     cyber_cell: str
 
     class Config:

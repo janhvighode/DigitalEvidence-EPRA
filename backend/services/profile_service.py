@@ -31,6 +31,7 @@ def get_profile(db: Session, user_id: int):
         "email": user.email,
         "phone_number": user.phone_number,
         "role": role_name,
+        "cyber_cell_id": user.cyber_cell_id,
         "cyber_cell": cyber_cell_name
     }
 
