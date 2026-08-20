@@ -17,18 +17,21 @@ pwd_context = CryptContext(
 )
 
 
-def get_pending_registrations(db: Session):
+def get_pending_registrations(
+    db: Session,
+    cyber_cell_id: int
+):
 
     pending_requests = db.query(
         RegistrationRequest
     ).filter(
-        RegistrationRequest.status == "Pending"
+        RegistrationRequest.status == "Pending",
+        RegistrationRequest.cyber_cell_id == cyber_cell_id
     ).all()
 
     result = []
 
     for request in pending_requests:
-
         result.append(
             {
                 "id": request.id,
@@ -47,19 +50,21 @@ def get_pending_registrations(db: Session):
 
 def reject_registration(
     db: Session,
-    registration_id: int
+    registration_id: int,
+    cyber_cell_id: int
 ):
 
     registration = db.query(
         RegistrationRequest
     ).filter(
-        RegistrationRequest.id == registration_id
+        RegistrationRequest.id == registration_id,
+        RegistrationRequest.cyber_cell_id == cyber_cell_id
     ).first()
 
     if not registration:
         return {
             "success": False,
-            "message": "Registration request not found."
+            "message": "Registration request not found for your branch."
         }
 
     if registration.status == "Rejected":
@@ -83,21 +88,24 @@ def reject_registration(
         "success": True,
         "message": "Registration request rejected successfully."
     }
+
 def approve_registration(
     db: Session,
-    registration_id: int
+    registration_id: int,
+    cyber_cell_id: int
 ):
 
     registration = db.query(
         RegistrationRequest
     ).filter(
-        RegistrationRequest.id == registration_id
+        RegistrationRequest.id == registration_id,
+        RegistrationRequest.cyber_cell_id == cyber_cell_id
     ).first()
 
     if not registration:
         return {
             "success": False,
-            "message": "Registration request not found."
+            "message": "Registration request not found for your branch."
         }
 
     if registration.status == "Approved":
@@ -142,14 +150,10 @@ def approve_registration(
 
     temporary_password = generate_temporary_password()
 
-    print("Temporary Password:", temporary_password)
-    print("Type:", type(temporary_password))
-    print("Length:", len(temporary_password))
-
     hashed_password = pwd_context.hash(
         temporary_password
     )
-    
+
     new_user = User(
         full_name=registration.full_name,
         username=username,
@@ -167,7 +171,6 @@ def approve_registration(
     registration.status = "Approved"
 
     db.commit()
-
     db.refresh(new_user)
 
     email_body = registration_approved_template(
