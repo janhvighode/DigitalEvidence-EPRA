@@ -54,3 +54,15 @@ def change_user_status(db: Session, user_id: int, is_active: bool):
     "user_id": user.id,
     "is_active": user.is_active
 }
+
+def get_investigators_by_cyber_cell(
+    db: Session,
+    cyber_cell_id: int
+):
+    investigators = db.query(User).filter(
+        User.role_id == 2,
+        User.cyber_cell_id == cyber_cell_id,
+        User.is_active == True
+    ).all()
+
+    return investigators

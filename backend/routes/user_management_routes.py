@@ -8,7 +8,8 @@ from services.user_management_service import (
     get_user_by_id,
     search_users,
     update_user,
-    change_user_status
+    change_user_status,
+    get_investigators_by_cyber_cell
 )
 
 from schemas.user_management import (
@@ -28,6 +29,16 @@ def fetch_users(db: Session = Depends(get_db)):
 @router.get("/search")
 def search(keyword: str, db: Session = Depends(get_db)):
     return search_users(db, keyword)
+
+@router.get("/investigators")
+def fetch_investigators_by_cyber_cell(
+    cyber_cell_id: int,
+    db: Session = Depends(get_db)
+):
+    return get_investigators_by_cyber_cell(
+        db,
+        cyber_cell_id
+    )
 
 
 @router.get("/{user_id}", response_model=UserResponse)
