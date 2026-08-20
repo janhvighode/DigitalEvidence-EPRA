@@ -95,12 +95,8 @@ def assign_investigator(db: Session, case_id: int, investigator_id: int):
     performed_by_role="Administrator"
     )
 
-    create_notification(
-    db=db,
-    title="Investigator Assigned",
-    message=f"{investigator.full_name} has been assigned to case {case.case_id}.",
-    notification_type="case"
-    )
+    
+
 
     return {
         "message": "Investigator assigned successfully",
