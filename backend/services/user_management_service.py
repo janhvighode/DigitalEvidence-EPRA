@@ -66,3 +66,21 @@ def get_investigators_by_cyber_cell(
     ).all()
 
     return investigators
+
+def get_branch_users_for_admin(
+    db: Session,
+    admin_user_id: int
+):
+    admin = db.query(User).filter(
+        User.id == admin_user_id
+    ).first()
+
+    if not admin:
+        return None
+
+    users = db.query(User).filter(
+        User.cyber_cell_id == admin.cyber_cell_id,
+        User.role_id.in_([2, 3])
+    ).all()
+
+    return users

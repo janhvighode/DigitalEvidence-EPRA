@@ -1,7 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 
 from database.database import get_db
+from utils.jwt_handler import verify_access_token
 
 from services.user_management_service import (
     get_all_users,
@@ -9,7 +11,8 @@ from services.user_management_service import (
     search_users,
     update_user,
     change_user_status,
-    get_investigators_by_cyber_cell
+    get_investigators_by_cyber_cell,
+    get_branch_users_for_admin
 )
 
 from schemas.user_management import (
@@ -19,6 +22,7 @@ from schemas.user_management import (
 )
 
 router = APIRouter(prefix="/users", tags=["User Management"])
+security = HTTPBearer()
 
 
 @router.get("/", response_model=list[UserResponse])
@@ -39,6 +43,53 @@ def fetch_investigators_by_cyber_cell(
         db,
         cyber_cell_id
     )
+
+@router.get(
+    "/branch-users",
+    response_model=list[UserResponse]
+)
+def fetch_branch_users(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db)
+):
+
+    payload = verify_access_token(
+        credentials.credentials
+    )
+
+    if payload is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid or expired token"
+        )
+
+    admin_user_id = payload.get("user_id")
+    role_id = payload.get("role_id")
+
+    if admin_user_id is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid token"
+        )
+
+    if role_id != 1:
+        raise HTTPException(
+            status_code=403,
+            detail="Administrator access required"
+        )
+
+    users = get_branch_users_for_admin(
+        db,
+        admin_user_id
+    )
+
+    if users is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Administrator not found"
+        )
+
+    return users
 
 
 @router.get("/{user_id}", response_model=UserResponse)
