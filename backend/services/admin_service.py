@@ -19,47 +19,44 @@ pwd_context = CryptContext(
 
 def get_pending_registrations(
     db: Session,
-    cyber_cell_id: int
+    city_id: int
 ):
-
     pending_requests = db.query(
         RegistrationRequest
     ).filter(
         RegistrationRequest.status == "Pending",
-        RegistrationRequest.cyber_cell_id == cyber_cell_id
+        RegistrationRequest.city_id == city_id
     ).all()
 
     result = []
 
     for request in pending_requests:
-        result.append(
-            {
-                "id": request.id,
-                "full_name": request.full_name,
-                "email": request.email,
-                "phone_number": request.phone_number,
-                "requested_role_id": request.requested_role_id,
-                "city_id": request.city_id,
-                "cyber_cell_id": request.cyber_cell_id,
-                "status": request.status,
-                "created_at": request.created_at
-            }
-        )
+        result.append({
+            "id": request.id,
+            "full_name": request.full_name,
+            "email": request.email,
+            "phone_number": request.phone_number,
+            "requested_role_id": request.requested_role_id,
+            "city_id": request.city_id,
+            "cyber_cell_id": request.cyber_cell_id,
+            "status": request.status,
+            "created_at": request.created_at
+        })
 
     return result
 
 def reject_registration(
     db: Session,
     registration_id: int,
-    cyber_cell_id: int
+    city_id: int
 ):
 
     registration = db.query(
-        RegistrationRequest
-    ).filter(
-        RegistrationRequest.id == registration_id,
-        RegistrationRequest.cyber_cell_id == cyber_cell_id
-    ).first()
+    RegistrationRequest
+).filter(
+    RegistrationRequest.id == registration_id,
+    RegistrationRequest.city_id == city_id
+).first()
 
     if not registration:
         return {
@@ -92,15 +89,15 @@ def reject_registration(
 def approve_registration(
     db: Session,
     registration_id: int,
-    cyber_cell_id: int
+    city_id: int
 ):
 
     registration = db.query(
-        RegistrationRequest
-    ).filter(
-        RegistrationRequest.id == registration_id,
-        RegistrationRequest.cyber_cell_id == cyber_cell_id
-    ).first()
+    RegistrationRequest
+).filter(
+    RegistrationRequest.id == registration_id,
+    RegistrationRequest.city_id == city_id
+).first()
 
     if not registration:
         return {

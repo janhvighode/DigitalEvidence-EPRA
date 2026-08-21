@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-
+from sqlalchemy import or_
 from models.notification import Notification
 
 
@@ -43,16 +43,20 @@ def get_notifications(
 
     # Administrator
     if current_user.role_id == 1:
-
         return (
-            db.query(Notification)
-            .filter(
+          db.query(Notification)
+        .filter(
+            or_(
                 Notification.cyber_cell_id ==
-                current_user.cyber_cell_id
+                current_user.cyber_cell_id,
+
+                Notification.user_id ==
+                current_user.id
             )
-            .order_by(Notification.created_at.desc())
-            .all()
         )
+        .order_by(Notification.created_at.desc())
+        .all()
+    )
 
     # Investigator / Cyber Expert
     return (
@@ -78,24 +82,26 @@ def get_unread_count(
         Notification.is_read == False
     )
 
+    # Administrator
     if current_user.role_id == 1:
 
         query = query.filter(
-            Notification.cyber_cell_id ==
-            current_user.cyber_cell_id
+            or_(
+                Notification.cyber_cell_id == current_user.cyber_cell_id,
+                Notification.user_id == current_user.id
+            )
         )
 
+    # Investigator / Cyber Expert
     else:
 
         query = query.filter(
-            Notification.user_id ==
-            current_user.id
+            Notification.user_id == current_user.id
         )
 
     return {
         "count": query.count()
     }
-
 
 # ==========================================
 # Mark Notification Read
@@ -111,20 +117,21 @@ def mark_notification_read(
         Notification.id == notification_id
     )
 
-    # Administrator can modify only own branch notification
+    # Administrator
     if current_user.role_id == 1:
 
         query = query.filter(
-            Notification.cyber_cell_id ==
-            current_user.cyber_cell_id
+            or_(
+                Notification.cyber_cell_id == current_user.cyber_cell_id,
+                Notification.user_id == current_user.id
+            )
         )
 
     # Investigator / Cyber Expert
     else:
 
         query = query.filter(
-            Notification.user_id ==
-            current_user.id
+            Notification.user_id == current_user.id
         )
 
     notification = query.first()
