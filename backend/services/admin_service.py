@@ -3,6 +3,7 @@ from passlib.context import CryptContext
 from models.user import User
 from models.cyber_cell import CyberCell
 
+
 from utils.username_generator import generate_unique_username
 from utils.password_generator import generate_temporary_password
 from utils.email_templates import registration_approved_template
@@ -19,14 +20,33 @@ pwd_context = CryptContext(
 
 def get_pending_registrations(
     db: Session,
-    city_id: int
+    current_admin: User
 ):
-    pending_requests = db.query(
-        RegistrationRequest
-    ).filter(
-        RegistrationRequest.status == "Pending",
-        RegistrationRequest.city_id == city_id
-    ).all()
+
+    pending_requests = (
+        db.query(RegistrationRequest)
+        .filter(
+            RegistrationRequest.status == "Pending"
+        )
+        .filter(
+            # Administrator registration → visible to ALL admins
+            (RegistrationRequest.requested_role_id == 1)
+
+            |
+
+            # Investigator / Cyber Expert →
+            # only same cyber cell admin
+            (
+                RegistrationRequest.requested_role_id.in_([2, 3])
+                &
+                (
+                    RegistrationRequest.cyber_cell_id
+                    == current_admin.cyber_cell_id
+                )
+            )
+        )
+        .all()
+    )
 
     result = []
 
@@ -48,20 +68,40 @@ def get_pending_registrations(
 def reject_registration(
     db: Session,
     registration_id: int,
-    city_id: int
+    current_admin: User
 ):
 
     registration = db.query(
-    RegistrationRequest
-).filter(
-    RegistrationRequest.id == registration_id,
-    RegistrationRequest.city_id == city_id
-).first()
+        RegistrationRequest
+    ).filter(
+        RegistrationRequest.id == registration_id
+    ).first()
 
     if not registration:
         return {
             "success": False,
-            "message": "Registration request not found for your branch."
+            "message": "Registration request not found."
+        }
+
+    # Investigator / Cyber Expert
+    # Only same Cyber Cell Administrator can reject
+    if registration.requested_role_id in [2, 3]:
+
+        if registration.cyber_cell_id != current_admin.cyber_cell_id:
+            return {
+                "success": False,
+                "message": "You cannot reject requests from another Cyber Cell."
+            }
+
+    # Administrator request
+    # Any existing Administrator can reject
+    elif registration.requested_role_id == 1:
+        pass
+
+    else:
+        return {
+            "success": False,
+            "message": "Invalid requested role."
         }
 
     if registration.status == "Rejected":
@@ -89,20 +129,40 @@ def reject_registration(
 def approve_registration(
     db: Session,
     registration_id: int,
-    city_id: int
+    current_admin: User
 ):
 
     registration = db.query(
-    RegistrationRequest
-).filter(
-    RegistrationRequest.id == registration_id,
-    RegistrationRequest.city_id == city_id
-).first()
+        RegistrationRequest
+    ).filter(
+        RegistrationRequest.id == registration_id
+    ).first()
 
     if not registration:
         return {
             "success": False,
-            "message": "Registration request not found for your branch."
+            "message": "Registration request not found."
+        }
+
+    # Investigator / Cyber Expert
+    # Only same Cyber Cell Administrator can approve
+    if registration.requested_role_id in [2, 3]:
+
+        if registration.cyber_cell_id != current_admin.cyber_cell_id:
+            return {
+                "success": False,
+                "message": "You cannot approve requests from another Cyber Cell."
+            }
+
+    # Administrator request
+    # Any existing Administrator can approve
+    elif registration.requested_role_id == 1:
+        pass
+
+    else:
+        return {
+            "success": False,
+            "message": "Invalid requested role."
         }
 
     if registration.status == "Approved":
