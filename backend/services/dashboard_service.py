@@ -2,15 +2,18 @@ from sqlalchemy.orm import Session, aliased
 
 from models.case import Case
 from models.user import User
+
 from schemas.dashboard import (
     DashboardStats,
     RecentCase,
     PrioritySummary
 )
 
+from services.admin_service import get_pending_registrations
+
 
 # ==========================================
-# DASHBOARD STATS - BRANCH WISE
+# DASHBOARD STATS
 # ==========================================
 
 def get_dashboard_stats(
@@ -18,13 +21,24 @@ def get_dashboard_stats(
     current_user: User
 ):
 
-    # Logged-in Admin ki branch ke users
-    total_users = db.query(User).filter(
-        User.cyber_cell_id == current_user.cyber_cell_id,
-        User.role_id.in_([2, 3])   # Investigator + Cyber Expert
-    ).count()
+    # ======================================
+    # TOTAL USERS - BRANCH WISE
+    # ======================================
 
-    # Case ki branch created_by user se identify hogi
+    total_users = (
+        db.query(User)
+        .filter(
+            User.cyber_cell_id == current_user.cyber_cell_id,
+            User.role_id.in_([2, 3])
+        )
+        .count()
+    )
+
+
+    # ======================================
+    # CASES - BRANCH WISE
+    # ======================================
+
     Creator = aliased(User)
 
     branch_cases = (
@@ -39,50 +53,87 @@ def get_dashboard_stats(
         )
     )
 
+
     total_cases = branch_cases.count()
 
-    open_cases = branch_cases.filter(
-        Case.status == "Open"
-    ).count()
 
-    in_progress_cases = branch_cases.filter(
-        Case.status == "In Progress"
-    ).count()
+    open_cases = (
+        branch_cases
+        .filter(
+            Case.status == "Open"
+        )
+        .count()
+    )
 
-    under_review_cases = branch_cases.filter(
-        Case.status == "Under Review"
-    ).count()
 
-    closed_cases = branch_cases.filter(
-        Case.status == "Closed"
-    ).count()
+    in_progress_cases = (
+        branch_cases
+        .filter(
+            Case.status == "In Progress"
+        )
+        .count()
+    )
 
-    high_priority = branch_cases.filter(
-        Case.priority == "High"
-    ).count()
 
-    pending_analysis = branch_cases.filter(
-        Case.status != "Closed"
-    ).count()
+    under_review_cases = (
+        branch_cases
+        .filter(
+            Case.status == "Under Review"
+        )
+        .count()
+    )
+
+
+    closed_cases = (
+        branch_cases
+        .filter(
+            Case.status == "Closed"
+        )
+        .count()
+    )
+
+
+    # ======================================
+    # PENDING REGISTRATION REQUESTS
+    # ROLE-BASED APPROVAL LOGIC
+    # ======================================
+
+    pending_requests = get_pending_registrations(
+        db,
+        current_user
+    )
+
+    pending_registration_requests = len(
+        pending_requests
+    )
+
+
+    # ======================================
+    # RETURN DASHBOARD CARDS
+    # ======================================
 
     return DashboardStats(
-        total_users=total_users,
         total_cases=total_cases,
+
+        pending_registration_requests=
+        pending_registration_requests,
+
+        total_users=total_users,
+
         open_cases=open_cases,
+
         in_progress_cases=in_progress_cases,
-        under_review_cases=under_review_cases,
-        closed_cases=closed_cases,
 
-        # Evidence module abhi integrate nahi hua
-        evidence_files=0,
+        under_review_cases=
+        under_review_cases,
 
-        high_priority=high_priority,
-        pending_analysis=pending_analysis
+        closed_cases=closed_cases
     )
 
 
 # ==========================================
-# RECENT CASES - BRANCH WISE
+# RECENT CASES / CASE DETAILS
+# BRANCH WISE
 # ==========================================
 
 def get_recent_cases(
@@ -91,33 +142,59 @@ def get_recent_cases(
 ):
 
     Creator = aliased(User)
+    Investigator = aliased(User)
 
     cases = (
-        db.query(Case)
+        db.query(
+            Case,
+            Investigator.full_name.label(
+                "investigator_name"
+            )
+        )
         .join(
             Creator,
             Case.created_by == Creator.id
+        )
+        .outerjoin(
+            Investigator,
+            Case.investigator_id ==
+            Investigator.id
         )
         .filter(
             Creator.cyber_cell_id ==
             current_user.cyber_cell_id
         )
         .order_by(
-            Case.created_at.desc()
+            Case.updated_at.desc()
         )
-        .limit(5)
+        .limit(10)
         .all()
     )
+
 
     return [
         RecentCase(
             id=case.id,
+
             case_id=case.case_id,
+
             title=case.title,
+
             status=case.status,
-            priority=case.priority
+
+            priority=case.priority,
+
+            investigator_name=
+            investigator_name,
+
+            updated_at=(
+                case.updated_at.isoformat()
+                if case.updated_at
+                else None
+            )
         )
-        for case in cases
+
+        for case, investigator_name in cases
     ]
 
 
@@ -144,17 +221,33 @@ def get_priority_summary(
         )
     )
 
-    high = branch_cases.filter(
-        Case.priority == "High"
-    ).count()
 
-    medium = branch_cases.filter(
-        Case.priority == "Medium"
-    ).count()
+    high = (
+        branch_cases
+        .filter(
+            Case.priority == "High"
+        )
+        .count()
+    )
 
-    low = branch_cases.filter(
-        Case.priority == "Low"
-    ).count()
+
+    medium = (
+        branch_cases
+        .filter(
+            Case.priority == "Medium"
+        )
+        .count()
+    )
+
+
+    low = (
+        branch_cases
+        .filter(
+            Case.priority == "Low"
+        )
+        .count()
+    )
+
 
     return PrioritySummary(
         high=high,

@@ -3,18 +3,15 @@ from typing import Optional
 
 
 class DashboardStats(BaseModel):
-    total_users: int
     total_cases: int
-
+    pending_registration_requests: int
+    total_users: int
     open_cases: int
+
+    # For Total Statistics chart
     in_progress_cases: int
     under_review_cases: int
     closed_cases: int
-
-    # Existing fields rakhe hain so frontend break na ho
-    evidence_files: int = 0
-    high_priority: int
-    pending_analysis: int
 
 
 class RecentCase(BaseModel):
@@ -23,6 +20,8 @@ class RecentCase(BaseModel):
     title: str
     status: str
     priority: Optional[str] = None
+    investigator_name: Optional[str] = None
+    updated_at: Optional[str] = None
 
 
 class PrioritySummary(BaseModel):
