@@ -42,11 +42,12 @@ def fetch_case_board(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-
-    return get_case_board(
+    board = get_case_board(
         db,
         current_user
     )
+
+    return board
 
 
 # ==========================================
