@@ -281,3 +281,163 @@ def assign_investigator(
         "case_id": case.case_id,
         "investigator_name": investigator.full_name
     }
+
+
+def assign_cyber_expert(
+    db: Session,
+    case_id: int,
+    cyber_expert_id: int,
+    current_user: User
+):
+
+    # Only Administrator can assign Cyber Expert
+    if current_user.role_id != 1:
+        return "FORBIDDEN"
+
+    creator = User.__table__.alias("creator")
+
+    # Case must belong to Administrator's branch
+    case = (
+        db.query(Case)
+        .join(
+            creator,
+            Case.created_by == creator.c.id
+        )
+        .filter(
+            Case.id == case_id,
+            creator.c.cyber_cell_id ==
+            current_user.cyber_cell_id
+        )
+        .first()
+    )
+
+    if not case:
+        return None
+
+    # Cyber Expert must be:
+    # role_id = 3
+    # same branch
+    # active
+    cyber_expert = (
+        db.query(User)
+        .filter(
+            User.id == cyber_expert_id,
+            User.role_id == 3,
+            User.cyber_cell_id ==
+            current_user.cyber_cell_id,
+            User.is_active == True
+        )
+        .first()
+    )
+
+    if not cyber_expert:
+        return "CYBER_EXPERT_NOT_FOUND"
+
+    case.cyber_expert_id = cyber_expert.id
+
+    db.commit()
+    db.refresh(case)
+
+    create_timeline_event(
+        db=db,
+        case_id=case.id,
+        event=f"Cyber Expert assigned to {cyber_expert.full_name}",
+        performed_by=current_user.id,
+        performed_by_role="Administrator"
+    )
+
+    create_notification(
+        db=db,
+        title="Case Assigned",
+        message=(
+            f"You have been assigned to case "
+            f"{case.case_id}."
+        ),
+        notification_type="case",
+        user_id=cyber_expert.id,
+        cyber_cell_id=None
+    )
+
+    return {
+        "message": "Cyber Expert assigned successfully",
+        "case_id": case.case_id,
+        "cyber_expert_name": cyber_expert.full_name
+    }
+
+
+def assign_cyber_expert(
+    db: Session,
+    case_id: int,
+    cyber_expert_id: int,
+    current_user: User
+):
+
+    # Only Administrator can assign Cyber Expert
+    if current_user.role_id != 1:
+        return "FORBIDDEN"
+
+    creator = User.__table__.alias("creator")
+
+    # Case must belong to Administrator's branch
+    case = (
+        db.query(Case)
+        .join(
+            creator,
+            Case.created_by == creator.c.id
+        )
+        .filter(
+            Case.id == case_id,
+            creator.c.cyber_cell_id ==
+            current_user.cyber_cell_id
+        )
+        .first()
+    )
+
+    if not case:
+        return None
+
+    # Cyber Expert must be active,
+    # role_id = 3,
+    # and belong to same branch
+    cyber_expert = (
+        db.query(User)
+        .filter(
+            User.id == cyber_expert_id,
+            User.role_id == 3,
+            User.cyber_cell_id ==
+            current_user.cyber_cell_id,
+            User.is_active == True
+        )
+        .first()
+    )
+
+    if not cyber_expert:
+        return "CYBER_EXPERT_NOT_FOUND"
+
+    case.cyber_expert_id = cyber_expert.id
+
+    db.commit()
+    db.refresh(case)
+
+    create_timeline_event(
+        db=db,
+        case_id=case.id,
+        event=f"Cyber Expert assigned to {cyber_expert.full_name}",
+        performed_by=current_user.id,
+        performed_by_role="Administrator"
+    )
+
+    create_notification(
+        db=db,
+        title="Case Assigned",
+        message=f"You have been assigned to case {case.case_id}.",
+        notification_type="case",
+        user_id=cyber_expert.id,
+        cyber_cell_id=None
+    )
+
+    return {
+        "message": "Cyber Expert assigned successfully",
+        "case_id": case.case_id,
+        "cyber_expert_name": cyber_expert.full_name
+    }

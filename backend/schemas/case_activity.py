@@ -23,3 +23,13 @@ class AssignInvestigatorResponse(BaseModel):
     message: str
     case_id: str
     investigator_name: str
+
+class AssignCyberExpertRequest(BaseModel):
+    cyber_expert_id: int
+
+
+class AssignCyberExpertResponse(BaseModel):
+    message: str
+    case_id: str
+    cyber_expert_name: str
+

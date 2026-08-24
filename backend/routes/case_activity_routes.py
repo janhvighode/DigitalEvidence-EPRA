@@ -11,7 +11,9 @@ from utils.current_user import get_current_user
 from services.case_activity_service import (
     get_case_board,
     get_case_details,
-    assign_investigator
+    assign_investigator,
+    assign_cyber_expert
+    
 )
 
 from services.timeline_read_service import (
@@ -20,7 +22,9 @@ from services.timeline_read_service import (
 
 from schemas.case_activity import (
     AssignInvestigatorRequest,
-    AssignInvestigatorResponse
+    AssignInvestigatorResponse,
+    AssignCyberExpertRequest,
+    AssignCyberExpertResponse
 )
 
 from schemas.timeline import (
@@ -150,6 +154,44 @@ def assign_case(
                 "Active Investigator not found "
                 "in your branch"
             )
+        )
+
+    return result
+
+@router.put(
+    "/{case_id}/assign-cyber-expert",
+    response_model=AssignCyberExpertResponse
+)
+def assign_case_to_cyber_expert(
+    case_id: int,
+    data: AssignCyberExpertRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+
+    result = assign_cyber_expert(
+        db=db,
+        case_id=case_id,
+        cyber_expert_id=data.cyber_expert_id,
+        current_user=current_user
+    )
+
+    if result == "FORBIDDEN":
+        raise HTTPException(
+            status_code=403,
+            detail="Administrator access required"
+        )
+
+    if result is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Case not found for your branch"
+        )
+
+    if result == "CYBER_EXPERT_NOT_FOUND":
+        raise HTTPException(
+            status_code=404,
+            detail="Active Cyber Expert not found in your branch"
         )
 
     return result

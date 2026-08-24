@@ -15,7 +15,8 @@ from services.user_management_service import (
     update_user,
     change_user_status,
     get_investigators_by_cyber_cell,
-    get_branch_users_for_admin
+    get_branch_users_for_admin,
+    get_cyber_experts_by_cyber_cell
 )
 
 from schemas.user_management import (
@@ -104,6 +105,26 @@ def fetch_branch_users(
         )
 
     return users
+
+@router.get(
+    "/cyber-experts",
+    response_model=list[UserResponse]
+)
+def fetch_cyber_experts_by_cyber_cell(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+
+    if current_user.role_id != 1:
+        raise HTTPException(
+            status_code=403,
+            detail="Administrator access required"
+        )
+
+    return get_cyber_experts_by_cyber_cell(
+        db,
+        current_user.cyber_cell_id
+    )
 
 
 @router.get("/{user_id}", response_model=UserResponse)

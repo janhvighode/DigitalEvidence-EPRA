@@ -83,4 +83,17 @@ def get_branch_users_for_admin(
         User.role_id.in_([2, 3])
     ).all()
 
-    return users
+    return 
+
+
+def get_cyber_experts_by_cyber_cell(
+    db: Session,
+    cyber_cell_id: int
+):
+    cyber_experts = db.query(User).filter(
+        User.role_id == 3,
+        User.cyber_cell_id == cyber_cell_id,
+        User.is_active == True
+    ).all()
+
+    return cyber_experts
