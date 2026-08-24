@@ -1,4 +1,5 @@
 from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from models.case import Case
 from models.user import User
@@ -16,49 +17,6 @@ def get_case_board(
     current_user: User
 ):
 
-    query = (
-        db.query(Case)
-        .outerjoin(
-            User,
-            Case.investigator_id == User.id
-        )
-        .add_columns(User.full_name)
-    )
-
-    # ADMINISTRATOR
-    # Only cases created by users from admin's branch
-    if current_user.role_id == 1:
-
-        creator = User.__table__.alias("creator")
-
-        query = (
-            db.query(Case)
-            .outerjoin(
-                User,
-                Case.investigator_id == User.id
-            )
-            .join(
-                creator,
-                Case.created_by == creator.c.id
-            )
-            .filter(
-                creator.c.cyber_cell_id ==
-                current_user.cyber_cell_id
-            )
-            .add_columns(User.full_name)
-        )
-
-    # INVESTIGATOR
-    # Only cases assigned to logged-in investigator
-    elif current_user.role_id == 2:
-
-        query = query.filter(
-            Case.investigator_id ==
-            current_user.id
-        )
-
-    cases = query.all()
-
     board = {
         "Open": [],
         "In Progress": [],
@@ -66,20 +24,71 @@ def get_case_board(
         "Closed": []
     }
 
+    # ADMINISTRATOR
+    if current_user.role_id == 1:
+
+        Creator = aliased(User)
+
+        cases = (
+            db.query(Case)
+            .join(
+                Creator,
+                Case.created_by == Creator.id
+            )
+            .outerjoin(
+                User,
+                Case.investigator_id == User.id
+            )
+            .filter(
+                Creator.cyber_cell_id ==
+                current_user.cyber_cell_id
+            )
+            .add_columns(
+                User.full_name
+            )
+            .all()
+        )
+
+    # INVESTIGATOR
+    elif current_user.role_id == 2:
+
+        cases = (
+            db.query(Case)
+            .outerjoin(
+                User,
+                Case.investigator_id == User.id
+            )
+            .filter(
+                Case.investigator_id ==
+                current_user.id
+            )
+            .add_columns(
+                User.full_name
+            )
+            .all()
+        )
+
+    # Other roles currently have no case-board assignment logic
+    else:
+        return board
+
+
     for case, investigator_name in cases:
 
-        board[case.status].append({
-            "id": case.id,
-            "case_id": case.case_id,
-            "title": case.title,
-            "investigator_name": investigator_name,
-            "priority": case.priority,
-            "status": case.status,
-            "created_at": case.created_at
-        })
+        if case.status in board:
+
+            board[case.status].append({
+                "id": case.id,
+                "case_id": case.case_id,
+                "title": case.title,
+                "investigator_name": investigator_name,
+                "priority": case.priority,
+                "status": case.status,
+                "created_at": case.created_at
+            })
+
 
     return board
-
 
 # ==========================================
 # CASE DETAILS

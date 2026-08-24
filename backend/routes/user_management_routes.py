@@ -5,6 +5,9 @@ from sqlalchemy.orm import Session
 from database.database import get_db
 from utils.jwt_handler import verify_access_token
 
+from models.user import User
+from utils.current_user import get_current_user
+
 from services.user_management_service import (
     get_all_users,
     get_user_by_id,
@@ -34,15 +37,26 @@ def fetch_users(db: Session = Depends(get_db)):
 def search(keyword: str, db: Session = Depends(get_db)):
     return search_users(db, keyword)
 
-@router.get("/investigators")
+@router.get(
+    "/investigators",
+    response_model=list[UserResponse]
+)
 def fetch_investigators_by_cyber_cell(
-    cyber_cell_id: int,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+
+    if current_user.role_id != 1:
+        raise HTTPException(
+            status_code=403,
+            detail="Administrator access required"
+        )
+
     return get_investigators_by_cyber_cell(
         db,
-        cyber_cell_id
+        current_user.cyber_cell_id
     )
+    
 
 @router.get(
     "/branch-users",
