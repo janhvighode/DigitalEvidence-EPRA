@@ -38,6 +38,7 @@ from models.system_statistics import SystemStatistics
 from routes.system_statistics_routes import router as statistics_router
 from routes.user_management_routes import router as user_management_router
 from routes.cyber_expert_dashboard import router as cyber_expert_dashboard_router
+from routes.cyber_expert_cases import (router as cyber_expert_cases_router)
 
 
 app = FastAPI(
@@ -79,6 +80,7 @@ app.include_router(settings_router)
 app.include_router(statistics_router)
 app.include_router(user_management_router)
 app.include_router(cyber_expert_dashboard_router)
+app.include_router(cyber_expert_cases_router)
 
 @app.get("/")
 def home():
