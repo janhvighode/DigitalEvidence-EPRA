@@ -83,7 +83,7 @@ def get_branch_users_for_admin(
         User.role_id.in_([2, 3])
     ).all()
 
-    return 
+    return users
 
 
 def get_cyber_experts_by_cyber_cell(
