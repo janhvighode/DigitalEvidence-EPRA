@@ -1,15 +1,19 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
+import 'dart:math';
+import '../../services/api_service.dart';
 
-import '../../utils/app_colors.dart';
 import '../auth/login_screen.dart';
 import '../case_management/create_case_screen.dart';
 import 'user_management_screen.dart';
 import '../admin/approval_requests_screen.dart';
 import '../case_management/case_activity_screen.dart';
+import '../case_management/case_activity_details_screen.dart';
 import '../reports/reports_screen.dart';
 import '../statistics/analytics_screen.dart';
 import '../settings/settings_screen.dart';
 import '../profile/profile_screen.dart';
+
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
 
@@ -20,12 +24,364 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   int selectedIndex = 0;
   bool _desktopSidebarVisible = true;
-  final ScrollController _caseTableScrollController = ScrollController();
- 
+  final ScrollController _caseTableScrollController =
+      ScrollController();
+
+  final ApiService _apiService = ApiService();
+
+   // =========================================================
+  // DASHBOARD STATS
+  // =========================================================
+
+  int _totalCases = 0;
+  int _pendingCases = 0;
+  int _openCases = 0;
+  int _closedCases = 0;
+  int _newCases = 0;
+  int _totalUsers = 0;
+  int _pendingRequests = 0;
+  int _inProgressCases = 0;
+int _underReviewCases = 0;
+
+  bool _dashboardStatsLoading = false;
+
+  int _unreadNotificationCount = 0;
+  List<Map<String, dynamic>> _notifications = [];
+  bool _notificationsLoading = false;
+  bool _recentCasesLoading = false;
+
+List<Map<String, dynamic>> _recentCases = [];
+
   @override
-void dispose() {
-  _caseTableScrollController.dispose();
-  super.dispose();
+void initState() {
+  super.initState();
+
+  _loadUnreadNotificationCount();
+  _loadDashboardStats();
+  _loadRecentCases();
+}
+
+  @override
+  void dispose() {
+    _caseTableScrollController.dispose();
+    super.dispose();
+  }
+
+    Future<void> _loadUnreadNotificationCount() async {
+    try {
+      final response =
+          await _apiService.getUnreadNotificationCount();
+      debugPrint(
+  "UNREAD COUNT STATUS = ${response.statusCode}",
+);
+
+debugPrint(
+  "UNREAD COUNT RESPONSE = ${response.body}",
+);
+      if (!mounted) return;
+
+      if (response.statusCode >= 200 &&
+          response.statusCode < 300) {
+        final data = jsonDecode(response.body);
+
+        if (data is Map && data["count"] != null) {
+          setState(() {
+            _unreadNotificationCount =
+                int.tryParse(data["count"].toString()) ?? 0;
+          });
+        }
+      }
+    } catch (_) {
+      // Keep dashboard working if notification API fails.
+    }
+  }
+
+  Future<void> _loadNotifications() async {
+    if (_notificationsLoading) return;
+
+    setState(() {
+      _notificationsLoading = true;
+    });
+
+    try {
+      final response =
+          await _apiService.getNotifications();
+      debugPrint("NOTIFICATION STATUS = ${response.statusCode}");
+debugPrint("NOTIFICATION RESPONSE = ${response.body}");
+      if (!mounted) return;
+
+      if (response.statusCode >= 200 &&
+          response.statusCode < 300) {
+        final data = jsonDecode(response.body);
+
+        if (data is List) {
+          setState(() {
+            _notifications = data
+                .whereType<Map>()
+                .map(
+                  (item) =>
+                      Map<String, dynamic>.from(item),
+                )
+                .toList();
+          });
+        }
+      }
+    } catch (_) {
+      if (mounted) {
+        _showMessage("Unable to load notifications");
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _notificationsLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _markNotificationRead(
+    int notificationId,
+  ) async {
+    try {
+      final response =
+          await _apiService.markNotificationRead(
+        notificationId,
+      );
+
+      if (!mounted) return;
+
+      if (response.statusCode >= 200 &&
+          response.statusCode < 300) {
+        setState(() {
+          for (final notification in _notifications) {
+            if (notification["id"] == notificationId) {
+              notification["is_read"] = true;
+              break;
+            }
+          }
+
+          if (_unreadNotificationCount > 0) {
+            _unreadNotificationCount--;
+          }
+        });
+      }
+    } catch (_) {
+      // Keep dashboard working if API fails.
+    }
+  }
+Future<void> _loadDashboardStats() async {
+  if (_dashboardStatsLoading) return;
+
+  setState(() {
+    _dashboardStatsLoading = true;
+  });
+
+  try {
+    final response = await _apiService.getDashboardStats();
+
+    debugPrint(
+      "DASHBOARD STATS STATUS = ${response.statusCode}",
+    );
+
+    debugPrint(
+      "DASHBOARD STATS RESPONSE = ${response.body}",
+    );
+
+    if (!mounted) return;
+
+    if (response.statusCode == 401) {
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(
+          builder: (_) => const LoginScreen(),
+        ),
+        (route) => false,
+      );
+      return;
+    }
+
+    if (response.statusCode == 403) {
+      setState(() {
+        _dashboardStatsLoading = false;
+      });
+
+      _showMessage(
+        "You are not authorized to view dashboard.",
+      );
+      return;
+    }
+
+    if (response.statusCode >= 200 &&
+        response.statusCode < 300) {
+      final data = jsonDecode(response.body);
+
+      if (data is Map) {
+        setState(() {
+          _totalCases =
+              int.tryParse(
+                    data["total_cases"].toString(),
+                  ) ??
+                  0;
+
+          _pendingRequests =
+              int.tryParse(
+                    data["pending_registration_requests"]
+                        .toString(),
+                  ) ??
+                  0;
+
+          _totalUsers =
+              int.tryParse(
+                    data["total_users"].toString(),
+                  ) ??
+                  0;
+
+          _openCases =
+              int.tryParse(
+                    data["open_cases"].toString(),
+                  ) ??
+                  0;
+
+          // New backend status counts
+          _inProgressCases =
+              int.tryParse(
+                    data["in_progress_cases"].toString(),
+                  ) ??
+                  0;
+
+          _underReviewCases =
+              int.tryParse(
+                    data["under_review_cases"].toString(),
+                  ) ??
+                  0;
+
+          _closedCases =
+              int.tryParse(
+                    data["closed_cases"].toString(),
+                  ) ??
+                  0;
+        });
+
+        debugPrint(
+          "Dashboard => "
+          "Total Cases: $_totalCases, "
+          "Pending Requests: $_pendingRequests, "
+          "Total Users: $_totalUsers, "
+          "Open: $_openCases, "
+          "In Progress: $_inProgressCases, "
+          "Under Review: $_underReviewCases, "
+          "Closed: $_closedCases",
+        );
+      }
+    } else {
+      String message = "Failed to load dashboard.";
+
+      try {
+        final body = jsonDecode(response.body);
+
+        if (body is Map && body["detail"] != null) {
+          message = body["detail"].toString();
+        }
+      } catch (_) {}
+
+      setState(() {
+        _dashboardStatsLoading = false;
+      });
+
+      _showMessage(
+        "$message (${response.statusCode})",
+      );
+    }
+  } catch (e) {
+    debugPrint("DASHBOARD ERROR = $e");
+
+    if (mounted) {
+      _showMessage(
+        "Unable to load dashboard.",
+      );
+    }
+  } finally {
+    if (mounted) {
+      setState(() {
+        _dashboardStatsLoading = false;
+      });
+    }
+  }
+}
+
+Future<void> _loadRecentCases() async {
+  if (_recentCasesLoading) return;
+
+  setState(() {
+    _recentCasesLoading = true;
+  });
+
+  try {
+    final response = await _apiService.getDashboardRecentCases();
+
+    debugPrint(
+      "RECENT CASES STATUS = ${response.statusCode}",
+    );
+
+    debugPrint(
+      "RECENT CASES RESPONSE = ${response.body}",
+    );
+
+    if (!mounted) return;
+
+    if (response.statusCode == 401) {
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(
+          builder: (_) => const LoginScreen(),
+        ),
+        (route) => false,
+      );
+      return;
+    }
+
+    if (response.statusCode >= 200 &&
+        response.statusCode < 300) {
+      final data = jsonDecode(response.body);
+
+      List<Map<String, dynamic>> loadedCases = [];
+
+      if (data is List) {
+        loadedCases = data
+            .whereType<Map>()
+            .map(
+              (item) =>
+                  Map<String, dynamic>.from(item),
+            )
+            .toList();
+      } else if (data is Map) {
+        final rawCases =
+            data["cases"] ??
+            data["data"] ??
+            data["results"];
+
+        if (rawCases is List) {
+          loadedCases = rawCases
+              .whereType<Map>()
+              .map(
+                (item) =>
+                    Map<String, dynamic>.from(item),
+              )
+              .toList();
+        }
+      }
+
+      setState(() {
+        _recentCases = loadedCases;
+      });
+    }
+  } catch (e) {
+    debugPrint("RECENT CASES ERROR = $e");
+  } finally {
+    if (mounted) {
+      setState(() {
+        _recentCasesLoading = false;
+      });
+    }
+  }
 }
   // =========================================================
   // LOGOUT CONFIRMATION
@@ -185,8 +541,8 @@ void dispose() {
                           color: Colors.red,
                           shape: BoxShape.circle,
                         ),
-                        child: const Text(
-                          "5",
+                        child: Text(
+                          "$_unreadNotificationCount",
                           style: TextStyle(
                             color: Colors.white,
                             fontSize: 9,
@@ -354,9 +710,9 @@ Widget _buildSelectedPage(bool isMobile) {
                     color: Colors.red,
                     shape: BoxShape.circle,
                   ),
-                  child: const Text(
-                    "5",
-                    style: TextStyle(
+                  child: Text(
+                    "$_unreadNotificationCount",
+                    style: const TextStyle(
                       color: Colors.white,
                       fontSize: 10,
                       fontWeight: FontWeight.bold,
@@ -736,7 +1092,7 @@ Widget _buildDesktopStatistics() {
     children: [
       _statCard(
         title: "Total Cases",
-        value: "128",
+        value:  _totalCases.toString(),
         action: "View all cases",
         icon: Icons.folder_rounded,
         accent: const Color(0xFF0875F5),
@@ -746,7 +1102,7 @@ Widget _buildDesktopStatistics() {
 
       _statCard(
         title: "Pending Registration\nRequests",
-        value: "24",
+        value: _pendingRequests.toString(),
         action: "View requests",
         icon: Icons.access_time_filled_rounded,
         accent: const Color(0xFFFF8A00),
@@ -756,7 +1112,7 @@ Widget _buildDesktopStatistics() {
 
       _statCard(
         title: "Total Users",
-        value: "156",
+        value: _totalUsers.toString(),
         action: "View users",
         icon: Icons.groups_rounded,
         accent: const Color(0xFF0AA05A),
@@ -766,7 +1122,7 @@ Widget _buildDesktopStatistics() {
 
       _statCard(
         title: "Open Cases",
-        value: "45",
+        value: _openCases.toString(),
         action: "View details",
         icon: Icons.work_rounded,
         accent: const Color(0xFF8437E8),
@@ -788,7 +1144,7 @@ Widget _buildDesktopStatistics() {
       children: [
         _statCard(
           title: "Total Cases",
-          value: "128",
+          value: _totalCases.toString(),
           action: "View cases",
           icon: Icons.folder_rounded,
           accent: const Color(0xFF0875F5),
@@ -797,7 +1153,7 @@ Widget _buildDesktopStatistics() {
         ),
         _statCard(
           title: "Pending Requests",
-          value: "24",
+          value: _pendingRequests.toString(),
           action: "View requests",
           icon: Icons.access_time_filled_rounded,
           accent: const Color(0xFFFF8A00),
@@ -806,7 +1162,7 @@ Widget _buildDesktopStatistics() {
         ),
         _statCard(
           title: "Total Users",
-          value: "156",
+          value:  _totalUsers.toString(),
           action: "View users",
           icon: Icons.groups_rounded,
           accent: const Color(0xFF0AA05A),
@@ -815,7 +1171,7 @@ Widget _buildDesktopStatistics() {
         ),
         _statCard(
           title: "Open Cases",
-          value: "45",
+          value: _openCases.toString(),
           action: "View details",
           icon: Icons.work_rounded,
           accent: const Color(0xFF8437E8),
@@ -1024,21 +1380,26 @@ Widget _donutChart() {
     child: AspectRatio(
       aspectRatio: 1,
       child: CustomPaint(
-        painter: CaseDonutPainter(),
-        child: const Center(
+        painter: CaseDonutPainter(
+          open: _openCases.toDouble(),
+          inProgress: _inProgressCases.toDouble(),
+          underReview: _underReviewCases.toDouble(),
+          closed: _closedCases.toDouble(),
+        ),
+        child: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                "128",
-                style: TextStyle(
+                _totalCases.toString(),
+                style: const TextStyle(
                   fontSize: 25,
                   fontWeight: FontWeight.bold,
                   color: Color(0xFF071B33),
                 ),
               ),
-              SizedBox(height: 3),
-              Text(
+              const SizedBox(height: 3),
+              const Text(
                 "Total Cases",
                 style: TextStyle(
                   color: Color(0xFF63728A),
@@ -1052,33 +1413,35 @@ Widget _donutChart() {
     ),
   );
 }
-
 Widget _chartLegend() {
-  return const Column(
+  return Column(
     mainAxisAlignment: MainAxisAlignment.center,
     children: [
       ChartLegend(
-        color: Color(0xFF0875F5),
-        title: "Pending Cases",
-        value: "24",
-      ),
-      SizedBox(height: 12),
-      ChartLegend(
-        color: Color(0xFFFF8A00),
+        color: const Color(0xFF0875F5),
         title: "Open Cases",
-        value: "45",
+        value: _openCases.toString(),
       ),
-      SizedBox(height: 12),
+      const SizedBox(height: 12),
+
       ChartLegend(
-        color: Color(0xFF0AAE72),
+        color: const Color(0xFFFF8A00),
+        title: "In Progress",
+        value: _inProgressCases.toString(),
+      ),
+      const SizedBox(height: 12),
+
+      ChartLegend(
+        color: const Color(0xFF0AAE72),
+        title: "Under Review",
+        value: _underReviewCases.toString(),
+      ),
+      const SizedBox(height: 12),
+
+      ChartLegend(
+        color: const Color(0xFF8A38E8),
         title: "Closed Cases",
-        value: "43",
-      ),
-      SizedBox(height: 12),
-      ChartLegend(
-        color: Color(0xFF8A38E8),
-        title: "New Cases",
-        value: "16",
+        value: _closedCases.toString(),
       ),
     ],
   );
@@ -1227,53 +1590,43 @@ Widget _chartLegend() {
                   ),
                 ],
 
-                rows: [
-                  _caseRow(
-                    "CASE-043",
-                    "Cyber Attack Analysis",
-                    "Rahul Sharma",
-                    "In Progress",
-                    "High",
-                    "Critical",
-                    "03-May-2026 10:20 AM",
-                  ),
-                  _caseRow(
-                    "CASE-042",
-                    "Online Banking Fraud",
-                    "Sneha Verma",
-                    "Open",
-                    "High",
-                    "High",
-                    "03-May-2026 09:45 AM",
-                  ),
-                  _caseRow(
-                    "CASE-041",
-                    "Social Media Threat",
-                    "Amit Patil",
-                    "In Progress",
-                    "Medium",
-                    "Medium",
-                    "02-May-2026 04:30 PM",
-                  ),
-                  _caseRow(
-                    "CASE-040",
-                    "Data Breach Investigation",
-                    "Priya Singh",
-                    "Open",
-                    "Medium",
-                    "Low",
-                    "02-May-2026 11:15 AM",
-                  ),
-                  _caseRow(
-                    "CASE-039",
-                    "Ransomware Incident",
-                    "Vikram Joshi",
-                    "In Progress",
-                    "High",
-                    "Critical",
-                    "01-May-2026 03:10 PM",
-                  ),
-                ],
+                rows: _recentCases.isEmpty
+    ? [
+        const DataRow(
+          cells: [
+            DataCell(Text("-")),
+            DataCell(Text("No recent cases")),
+            DataCell(Text("-")),
+            DataCell(Text("-")),
+            DataCell(Text("-")),
+            DataCell(Text("-")),
+            DataCell(Text("-")),
+            DataCell(Text("-")),
+          ],
+        ),
+      ]
+    : _recentCases.map((caseData) {
+        final caseId =
+            caseData["case_id"]?.toString() ?? "N/A";
+
+        final title =
+            caseData["title"]?.toString() ?? "N/A";
+
+        final investigator =
+            caseData["investigator_name"]?.toString() ??
+                "Not Assigned";
+
+        final status =
+            caseData["status"]?.toString() ?? "N/A";
+
+        final priority =
+            caseData["priority"]?.toString() ?? "N/A";
+
+        final updated =
+            caseData["updated_at"]?.toString() ?? "N/A";
+
+        return _caseRow(caseData);
+      }).toList(),
               ),
             ),
           ),
@@ -1283,44 +1636,71 @@ Widget _chartLegend() {
   );
 }
 
-  DataRow _caseRow(
-    String id,
-    String title,
-    String investigator,
-    String status,
-    String priority,
-    String epra,
-    String updated,
-  ) {
-    return DataRow(
-      cells: [
-        DataCell(Text(id)),
-        DataCell(
-          SizedBox(
-            width: 150,
-            child: Text(title),
+  DataRow _caseRow(Map<String, dynamic> caseData) {
+  final String id =
+      caseData["case_id"]?.toString() ?? "N/A";
+
+  final String title =
+      caseData["title"]?.toString() ?? "N/A";
+
+  final String investigator =
+      caseData["investigator_name"]?.toString() ??
+          "Not Assigned";
+
+  final String status =
+      caseData["status"]?.toString() ?? "N/A";
+
+  final String priority =
+      caseData["priority"]?.toString() ?? "N/A";
+
+  final String epra =
+      caseData["epra"]?.toString() ?? "N/A";
+
+  final String updated =
+      caseData["updated_at"]?.toString() ?? "N/A";
+
+  return DataRow(
+    cells: [
+      DataCell(Text(id)),
+
+      DataCell(
+        SizedBox(
+          width: 150,
+          child: Text(title),
+        ),
+      ),
+
+      DataCell(Text(investigator)),
+
+      DataCell(_statusBadge(status)),
+
+      DataCell(_priorityBadge(priority)),
+
+      DataCell(_epraBadge(epra)),
+
+      DataCell(Text(updated)),
+
+      DataCell(
+        IconButton(
+          tooltip: "View Case",
+          onPressed: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => CaseActivityDetailsScreen(
+                  caseData: caseData,
+                ),
+              ),
+            );
+          },
+          icon: const Icon(
+            Icons.remove_red_eye_outlined,
+            color: Color(0xFF0875F5),
           ),
         ),
-        DataCell(Text(investigator)),
-        DataCell(_statusBadge(status)),
-        DataCell(_priorityBadge(priority)),
-        DataCell(_epraBadge(epra)),
-        DataCell(Text(updated)),
-        DataCell(
-          IconButton(
-            tooltip: "View Case",
-            onPressed: () {
-              _showMessage("Opening $id");
-            },
-            icon: const Icon(
-              Icons.remove_red_eye_outlined,
-              color: Color(0xFF0875F5),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
+      ),
+    ],
+  );
+}
 
   Widget _statusBadge(String status) {
     final bool open = status == "Open";
@@ -1596,230 +1976,328 @@ Widget _chartLegend() {
     );
   }
 
-  // =========================================================
-  // NOTIFICATIONS
-  // =========================================================
+    Future<void> _showNotifications() async {
+    final bool isMobile =
+        MediaQuery.of(context).size.width < 768;
 
-  void _showNotifications() {
-  final bool isMobile =
-      MediaQuery.of(context).size.width < 768;
+    await _loadNotifications();
 
-  showDialog(
-    context: context,
-    builder: (dialogContext) {
-      final double screenHeight =
-          MediaQuery.of(dialogContext).size.height;
+    if (!mounted) return;
 
-      return Dialog(
-        alignment:
-            isMobile ? Alignment.center : Alignment.topRight,
-        insetPadding: EdgeInsets.symmetric(
-          horizontal: isMobile ? 14 : 20,
-          vertical: isMobile ? 20 : 20,
-        ),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(18),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: SizedBox(
-          width: isMobile ? double.infinity : 390,
-          height: isMobile
-              ? screenHeight * 0.72
-              : 520,
-          child: Column(
-            children: [
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        final double screenHeight =
+            MediaQuery.of(dialogContext).size.height;
 
-              // ================= HEADER =================
-
-              Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  18,
-                  12,
-                  8,
-                  8,
-                ),
-                child: Row(
-                  children: [
-                    const Expanded(
-                      child: Text(
-                        "Notifications",
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF071B33),
-                        ),
-                      ),
-                    ),
-
-                    TextButton(
-                      onPressed: () {
-                        _showMessage(
-                          "All notifications marked as read",
-                        );
-                      },
-                      child: const Text(
-                        "Mark all as read",
-                        style: TextStyle(
-                          fontSize: 11,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              const Divider(
-                height: 1,
-                thickness: 1,
-              ),
-
-              // ================= NOTIFICATIONS =================
-
-              Expanded(
-                child: ListView(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 6,
+        return Dialog(
+          alignment:
+              isMobile ? Alignment.center : Alignment.topRight,
+          insetPadding: EdgeInsets.symmetric(
+            horizontal: isMobile ? 14 : 20,
+            vertical: 20,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: SizedBox(
+            width: isMobile ? double.infinity : 390,
+            height:
+                isMobile ? screenHeight * 0.72 : 520,
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    18,
+                    12,
+                    8,
+                    8,
                   ),
-                  children: [
-                    _notificationItem(
-                      Icons.person_add_alt_1_rounded,
-                      "New registration request received",
-                      "2 min ago",
-                    ),
-
-                    _notificationItem(
-                      Icons.folder_rounded,
-                      "New case created",
-                      "15 min ago",
-                    ),
-
-                    _notificationItem(
-                      Icons.person_rounded,
-                      "Investigator assigned to case",
-                      "30 min ago",
-                    ),
-
-                    _notificationItem(
-                      Icons.warning_amber_rounded,
-                      "High priority evidence detected",
-                      "1 hour ago",
-                    ),
-
-                    _notificationItem(
-                      Icons.description_rounded,
-                      "Investigation report generated",
-                      "2 hours ago",
-                    ),
-                  ],
-                ),
-              ),
-
-              const Divider(
-                height: 1,
-                thickness: 1,
-              ),
-
-              // ================= VIEW ALL =================
-
-              SizedBox(
-                height: 50,
-                width: double.infinity,
-                child: TextButton(
-                  onPressed: () {
-                    Navigator.pop(dialogContext);
-
-                    _showMessage(
-                      "All notifications opened",
-                    );
-                  },
-                  child: const Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                  child: Row(
                     children: [
-                      Text(
-                        "View all notifications",
-                        style: TextStyle(
-                          fontWeight: FontWeight.w600,
+                      const Expanded(
+                        child: Text(
+                          "Notifications",
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF071B33),
+                          ),
                         ),
                       ),
+                      TextButton(
+                        onPressed:
+                            _unreadNotificationCount == 0
+                                ? null
+                                : () async {
+                                    final unreadIds =
+                                        _notifications
+                                            .where(
+                                              (n) =>
+                                                  n["is_read"] !=
+                                                  true,
+                                            )
+                                            .map(
+                                              (n) => n["id"],
+                                            )
+                                            .whereType<int>()
+                                            .toList();
 
-                      SizedBox(width: 7),
-
-                      Icon(
-                        Icons.arrow_forward_rounded,
-                        size: 18,
+                                    for (final id
+                                        in unreadIds) {
+                                      await _markNotificationRead(
+                                        id,
+                                      );
+                                    }
+                                  },
+                        child: const Text(
+                          "Mark all as read",
+                          style: TextStyle(
+                            fontSize: 11,
+                          ),
+                        ),
                       ),
                     ],
                   ),
                 ),
-              ),
-            ],
-          ),
-        ),
-      );
-    },
-  );
-}
 
-Widget _notificationItem(
-  IconData icon,
-  String text,
-  String time,
-) {
-  return Padding(
-    padding: const EdgeInsets.symmetric(
-      vertical: 4,
-    ),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        Container(
-          width: 42,
-          height: 42,
-          decoration: BoxDecoration(
-            color: const Color(0xFFEAF3FF),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Icon(
-            icon,
-            color: const Color(0xFF0875F5),
-            size: 21,
-          ),
-        ),
-
-        const SizedBox(width: 12),
-
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                text,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  color: Color(0xFF071B33),
+                const Divider(
+                  height: 1,
                 ),
-              ),
 
-              const SizedBox(height: 3),
+                Expanded(
+                  child: _notificationsLoading
+                      ? const Center(
+                          child:
+                              CircularProgressIndicator(),
+                        )
+                      : _notifications.isEmpty
+                          ? const Center(
+                              child: Text(
+                                "No notifications",
+                                style: TextStyle(
+                                  color: Color(0xFF63728A),
+                                ),
+                              ),
+                            )
+                          : ListView.builder(
+                              padding:
+                                  const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 6,
+                              ),
+                              itemCount:
+                                  _notifications.length,
+                              itemBuilder:
+                                  (context, index) {
+                                final notification =
+                                    _notifications[index];
 
-              Text(
-                time,
-                style: const TextStyle(
-                  fontSize: 11,
-                  color: Color(0xFF7A8799),
+                                final int? id =
+                                    int.tryParse(
+                                  notification["id"]
+                                      .toString(),
+                                );
+
+                                final bool isRead =
+                                    notification[
+                                            "is_read"] ==
+                                        true;
+
+                                return InkWell(
+                                  onTap: id == null
+                                      ? null
+                                      : () {
+                                          _markNotificationRead(
+                                            id,
+                                          );
+                                        },
+                                  borderRadius:
+                                      BorderRadius.circular(
+                                    10,
+                                  ),
+                                  child: _notificationItem(
+                                    _notificationIcon(
+                                      notification["type"]
+                                              ?.toString() ??
+                                          "",
+                                    ),
+                                    notification["message"]
+                                            ?.toString() ??
+                                        notification["title"]
+                                            ?.toString() ??
+                                        "",
+                                    _notificationTime(
+                                      notification[
+                                          "created_at"],
+                                    ),
+                                    isRead,
+                                  ),
+                                );
+                              },
+                            ),
                 ),
-              ),
-            ],
+
+                const Divider(
+                  height: 1,
+                ),
+
+                SizedBox(
+                  height: 50,
+                  width: double.infinity,
+                  child: TextButton(
+                    onPressed: () {
+                      Navigator.pop(dialogContext);
+                    },
+                    child: const Row(
+                      mainAxisAlignment:
+                          MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          "View all notifications",
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        SizedBox(width: 7),
+                        Icon(
+                          Icons.arrow_forward_rounded,
+                          size: 18,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
+        );
+      },
+    );
+  }
+
+  IconData _notificationIcon(String type) {
+    switch (type.toLowerCase()) {
+      case "registration":
+      case "user":
+        return Icons.person_add_alt_1_rounded;
+      case "case":
+        return Icons.folder_rounded;
+      case "evidence":
+        return Icons.warning_amber_rounded;
+      case "report":
+        return Icons.description_rounded;
+      default:
+        return Icons.notifications_rounded;
+    }
+  }
+
+  String _notificationTime(dynamic value) {
+    if (value == null) return "";
+
+    try {
+      final date =
+          DateTime.parse(value.toString()).toLocal();
+
+      int hour = date.hour;
+      final minute =
+          date.minute.toString().padLeft(2, "0");
+      final period = hour >= 12 ? "PM" : "AM";
+
+      hour = hour % 12;
+      if (hour == 0) hour = 12;
+
+      return "${date.day.toString().padLeft(2, '0')}/"
+          "${date.month.toString().padLeft(2, '0')}/"
+          "${date.year} "
+          "$hour:$minute $period";
+    } catch (_) {
+      return value.toString();
+    }
+  }
+
+
+    // =========================================================
+  // NOTIFICATION ITEM
+  // =========================================================
+
+  Widget _notificationItem(
+    IconData icon,
+    String text,
+    String time,
+    bool isRead,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        vertical: 4,
+      ),
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          vertical: 4,
+          horizontal: 2,
         ),
-      ],
-    ),
-  );
-}
+        decoration: BoxDecoration(
+          color: isRead
+              ? Colors.transparent
+              : const Color(0xFFF7FAFF),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: const Color(0xFFEAF3FF),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                icon,
+                color: const Color(0xFF0875F5),
+                size: 21,
+              ),
+            ),
+
+            const SizedBox(width: 12),
+
+            Expanded(
+              child: Column(
+                crossAxisAlignment:
+                    CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    text,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: isRead
+                          ? FontWeight.w500
+                          : FontWeight.w700,
+                      color: const Color(0xFF071B33),
+                    ),
+                  ),
+
+                  const SizedBox(height: 3),
+
+                  Text(
+                    time,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Color(0xFF7A8799),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   // =========================================================
   // HELPERS
   // =========================================================
@@ -1925,18 +2403,38 @@ class ChartLegend extends StatelessWidget {
 // ===========================================================
 
 class CaseDonutPainter extends CustomPainter {
+  final double open;
+  final double inProgress;
+  final double underReview;
+  final double closed;
+
+  CaseDonutPainter({
+    required this.open,
+    required this.inProgress,
+    required this.underReview,
+    required this.closed,
+  });
+
   @override
   void paint(Canvas canvas, Size size) {
-    const values = [24.0, 45.0, 43.0, 16.0];
-
-    const colors = [
-      Color(0xFF0875F5),
-      Color(0xFFFF8A00),
-      Color(0xFF0AAE72),
-      Color(0xFF8A38E8),
+    final values = [
+      open,
+      inProgress,
+      underReview,
+      closed,
     ];
 
-    const total = 128.0;
+    const colors = [
+      Color(0xFF0875F5), // Open
+      Color(0xFFFF8A00), // In Progress
+      Color(0xFF0AAE72), // Under Review
+      Color(0xFF8A38E8), // Closed
+    ];
+
+    final total = values.fold<double>(
+      0,
+      (sum, value) => sum + value,
+    );
 
     final center = Offset(
       size.width / 2,
@@ -1944,44 +2442,63 @@ class CaseDonutPainter extends CustomPainter {
     );
 
     final radius =
-        (size.shortestSide / 2) - 10;
+        size.shortestSide / 2;
 
     final rect = Rect.fromCircle(
       center: center,
       radius: radius,
     );
 
-    const strokeWidth = 30.0;
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 18
+      ..strokeCap = StrokeCap.butt;
 
-    double startAngle = -1.5708;
+    // Empty chart
+    if (total <= 0) {
+      paint.color = const Color(0xFFE5E7EB);
+
+      canvas.drawCircle(
+        center,
+        radius - 10,
+        paint,
+      );
+
+      return;
+    }
+
+    double startAngle = -pi / 2;
 
     for (int i = 0; i < values.length; i++) {
-      final sweep =
-          (values[i] / total) * 6.28318530718;
+      if (values[i] <= 0) {
+        continue;
+      }
 
-      final paint = Paint()
-        ..color = colors[i]
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = strokeWidth
-        ..strokeCap = StrokeCap.butt;
+      final sweepAngle =
+          (values[i] / total) * 2 * pi;
+
+      paint.color = colors[i];
 
       canvas.drawArc(
-        rect,
+        rect.deflate(10),
         startAngle,
-        sweep,
+        sweepAngle,
         false,
         paint,
       );
 
-      startAngle += sweep;
+      startAngle += sweepAngle;
     }
   }
 
   @override
   bool shouldRepaint(
-    covariant CustomPainter oldDelegate,
+    covariant CaseDonutPainter oldDelegate,
   ) {
-    return false;
+    return oldDelegate.open != open ||
+        oldDelegate.inProgress != inProgress ||
+        oldDelegate.underReview != underReview ||
+        oldDelegate.closed != closed;
   }
 }
 class StatCardWavePainter extends CustomPainter {

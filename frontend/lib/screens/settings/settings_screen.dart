@@ -1,4 +1,7 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+
+import '../../services/api_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -8,11 +11,6 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  String selectedTheme = "Light";
-  bool emailNotifications = true;
-  bool systemNotifications = true;
-  bool isSaving = false;
-
   // ============================================================
   // COLORS
   // ============================================================
@@ -23,65 +21,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
   static const Color pageBackground = Color(0xFFF4F8FE);
 
   // ============================================================
-  // SAVE SETTINGS
+  // API
   // ============================================================
 
-  Future<void> _saveSettings() async {
-    setState(() {
-      isSaving = true;
-    });
+  final ApiService _apiService = ApiService();
 
-    try {
-      // ========================================================
-      // BACKEND API
-      //
-      // PUT /settings
-      //
-      // Request Body:
-      //
-      // {
-      //   "theme": selectedTheme,
-      //   "email_notifications": emailNotifications,
-      //   "system_notifications": systemNotifications
-      // }
-      //
-      // Backend integration ke time actual API call yahan aayega.
-      // ========================================================
+  // ============================================================
+  // SETTINGS
+  // ============================================================
 
-      await Future.delayed(
-        const Duration(milliseconds: 650),
-      );
+  String selectedTheme = "Light";
 
-      if (!mounted) return;
+  bool emailNotifications = true;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          behavior: SnackBarBehavior.floating,
-          backgroundColor: Color(0xFF08783A),
-          content: Row(
-            children: [
-              Icon(
-                Icons.check_circle_rounded,
-                color: Colors.white,
-              ),
-              SizedBox(width: 10),
-              Text(
-                "Settings saved successfully.",
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    } finally {
-      if (mounted) {
-        setState(() {
-          isSaving = false;
-        });
-      }
-    }
+  // This is connected to backend's browser_notifications
+  bool browserNotifications = true;
+
+  int autoLogout = 30;
+
+  bool isLoading = true;
+  bool isSaving = false;
+
+  // ============================================================
+  // INIT
+  // ============================================================
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSettings();
   }
 
   // ============================================================
@@ -90,6 +58,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (isLoading) {
+      return const Scaffold(
+        backgroundColor: pageBackground,
+        body: Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
     return Material(
       color: pageBackground,
       child: LayoutBuilder(
@@ -109,7 +86,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // MAIN SETTINGS HEADER
                     _buildPageHeading(isMobile),
 
                     SizedBox(
@@ -141,23 +117,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                     const SizedBox(height: 16),
 
-                    // SYSTEM NOTIFICATIONS
+                    // BROWSER / SYSTEM NOTIFICATIONS
                     _buildNotificationCard(
                       isMobile: isMobile,
                       icon: Icons.notifications_rounded,
-                      title: "System Notifications",
+                      title: "Browser Notifications",
                       description:
-                          "Receive in-app system notifications",
-                      value: systemNotifications,
+                          "Receive system and browser notifications",
+                      value: browserNotifications,
                       accentColor: const Color(0xFF6D28D9),
                       darkColor: const Color(0xFF5420A8),
                       lightColor: const Color(0xFFF7F3FF),
                       onChanged: (value) {
                         setState(() {
-                          systemNotifications = value;
+                          browserNotifications = value;
                         });
                       },
                     ),
+
+                    const SizedBox(height: 16),
+
+                    // AUTO LOGOUT
+                    _buildAutoLogoutCard(isMobile),
 
                     SizedBox(
                       height: isMobile ? 20 : 24,
@@ -178,7 +159,127 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   // ============================================================
-  // MAIN PAGE HEADING
+  // LOAD SETTINGS FROM BACKEND
+  // ============================================================
+
+  Future<void> _loadSettings() async {
+    setState(() {
+      isLoading = true;
+    });
+
+    try {
+      final response = await _apiService.getSettings();
+
+      if (!mounted) return;
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+
+        setState(() {
+          emailNotifications =
+              data["email_notifications"] ?? true;
+
+          browserNotifications =
+              data["browser_notifications"] ?? true;
+
+          autoLogout =
+              data["auto_logout"] ?? 30;
+
+          isLoading = false;
+        });
+      } else {
+        setState(() {
+          isLoading = false;
+        });
+
+        final data = _decodeResponse(response.body);
+
+        _showError(
+          data["detail"] ??
+              data["message"] ??
+              "Failed to load settings.",
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        isLoading = false;
+      });
+
+      _showError(
+        "Unable to load settings: $e",
+      );
+    }
+  }
+
+  // ============================================================
+  // SAVE SETTINGS TO BACKEND
+  // ============================================================
+
+  Future<void> _saveSettings() async {
+    if (isSaving) return;
+
+    setState(() {
+      isSaving = true;
+    });
+
+    try {
+      final response =
+          await _apiService.updateSettings({
+        "email_notifications": emailNotifications,
+        "browser_notifications": browserNotifications,
+        "auto_logout": autoLogout,
+      });
+
+      if (!mounted) return;
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+
+        setState(() {
+          emailNotifications =
+              data["email_notifications"] ??
+                  emailNotifications;
+
+          browserNotifications =
+              data["browser_notifications"] ??
+                  browserNotifications;
+
+          autoLogout =
+              data["auto_logout"] ??
+                  autoLogout;
+        });
+
+        _showSuccess(
+          "Settings saved successfully.",
+        );
+      } else {
+        final data = _decodeResponse(response.body);
+
+        _showError(
+          data["detail"] ??
+              data["message"] ??
+              "Failed to save settings.",
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      _showError(
+        "Unable to save settings: $e",
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          isSaving = false;
+        });
+      }
+    }
+  }
+
+  // ============================================================
+  // PAGE HEADING
   // ============================================================
 
   Widget _buildPageHeading(bool isMobile) {
@@ -209,7 +310,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
       child: Row(
         children: [
-          // LARGE LIGHT BLUE SETTINGS ICON
           Container(
             width: isMobile ? 68 : 88,
             height: isMobile ? 68 : 88,
@@ -233,7 +333,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             width: isMobile ? 14 : 27,
           ),
 
-          // BLUE VERTICAL LINE
           Container(
             width: 4,
             height: isMobile ? 58 : 72,
@@ -249,7 +348,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           Expanded(
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
               children: [
                 Text(
                   "Settings",
@@ -293,14 +393,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
       backgroundColor: const Color(0xFFF5F9FF),
       child: isMobile
           ? Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
               children: [
                 _cardInformation(
                   icon: Icons.palette_rounded,
                   title: "Theme",
-                  description: "Choose your preferred theme",
+                  description:
+                      "Choose your preferred theme",
                   iconColor: darkBlue,
-                  iconBackground: const Color(0xFFDCEBFF),
+                  iconBackground:
+                      const Color(0xFFDCEBFF),
                   isMobile: true,
                 ),
 
@@ -311,19 +414,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     Expanded(
                       child: _themeOption(
                         title: "Light",
-                        icon: Icons.light_mode_rounded,
-                        selected: selectedTheme == "Light",
+                        icon:
+                            Icons.light_mode_rounded,
+                        selected:
+                            selectedTheme == "Light",
                       ),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: _themeOption(
                         title: "Dark",
-                        icon: Icons.dark_mode_rounded,
-                        selected: selectedTheme == "Dark",
+                        icon:
+                            Icons.dark_mode_rounded,
+                        selected:
+                            selectedTheme == "Dark",
                       ),
                     ),
                   ],
+                ),
+
+                const SizedBox(height: 10),
+
+                const Text(
+                  "Theme selection is currently a local UI preference.",
+                  style: TextStyle(
+                    color: Color(0xFF718096),
+                    fontSize: 11,
+                  ),
                 ),
               ],
             )
@@ -333,16 +450,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   child: _cardInformation(
                     icon: Icons.palette_rounded,
                     title: "Theme",
-                    description: "Choose your preferred theme",
+                    description:
+                        "Choose your preferred theme",
                     iconColor: darkBlue,
-                    iconBackground: const Color(0xFFDCEBFF),
+                    iconBackground:
+                        const Color(0xFFDCEBFF),
                     isMobile: false,
                   ),
                 ),
 
                 const SizedBox(width: 30),
 
-                // COMPACT DESKTOP OPTIONS
                 SizedBox(
                   width: 390,
                   child: Row(
@@ -350,16 +468,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       Expanded(
                         child: _themeOption(
                           title: "Light",
-                          icon: Icons.light_mode_rounded,
-                          selected: selectedTheme == "Light",
+                          icon:
+                              Icons.light_mode_rounded,
+                          selected:
+                              selectedTheme ==
+                                  "Light",
                         ),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
                         child: _themeOption(
                           title: "Dark",
-                          icon: Icons.dark_mode_rounded,
-                          selected: selectedTheme == "Dark",
+                          icon:
+                              Icons.dark_mode_rounded,
+                          selected:
+                              selectedTheme ==
+                                  "Dark",
                         ),
                       ),
                     ],
@@ -371,7 +495,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   // ============================================================
-  // LIGHT / DARK OPTION
+  // THEME OPTION
   // ============================================================
 
   Widget _themeOption({
@@ -387,7 +511,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         });
       },
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
+        duration:
+            const Duration(milliseconds: 180),
         height: 64,
         padding: const EdgeInsets.symmetric(
           horizontal: 12,
@@ -396,7 +521,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           color: selected
               ? const Color(0xFFEAF3FF)
               : Colors.white,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius:
+              BorderRadius.circular(12),
           border: Border.all(
             color: selected
                 ? blue
@@ -406,19 +532,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
           boxShadow: selected
               ? [
                   BoxShadow(
-                    color: blue.withOpacity(0.10),
+                    color:
+                        blue.withOpacity(0.10),
                     blurRadius: 10,
-                    offset: const Offset(0, 3),
+                    offset:
+                        const Offset(0, 3),
                   ),
                 ]
               : [],
         ),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisAlignment:
+              MainAxisAlignment.center,
           children: [
             Icon(
               icon,
-              color: selected ? blue : navy,
+              color:
+                  selected ? blue : navy,
               size: 21,
             ),
 
@@ -427,9 +557,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
             Text(
               title,
               style: TextStyle(
-                color: selected ? blue : navy,
+                color:
+                    selected ? blue : navy,
                 fontSize: 13,
-                fontWeight: FontWeight.w800,
+                fontWeight:
+                    FontWeight.w800,
               ),
             ),
 
@@ -437,8 +569,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
             Icon(
               selected
-                  ? Icons.radio_button_checked_rounded
-                  : Icons.radio_button_off_rounded,
+                  ? Icons
+                      .radio_button_checked_rounded
+                  : Icons
+                      .radio_button_off_rounded,
               color: selected
                   ? blue
                   : const Color(0xFF8190A4),
@@ -470,7 +604,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       backgroundColor: lightColor,
       child: isMobile
           ? Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
               children: [
                 _cardInformation(
                   icon: icon,
@@ -497,7 +632,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         },
                       ),
                     ),
+
                     const SizedBox(width: 10),
+
                     Expanded(
                       child: _toggleOption(
                         title: "OFF",
@@ -529,7 +666,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                 const SizedBox(width: 30),
 
-                // COMPACT DESKTOP ON/OFF OPTIONS
                 SizedBox(
                   width: 350,
                   child: Row(
@@ -568,7 +704,133 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   // ============================================================
-  // COMPACT ON/OFF OPTION
+  // AUTO LOGOUT CARD
+  // ============================================================
+
+  Widget _buildAutoLogoutCard(bool isMobile) {
+    return _settingsCard(
+      accentColor: const Color(0xFFE58A00),
+      backgroundColor: const Color(0xFFFFF7E8),
+      child: isMobile
+          ? Column(
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
+              children: [
+                _cardInformation(
+                  icon:
+                      Icons.timer_rounded,
+                  title: "Auto Logout",
+                  description:
+                      "Automatically logout after inactivity",
+                  iconColor:
+                      const Color(0xFFB96A00),
+                  iconBackground:
+                      const Color(0xFFFFE8BE),
+                  isMobile: true,
+                ),
+
+                const SizedBox(height: 18),
+
+                _autoLogoutDropdown(),
+              ],
+            )
+          : Row(
+              children: [
+                Expanded(
+                  child: _cardInformation(
+                    icon:
+                        Icons.timer_rounded,
+                    title: "Auto Logout",
+                    description:
+                        "Automatically logout after inactivity",
+                    iconColor:
+                        const Color(0xFFB96A00),
+                    iconBackground:
+                        const Color(0xFFFFE8BE),
+                    isMobile: false,
+                  ),
+                ),
+
+                const SizedBox(width: 30),
+
+                SizedBox(
+                  width: 350,
+                  child: _autoLogoutDropdown(),
+                ),
+              ],
+            ),
+    );
+  }
+
+  // ============================================================
+  // AUTO LOGOUT DROPDOWN
+  // ============================================================
+
+  Widget _autoLogoutDropdown() {
+    const options = [
+      5,
+      10,
+      15,
+      30,
+      60,
+      120,
+    ];
+
+    return Container(
+      height: 62,
+      padding:
+          const EdgeInsets.symmetric(
+        horizontal: 14,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius:
+            BorderRadius.circular(12),
+        border: Border.all(
+          color:
+              const Color(0xFFE3D7BF),
+        ),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<int>(
+          value: options.contains(autoLogout)
+              ? autoLogout
+              : 30,
+          isExpanded: true,
+          icon: const Icon(
+            Icons
+                .keyboard_arrow_down_rounded,
+          ),
+          items: options.map(
+            (minutes) {
+              return DropdownMenuItem<int>(
+                value: minutes,
+                child: Text(
+                  "$minutes minutes",
+                  style: const TextStyle(
+                    color: navy,
+                    fontSize: 14,
+                    fontWeight:
+                        FontWeight.w700,
+                  ),
+                ),
+              );
+            },
+          ).toList(),
+          onChanged: (value) {
+            if (value == null) return;
+
+            setState(() {
+              autoLogout = value;
+            });
+          },
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // TOGGLE OPTION
   // ============================================================
 
   Widget _toggleOption({
@@ -580,18 +842,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius:
+          BorderRadius.circular(12),
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
+        duration:
+            const Duration(milliseconds: 180),
         height: 62,
-        padding: const EdgeInsets.symmetric(
+        padding:
+            const EdgeInsets.symmetric(
           horizontal: 12,
         ),
         decoration: BoxDecoration(
           color: selected
               ? color.withOpacity(0.09)
               : Colors.white.withOpacity(0.85),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius:
+              BorderRadius.circular(12),
           border: Border.all(
             color: selected
                 ? color
@@ -601,20 +867,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
           boxShadow: selected
               ? [
                   BoxShadow(
-                    color: color.withOpacity(0.08),
+                    color:
+                        color.withOpacity(0.08),
                     blurRadius: 9,
-                    offset: const Offset(0, 3),
+                    offset:
+                        const Offset(0, 3),
                   ),
                 ]
               : [],
         ),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisAlignment:
+              MainAxisAlignment.center,
           children: [
             Icon(
               selected
-                  ? Icons.check_circle_rounded
-                  : Icons.radio_button_off_rounded,
+                  ? Icons
+                      .check_circle_rounded
+                  : Icons
+                      .radio_button_off_rounded,
               color: selected
                   ? darkColor
                   : const Color(0xFF8290A3),
@@ -630,7 +901,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ? darkColor
                     : const Color(0xFF65748A),
                 fontSize: 13,
-                fontWeight: FontWeight.w900,
+                fontWeight:
+                    FontWeight.w900,
               ),
             ),
           ],
@@ -640,7 +912,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   // ============================================================
-  // COMMON LARGE SETTINGS CARD
+  // COMMON SETTINGS CARD
   // ============================================================
 
   Widget _settingsCard({
@@ -650,39 +922,47 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(
+      padding:
+          const EdgeInsets.symmetric(
         horizontal: 22,
         vertical: 20,
       ),
       decoration: BoxDecoration(
         color: backgroundColor,
-        borderRadius: BorderRadius.circular(17),
+        borderRadius:
+            BorderRadius.circular(17),
         border: Border.all(
-          color: accentColor.withOpacity(0.27),
+          color:
+              accentColor.withOpacity(0.27),
           width: 1.2,
         ),
         boxShadow: [
           BoxShadow(
-            color: accentColor.withOpacity(0.07),
+            color:
+                accentColor.withOpacity(0.07),
             blurRadius: 15,
-            offset: const Offset(0, 5),
+            offset:
+                const Offset(0, 5),
           ),
         ],
       ),
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          // COLORED LEFT BORDER
           Positioned(
             left: -22,
             top: -20,
             bottom: -20,
             child: Container(
               width: 5,
-              decoration: BoxDecoration(
+              decoration:
+                  BoxDecoration(
                 color: accentColor,
-                borderRadius: const BorderRadius.horizontal(
-                  left: Radius.circular(17),
+                borderRadius:
+                    const BorderRadius
+                        .horizontal(
+                  left:
+                      Radius.circular(17),
                 ),
               ),
             ),
@@ -695,7 +975,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   // ============================================================
-  // LEFT CARD INFORMATION
+  // CARD INFORMATION
   // ============================================================
 
   Widget _cardInformation({
@@ -715,7 +995,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             color: iconBackground,
             shape: BoxShape.circle,
             border: Border.all(
-              color: iconColor.withOpacity(0.14),
+              color:
+                  iconColor.withOpacity(0.14),
             ),
           ),
           child: Icon(
@@ -729,14 +1010,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
         Expanded(
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment:
+                CrossAxisAlignment.start,
             children: [
               Text(
                 title,
                 style: TextStyle(
                   color: navy,
-                  fontSize: isMobile ? 15 : 17,
-                  fontWeight: FontWeight.w900,
+                  fontSize:
+                      isMobile ? 15 : 17,
+                  fontWeight:
+                      FontWeight.w900,
                 ),
               ),
 
@@ -745,10 +1029,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
               Text(
                 description,
                 style: TextStyle(
-                  color: const Color(0xFF596B83),
-                  fontSize: isMobile ? 11 : 13,
+                  color:
+                      const Color(0xFF596B83),
+                  fontSize:
+                      isMobile ? 11 : 13,
                   height: 1.35,
-                  fontWeight: FontWeight.w500,
+                  fontWeight:
+                      FontWeight.w500,
                 ),
               ),
             ],
@@ -764,25 +1051,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Widget _buildSaveButton(bool isMobile) {
     return Align(
-      alignment:
-          isMobile ? Alignment.center : Alignment.centerRight,
+      alignment: isMobile
+          ? Alignment.center
+          : Alignment.centerRight,
       child: SizedBox(
-        width: isMobile ? double.infinity : 330,
+        width:
+            isMobile ? double.infinity : 330,
         height: 54,
         child: DecoratedBox(
           decoration: BoxDecoration(
-            gradient: const LinearGradient(
+            gradient:
+                const LinearGradient(
               colors: [
                 Color(0xFF0875F5),
                 Color(0xFF173FE5),
               ],
             ),
-            borderRadius: BorderRadius.circular(13),
+            borderRadius:
+                BorderRadius.circular(13),
             boxShadow: [
               BoxShadow(
-                color: blue.withOpacity(0.25),
+                color:
+                    blue.withOpacity(0.25),
                 blurRadius: 14,
-                offset: const Offset(0, 5),
+                offset:
+                    const Offset(0, 5),
               ),
             ],
           ),
@@ -793,7 +1086,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ? const SizedBox(
                     width: 19,
                     height: 19,
-                    child: CircularProgressIndicator(
+                    child:
+                        CircularProgressIndicator(
                       strokeWidth: 2.2,
                       color: Colors.white,
                     ),
@@ -810,21 +1104,96 @@ class _SettingsScreenState extends State<SettingsScreen> {
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 15,
-                fontWeight: FontWeight.w800,
+                fontWeight:
+                    FontWeight.w800,
               ),
             ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.transparent,
+            style:
+                ElevatedButton.styleFrom(
+              backgroundColor:
+                  Colors.transparent,
               disabledBackgroundColor:
                   Colors.transparent,
-              shadowColor: Colors.transparent,
-              shape: RoundedRectangleBorder(
+              shadowColor:
+                  Colors.transparent,
+              shape:
+                  RoundedRectangleBorder(
                 borderRadius:
                     BorderRadius.circular(13),
               ),
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // RESPONSE HELPER
+  // ============================================================
+
+  Map<String, dynamic> _decodeResponse(
+    String body,
+  ) {
+    if (body.isEmpty) {
+      return {};
+    }
+
+    try {
+      final decoded = jsonDecode(body);
+
+      if (decoded
+          is Map<String, dynamic>) {
+        return decoded;
+      }
+
+      return {};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  // ============================================================
+  // SUCCESS
+  // ============================================================
+
+  void _showSuccess(String message) {
+    ScaffoldMessenger.of(context)
+        .showSnackBar(
+      SnackBar(
+        behavior:
+            SnackBarBehavior.floating,
+        backgroundColor:
+            const Color(0xFF08783A),
+        content: Row(
+          children: [
+            const Icon(
+              Icons.check_circle_rounded,
+              color: Colors.white,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(message),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // ERROR
+  // ============================================================
+
+  void _showError(String message) {
+    ScaffoldMessenger.of(context)
+        .showSnackBar(
+      SnackBar(
+        behavior:
+            SnackBarBehavior.floating,
+        backgroundColor:
+            const Color(0xFFDC2626),
+        content: Text(message),
       ),
     );
   }

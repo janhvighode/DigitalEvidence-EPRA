@@ -10,14 +10,14 @@ class CyberCellModel {
   factory CyberCellModel.fromJson(Map<String, dynamic> json) {
     return CyberCellModel(
       id: json['id'],
-      cyberCellName: json['cyber_cell_name'],
+      cyberCellName: json['name'],
     );
   }
 
   Map<String, dynamic> toJson() {
     return {
       'id': id,
-      'cyber_cell_name': cyberCellName,
+      'name': cyberCellName,
     };
   }
 }

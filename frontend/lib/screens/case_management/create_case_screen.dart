@@ -1,35 +1,48 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+
+import '../../services/api_service.dart';
 
 class CreateCaseScreen extends StatefulWidget {
   const CreateCaseScreen({super.key});
 
   @override
-  State<CreateCaseScreen> createState() => _CreateCaseScreenState();
+  State<CreateCaseScreen> createState() => _CreateNewCaseState();
 }
 
-class _CreateCaseScreenState extends State<CreateCaseScreen> {
+class _CreateNewCaseState extends State<CreateCaseScreen> {
   final _formKey = GlobalKey<FormState>();
 
-  final TextEditingController _titleController = TextEditingController();
+  final ApiService _apiService = ApiService();
+
+  final TextEditingController _titleController =
+      TextEditingController();
+
   final TextEditingController _descriptionController =
       TextEditingController();
 
   final FocusNode _titleFocus = FocusNode();
   final FocusNode _descriptionFocus = FocusNode();
 
-  String? selectedInvestigator;
-  String? selectedPriority;
+  // ============================================================
+  // STATE
+  // ============================================================
 
   bool isSubmitting = false;
+  bool isLoadingInvestigators = true;
 
-  // Temporary investigators.
-  // Later GET /investigators API se load honge.
-  final List<String> investigators = [
-    "Rahul Sharma",
-    "Sneha Verma",
-    "Amit Patil",
-    "Priya Singh",
-  ];
+  String? selectedInvestigator;
+  int? selectedInvestigatorId;
+
+  String? selectedPriority;
+  int? selectedCyberExpertId;
+
+List<Map<String, dynamic>> cyberExperts = [];
+
+bool isLoadingCyberExperts = true;
+
+  List<Map<String, dynamic>> investigators = [];
 
   final List<String> priorities = [
     "Low",
@@ -38,73 +51,244 @@ class _CreateCaseScreenState extends State<CreateCaseScreen> {
     "Critical",
   ];
 
-  @override
-  void initState() {
-    super.initState();
+  // ============================================================
+  // INIT
+  // ============================================================
 
-    _titleFocus.addListener(_refreshFocus);
-    _descriptionFocus.addListener(_refreshFocus);
+ @override
+void initState() {
+  super.initState();
+
+  _titleFocus.addListener(_refreshFocus);
+  _descriptionFocus.addListener(_refreshFocus);
+
+  _loadProfileAndInvestigators();
+  _loadCyberExperts();
+}
+
+Future<void> _loadProfileAndInvestigators() async {
+  if (!mounted) return;
+
+  setState(() {
+    isLoadingInvestigators = true;
+    investigators = [];
+    selectedInvestigatorId = null;
+    selectedInvestigator = null;
+  });
+
+  try {
+    // 1. Get logged-in user's profile
+    final profileResponse = await _apiService.getProfile();
+    debugPrint("PROFILE RESPONSE = ${profileResponse.body}");
+    if (!mounted) return;
+
+    if (profileResponse.statusCode != 200) {
+      setState(() {
+        isLoadingInvestigators = false;
+      });
+
+      _showMessage(
+        "Failed to load profile. Status: ${profileResponse.statusCode}",
+      );
+      return;
+    }
+
+    final profileData = jsonDecode(profileResponse.body);
+
+    if (profileData is! Map) {
+      setState(() {
+        isLoadingInvestigators = false;
+      });
+
+      _showMessage("Invalid profile response.");
+      return;
+    }
+
+    // 2. Get cyber_cell_id from profile
+    final int? cyberCellId =
+        _toInt(profileData["cyber_cell_id"]);
+    debugPrint("CYBER CELL ID = $cyberCellId");
+    if (cyberCellId == null) {
+      setState(() {
+        isLoadingInvestigators = false;
+      });
+
+      _showMessage(
+        "Cyber Cell ID not found in profile.",
+      );
+      return;
+    }
+
+    debugPrint(
+      "LOGGED-IN ADMIN CYBER CELL ID = $cyberCellId",
+    );
+
+    // 3. Load investigators for this branch
+    await _loadInvestigators(cyberCellId);
+  } catch (e) {
+    if (!mounted) return;
+
+    setState(() {
+      investigators = [];
+      isLoadingInvestigators = false;
+    });
+
+    _showMessage(
+      "Unable to load investigators: $e",
+    );
   }
+}
+  // ============================================================
+  // LOAD INVESTIGATORS
+  // ============================================================
 
-  void _refreshFocus() {
+  Future<void> _loadInvestigators(int cyberCellId) async {
+  if (!mounted) return;
+
+  setState(() {
+    isLoadingInvestigators = true;
+    investigators = [];
+    selectedInvestigatorId = null;
+    selectedInvestigator = null;
+  });
+
+  try {
+    final response =
+        await _apiService.getInvestigators();
+    debugPrint("INVESTIGATOR STATUS = ${response.statusCode}");
+debugPrint("INVESTIGATOR RESPONSE = ${response.body}");
+    if (!mounted) return;
+
+    if (response.statusCode != 200) {
+      setState(() {
+        isLoadingInvestigators = false;
+      });
+
+      _showMessage(
+        "Failed to load investigators. "
+        "Status: ${response.statusCode}",
+      );
+
+      return;
+    }
+
+    final decoded = jsonDecode(response.body);
+
+    if (decoded is! List) {
+      setState(() {
+        isLoadingInvestigators = false;
+      });
+
+      _showMessage(
+        "Invalid investigators response from backend.",
+      );
+
+      return;
+    }
+
+    final List<Map<String, dynamic>> loadedUsers = [];
+
+    for (final item in decoded) {
+      if (item is Map) {
+        final user =
+            Map<String, dynamic>.from(item);
+
+        final int? id =
+            _toInt(user["id"]);
+
+        if (id != null) {
+          loadedUsers.add(user);
+        }
+      }
+    }
+
+    setState(() {
+      investigators = loadedUsers;
+      isLoadingInvestigators = false;
+    });
+
+    if (loadedUsers.isEmpty) {
+      _showMessage(
+        "No active investigators available for this branch.",
+      );
+    }
+  } catch (e) {
+    if (!mounted) return;
+
+    setState(() {
+      investigators = [];
+      isLoadingInvestigators = false;
+    });
+
+    _showMessage(
+      "Unable to load investigators: $e",
+    );
+  }
+}
+
+Future<void> _loadCyberExperts() async {
+  try {
+    final response = await _apiService.getCyberExperts();
+
+    debugPrint(
+      "CYBER EXPERT STATUS = ${response.statusCode}",
+    );
+    debugPrint(
+      "CYBER EXPERT RESPONSE = ${response.body}",
+    );
+
+    if (response.statusCode != 200) return;
+
+    final decoded = jsonDecode(response.body);
+
+    if (decoded is List) {
+      setState(() {
+        cyberExperts = decoded
+            .whereType<Map>()
+            .map(
+              (item) =>
+                  Map<String, dynamic>.from(item),
+            )
+            .where(
+              (user) =>
+                  user["id"] != null &&
+                  user["full_name"] != null,
+            )
+            .toList();
+
+        isLoadingCyberExperts = false;
+      });
+    }
+  } catch (e) {
+    debugPrint("CYBER EXPERT ERROR = $e");
+
     if (mounted) {
-      setState(() {});
+      setState(() {
+        isLoadingCyberExperts = false;
+      });
     }
   }
-
-  @override
-  void dispose() {
-    _titleController.dispose();
-    _descriptionController.dispose();
-
-    _titleFocus.removeListener(_refreshFocus);
-    _descriptionFocus.removeListener(_refreshFocus);
-
-    _titleFocus.dispose();
-    _descriptionFocus.dispose();
-
-    super.dispose();
-  }
-
-  // =========================================================
-  // PRIORITY COLOR
-  // =========================================================
-
-  Color _priorityColor(String priority) {
-    switch (priority) {
-      case "Low":
-        return const Color(0xFF10B981);
-
-      case "Medium":
-        return const Color(0xFFFF9800);
-
-      case "High":
-        return const Color(0xFFEF4444);
-
-      case "Critical":
-        return const Color(0xFF8B35E8);
-
-      default:
-        return const Color(0xFF0875F5);
-    }
-  }
-
-  // =========================================================
+}
+  // ============================================================
   // CREATE CASE
-  // =========================================================
+  // ============================================================
 
   Future<void> _createCase() async {
     if (!_formKey.currentState!.validate()) {
       return;
     }
 
-    if (selectedInvestigator == null) {
-      _showMessage("Please select an investigator.");
+    if (selectedInvestigatorId == null) {
+      _showMessage(
+        "Please select an investigator.",
+      );
       return;
     }
 
     if (selectedPriority == null) {
-      _showMessage("Please select case priority.");
+      _showMessage(
+        "Please select case priority.",
+      );
       return;
     }
 
@@ -113,26 +297,79 @@ class _CreateCaseScreenState extends State<CreateCaseScreen> {
     });
 
     try {
-      // =====================================================
-      // BACKEND API WILL BE CONNECTED HERE
-      //
-      // POST /cases
-      //
-      // {
-      //   "title": _titleController.text.trim(),
-      //   "description": _descriptionController.text.trim(),
-      //   "investigator_id": investigatorId,
-      //   "priority": selectedPriority
-      // }
-      // =====================================================
+      final Map<String, dynamic> body = {
+        "title": _titleController.text.trim(),
+        "description":
+            _descriptionController.text.trim().isEmpty
+                ? null
+                : _descriptionController.text.trim(),
+        "investigator_id":
+            selectedInvestigatorId!,
+        "cyber_expert_id":
+      selectedCyberExpertId,
+        "priority":
+            selectedPriority!,
+      };
 
-      await Future.delayed(
-        const Duration(milliseconds: 700),
+      debugPrint(
+        "CREATE CASE BODY: $body",
+      );
+
+      final response =
+          await _apiService.createCase(body);
+
+      debugPrint(
+        "CREATE CASE STATUS: ${response.statusCode}",
+      );
+
+      debugPrint(
+        "CREATE CASE RESPONSE: ${response.body}",
       );
 
       if (!mounted) return;
 
-      _showSuccessDialog();
+      if (response.statusCode == 200 ||
+          response.statusCode == 201) {
+        String? caseId;
+
+        try {
+          final decoded =
+              jsonDecode(response.body);
+
+          if (decoded
+              is Map<String, dynamic>) {
+            caseId =
+                decoded["case_id"]?.toString();
+          }
+        } catch (_) {}
+
+        _showSuccessDialog(caseId);
+      } else {
+        String message =
+            "Failed to create case. "
+            "Status: ${response.statusCode}";
+
+        try {
+          final decoded =
+              jsonDecode(response.body);
+
+          if (decoded
+              is Map<String, dynamic>) {
+            message =
+                decoded["detail"]?.toString() ??
+                decoded["message"]?.toString() ??
+                message;
+          }
+        } catch (_) {}
+
+        _showMessage(message);
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      _showMessage(
+        "Error creating case: $e",
+      );
     } finally {
       if (mounted) {
         setState(() {
@@ -142,70 +379,59 @@ class _CreateCaseScreenState extends State<CreateCaseScreen> {
     }
   }
 
-  void _showMessage(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
-
-  // =========================================================
+  // ============================================================
   // SUCCESS DIALOG
-  // =========================================================
+  // ============================================================
 
-  void _showSuccessDialog() {
+  void _showSuccessDialog(
+    String? caseId,
+  ) {
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (dialogContext) {
         return AlertDialog(
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius:
+                BorderRadius.circular(18),
           ),
           title: const Row(
             children: [
-              CircleAvatar(
-                backgroundColor: Color(0xFFE8F3FF),
-                child: Icon(
-                  Icons.check_rounded,
-                  color: Color(0xFF0875F5),
-                ),
+              Icon(
+                Icons.check_circle,
+                color: Colors.green,
               ),
-              SizedBox(width: 12),
+              SizedBox(width: 10),
               Text(
                 "Case Created",
-                style: TextStyle(
-                  color: Color(0xFF071B33),
-                  fontWeight: FontWeight.bold,
-                ),
               ),
             ],
           ),
-          content: const Text(
-            "The new investigation case has been created successfully.",
+          content: Text(
+            caseId == null
+                ? "The new investigation case "
+                    "has been created successfully."
+                : "The new investigation case "
+                    "has been created successfully.\n\n"
+                    "Case ID: $caseId",
           ),
           actions: [
-            ElevatedButton(
+            TextButton(
               onPressed: () {
                 Navigator.pop(dialogContext);
 
-                _titleController.clear();
-                _descriptionController.clear();
-
                 setState(() {
+                  _titleController.clear();
+                  _descriptionController.clear();
+
                   selectedInvestigator = null;
+                  selectedInvestigatorId = null;
                   selectedPriority = null;
                 });
               },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF0875F5),
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
+              child: const Text(
+                "OK",
               ),
-              child: const Text("Done"),
             ),
           ],
         );
@@ -213,460 +439,111 @@ class _CreateCaseScreenState extends State<CreateCaseScreen> {
     );
   }
 
-  // =========================================================
-  // MAIN SCREEN
-  // =========================================================
+  // ============================================================
+  // MESSAGE
+  // ============================================================
+
+  void _showMessage(
+    String message,
+  ) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context)
+        .showSnackBar(
+      SnackBar(
+        content: Text(message),
+        behavior:
+            SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  // ============================================================
+  // BUILD
+  // ============================================================
 
   @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final bool isMobile = constraints.maxWidth < 700;
-
-        return SingleChildScrollView(
-          padding: EdgeInsets.symmetric(
-            horizontal: isMobile ? 16 : 28,
-            vertical: isMobile ? 18 : 24,
-          ),
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(
-                maxWidth: 1250,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // =================================================
-                  // BREADCRUMB
-                  // =================================================
-
-                  _buildBreadcrumb(isMobile),
-
-                  SizedBox(
-                    height: isMobile ? 14 : 16,
-                  ),
-
-                  // =================================================
-                  // NEW CASE HEADER
-                  // =================================================
-
-                  _buildHeader(isMobile),
-
-                  SizedBox(
-                    height: isMobile ? 18 : 20,
-                  ),
-
-                  // =================================================
-                  // FORM CARD
-                  // =================================================
-
-                  _buildFormCard(isMobile),
-
-                  const SizedBox(height: 20),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  // =========================================================
-  // BREADCRUMB
-  // =========================================================
-
-  Widget _buildBreadcrumb(bool isMobile) {
-    return Row(
-      children: [
-        const Text(
-          "Dashboard",
-          style: TextStyle(
-            color: Color(0xFF0875F5),
-            fontSize: 13,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-
-        const SizedBox(width: 8),
-
-        const Icon(
-          Icons.chevron_right_rounded,
-          size: 18,
-          color: Color(0xFF9AA8BA),
-        ),
-
-        const SizedBox(width: 8),
-
-        Text(
-          "New Case",
-          style: TextStyle(
-            color: Colors.blueGrey.shade600,
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ],
-    );
-  }
-
-  // =========================================================
-  // HEADER
-  // =========================================================
-
-  Widget _buildHeader(bool isMobile) {
-    return Container(
-      width: double.infinity,
-      height: isMobile ? 120 : 132,
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        gradient: const LinearGradient(
-          begin: Alignment.centerLeft,
-          end: Alignment.centerRight,
-          colors: [
-            Color(0xFFE6F1FF),
-            Color(0xFFF3F8FF),
-            Color(0xFFF8FBFF),
-          ],
-        ),
-      ),
-      child: Stack(
-        children: [
-          // =================================================
-          // RIGHT CYBER / SHIELD DESIGN
-          // =================================================
-
-          Positioned(
-            right: isMobile ? -80 : -10,
-            top: 0,
-            bottom: 0,
-            child: IgnorePointer(
-              child: CustomPaint(
-                size: Size(
-                  isMobile ? 220 : 390,
-                  isMobile ? 120 : 132,
-                ),
-                painter: HeaderCyberPainter(),
-              ),
-            ),
-          ),
-
-          // =================================================
-          // HEADER CONTENT
-          // =================================================
-
-          Padding(
-            padding: EdgeInsets.symmetric(
-              horizontal: isMobile ? 16 : 24,
-              vertical: 14,
-            ),
-            child: Row(
+  Widget build(
+    BuildContext context,
+  ) {
+    return Scaffold(
+      backgroundColor:
+          const Color(0xFFF5F8FC),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding:
+              const EdgeInsets.all(24),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
               children: [
-                // =============================================
-                // LARGE CASE + ICON
-                // =============================================
+                _buildHeader(),
 
-                Container(
-                  width: isMobile ? 68 : 78,
-                  height: isMobile ? 68 : 78,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFDCEBFF),
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF0875F5)
-                            .withOpacity(0.14),
-                        blurRadius: 22,
-                        spreadRadius: 2,
-                      ),
-                    ],
-                  ),
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      Icon(
-                        Icons.business_center_rounded,
-                        color: const Color(0xFF0866DF),
-                        size: isMobile ? 34 : 39,
-                      ),
-
-                      Positioned(
-                        right: isMobile ? 10 : 12,
-                        bottom: isMobile ? 11 : 12,
-                        child: Container(
-                          width: isMobile ? 21 : 23,
-                          height: isMobile ? 21 : 23,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF0875F5),
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: const Color(0xFFDCEBFF),
-                              width: 2,
-                            ),
-                          ),
-                          child: const Icon(
-                            Icons.add_rounded,
-                            color: Colors.white,
-                            size: 16,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                const SizedBox(
+                  height: 24,
                 ),
 
-                SizedBox(
-                  width: isMobile ? 14 : 18,
+                _buildFormCard(),
+
+                const SizedBox(
+                  height: 24,
                 ),
 
-                // =============================================
-                // BLUE VERTICAL ACCENT
-                // =============================================
-
-                Container(
-                  width: 3,
-                  height: isMobile ? 66 : 76,
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Color(0xFF0866DF),
-                        Color(0xFF2C8BFF),
-                      ],
-                    ),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                ),
-
-                SizedBox(
-                  width: isMobile ? 14 : 18,
-                ),
-
-                // =============================================
-                // TITLE
-                // =============================================
-
-                Expanded(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        "New Case",
-                        style: TextStyle(
-                          fontSize: isMobile ? 24 : 29,
-                          fontWeight: FontWeight.w800,
-                          color: const Color(0xFF071B33),
-                          letterSpacing: -0.3,
-                        ),
-                      ),
-
-                      const SizedBox(height: 6),
-
-                      Text(
-                        "Create a new investigation case. Fill in the details below to get started.",
-                        maxLines: isMobile ? 2 : 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: isMobile ? 12 : 14,
-                          height: 1.4,
-                          color: const Color(0xFF63728A),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                if (!isMobile)
-                  const SizedBox(width: 230),
+                _buildCreateButton(),
               ],
             ),
           ),
-        ],
+        ),
       ),
     );
   }
 
-  // =========================================================
-  // FORM CARD
-  // =========================================================
+  // ============================================================
+  // HEADER
+  // ============================================================
 
-  Widget _buildFormCard(bool isMobile) {
+  Widget _buildHeader() {
     return Container(
       width: double.infinity,
-      clipBehavior: Clip.antiAlias,
+      padding:
+          const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: const Color(0xFFD6E7FF),
-          width: 1.1,
-        ),
+        borderRadius:
+            BorderRadius.circular(18),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF0875F5)
-                .withOpacity(0.09),
-            blurRadius: 30,
-            offset: const Offset(0, 10),
+            color: Colors.black
+                .withOpacity(0.05),
+            blurRadius: 15,
+            offset:
+                const Offset(0, 5),
           ),
         ],
       ),
-      child: Stack(
+      child: const Column(
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
         children: [
-          // =================================================
-          // TOP RIGHT FORM CYBER LINES
-          // =================================================
-
-          Positioned(
-            right: -15,
-            top: -8,
-            child: IgnorePointer(
-              child: CustomPaint(
-                size: Size(
-                  isMobile ? 180 : 310,
-                  isMobile ? 105 : 135,
-                ),
-                painter: HeaderCyberPainter(),
-              ),
-            ),
-          ),
-
-          // =================================================
-          // FORM
-          // =================================================
-
-          Padding(
-            padding: EdgeInsets.fromLTRB(
-              isMobile ? 18 : 28,
-              isMobile ? 22 : 26,
-              isMobile ? 18 : 28,
-              isMobile ? 24 : 30,
-            ),
-            child: Form(
-              key: _formKey,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // CASE TITLE
-
-                  _fieldLabel("Case Title"),
-
-                  const SizedBox(height: 9),
-
-                  _buildTextField(
-                    controller: _titleController,
-                    focusNode: _titleFocus,
-                    hint: "Enter case title",
-                    icon: Icons.description_rounded,
-                    validator: (value) {
-                      if (value == null ||
-                          value.trim().isEmpty) {
-                        return "Case title is required";
-                      }
-
-                      return null;
-                    },
-                  ),
-
-                  const SizedBox(height: 23),
-
-                  // DESCRIPTION
-
-                  _fieldLabel(
-                    "Case Description",
-                  ),
-
-                  const SizedBox(height: 9),
-
-                  _buildTextField(
-                    controller: _descriptionController,
-                    focusNode: _descriptionFocus,
-                    hint: "Enter case description...",
-                    icon: Icons.article_rounded,
-                    maxLines: isMobile ? 5 : 6,
-                    validator: (value) {
-                      if (value == null ||
-                          value.trim().isEmpty) {
-                        return "Case description is required";
-                      }
-
-                      return null;
-                    },
-                  ),
-
-                  const SizedBox(height: 23),
-
-                  // =================================================
-                  // INVESTIGATOR + PRIORITY
-                  // =================================================
-
-                  if (isMobile)
-                    Column(
-                      children: [
-                        _buildInvestigatorField(),
-
-                        const SizedBox(height: 20),
-
-                        _buildPriorityField(),
-                      ],
-                    )
-                  else
-                    Row(
-                      crossAxisAlignment:
-                          CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child:
-                              _buildInvestigatorField(),
-                        ),
-
-                        const SizedBox(width: 22),
-
-                        Expanded(
-                          child:
-                              _buildPriorityField(),
-                        ),
-                      ],
-                    ),
-
-                  const SizedBox(height: 28),
-
-                  // CREATE BUTTON
-
-                  _buildCreateButton(isMobile),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // =========================================================
-  // FIELD LABEL
-  // =========================================================
-
-  Widget _fieldLabel(String text) {
-    return RichText(
-      text: TextSpan(
-        children: [
-          TextSpan(
-            text: text,
-            style: const TextStyle(
-              color: Color(0xFF071B33),
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const TextSpan(
-            text: "  *",
+          Text(
+            "Create New Case",
             style: TextStyle(
-              color: Color(0xFFEF4444),
+              fontSize: 28,
+              fontWeight:
+                  FontWeight.bold,
+              color:
+                  Color(0xFF071B33),
+            ),
+          ),
+          SizedBox(height: 6),
+          Text(
+            "Create and assign a new digital evidence case",
+            style: TextStyle(
               fontSize: 14,
-              fontWeight: FontWeight.bold,
+              color:
+                  Color(0xFF68778D),
             ),
           ),
         ],
@@ -674,235 +551,337 @@ class _CreateCaseScreenState extends State<CreateCaseScreen> {
     );
   }
 
-  // =========================================================
-  // TEXT FIELD
-  // =========================================================
+  // ============================================================
+  // FORM CARD
+  // ============================================================
 
-  Widget _buildTextField({
-    required TextEditingController controller,
-    required FocusNode focusNode,
-    required String hint,
-    required IconData icon,
-    int maxLines = 1,
-    String? Function(String?)? validator,
-  }) {
-    final bool focused = focusNode.hasFocus;
-
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 180),
+  Widget _buildFormCard() {
+    return Container(
+      width: double.infinity,
+      padding:
+          const EdgeInsets.all(26),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(13),
-        boxShadow: focused
-            ? [
-                BoxShadow(
-                  color: const Color(0xFF0875F5)
-                      .withOpacity(0.13),
-                  blurRadius: 16,
-                  spreadRadius: 1,
-                ),
-              ]
-            : [],
+        color: Colors.white,
+        borderRadius:
+            BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black
+                .withOpacity(0.05),
+            blurRadius: 15,
+            offset:
+                const Offset(0, 5),
+          ),
+        ],
       ),
-      child: TextFormField(
-        controller: controller,
-        focusNode: focusNode,
-        maxLines: maxLines,
-        validator: validator,
-        style: const TextStyle(
-          color: Color(0xFF071B33),
-          fontSize: 14,
-        ),
-        decoration: InputDecoration(
-          hintText: hint,
-          hintStyle: const TextStyle(
-            color: Color(0xFF8492A6),
-          ),
-          filled: true,
-          fillColor: const Color(0xFFFBFDFF),
-
-          prefixIcon: Padding(
-            padding: EdgeInsets.only(
-              left: 10,
-              right: 10,
-              top: maxLines > 1 ? 10 : 8,
-              bottom: maxLines > 1 ? 90 : 8,
-            ),
-            child: Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: const Color(0xFFEAF3FF),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(
-  icon,
-  color: const Color(0xFF064DB8),
-  size: 23,
-),
+      child: Column(
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
+        children: [
+          const Text(
+            "Case Information",
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight:
+                  FontWeight.bold,
+              color:
+                  Color(0xFF071B33),
             ),
           ),
 
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(13),
-            borderSide: const BorderSide(
-              color: Color(0xFFD7E1EE),
+          const SizedBox(
+            height: 24,
+          ),
+
+          _fieldLabel(
+            "Case Title",
+          ),
+
+          const SizedBox(
+            height: 8,
+          ),
+
+          TextFormField(
+            controller:
+                _titleController,
+            focusNode: _titleFocus,
+            validator: (value) {
+              if (value == null ||
+                  value.trim().isEmpty) {
+                return "Case title is required";
+              }
+
+              return null;
+            },
+            decoration:
+                _inputDecoration(
+              Icons.title,
+              "Enter case title",
             ),
           ),
 
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(13),
-            borderSide: const BorderSide(
-              color: Color(0xFF0875F5),
-              width: 1.7,
+          const SizedBox(
+            height: 22,
+          ),
+
+          _fieldLabel(
+            "Description",
+          ),
+
+          const SizedBox(
+            height: 8,
+          ),
+
+          TextFormField(
+            controller:
+                _descriptionController,
+            focusNode:
+                _descriptionFocus,
+            maxLines: 5,
+            decoration:
+                _inputDecoration(
+              Icons.description_outlined,
+              "Enter case description",
             ),
           ),
 
-          errorBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(13),
-            borderSide: const BorderSide(
-              color: Color(0xFFEF4444),
-            ),
+          const SizedBox(
+            height: 22,
           ),
 
-          focusedErrorBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(13),
-            borderSide: const BorderSide(
-              color: Color(0xFFEF4444),
-              width: 1.5,
-            ),
-          ),
+          _buildInvestigatorField(),
 
-          contentPadding: EdgeInsets.symmetric(
-            horizontal: 15,
-            vertical: maxLines > 1 ? 18 : 14,
-          ),
-        ),
+const SizedBox(height: 22),
+
+_buildCyberExpertField(),
+
+const SizedBox(height: 22),
+
+_buildPriorityField(),
+        ],
       ),
     );
   }
 
-  // =========================================================
+  // ============================================================
   // INVESTIGATOR
-  // =========================================================
+  // ============================================================
 
   Widget _buildInvestigatorField() {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment:
+          CrossAxisAlignment.start,
       children: [
-        _fieldLabel("Investigator"),
-
-        const SizedBox(height: 9),
-
-        DropdownButtonFormField<String>(
-          value: selectedInvestigator,
-          isExpanded: true,
-          icon: const Icon(
-            Icons.keyboard_arrow_down_rounded,
-            color: Color(0xFF071B33),
-          ),
-          decoration: _dropdownDecoration(
-            Icons.people_alt_rounded,
-          ),
-          hint: const Text(
-            "Select investigator",
-            style: TextStyle(
-              color: Color(0xFF8492A6),
-              fontSize: 14,
-            ),
-          ),
-          items: investigators.map((investigator) {
-            return DropdownMenuItem(
-              value: investigator,
-              child: Text(
-                investigator,
-                style: const TextStyle(
-                  color: Color(0xFF071B33),
-                ),
-              ),
-            );
-          }).toList(),
-          onChanged: (value) {
-            setState(() {
-              selectedInvestigator = value;
-            });
-          },
-          validator: (value) {
-            if (value == null) {
-              return "Please select investigator";
-            }
-
-            return null;
-          },
+        _fieldLabel(
+          "Investigator",
         ),
+
+        const SizedBox(
+          height: 8,
+        ),
+
+        if (isLoadingInvestigators)
+          InputDecorator(
+            decoration:
+                _dropdownDecoration(
+              Icons.people_alt_outlined,
+            ),
+            child: const Row(
+              children: [
+                SizedBox(
+                  width: 18,
+                  height: 18,
+                  child:
+                      CircularProgressIndicator(
+                    strokeWidth: 2,
+                  ),
+                ),
+                SizedBox(
+                  width: 10,
+                ),
+                Text(
+                  "Loading investigators...",
+                ),
+              ],
+            ),
+          )
+        else if (investigators.isEmpty)
+          InputDecorator(
+            decoration:
+                _dropdownDecoration(
+              Icons.people_alt_outlined,
+            ),
+            child: const Text(
+              "No active investigators available for this branch.",
+              style: TextStyle(
+                color:
+                    Color(0xFF8492A6),
+              ),
+            ),
+          )
+        else
+          DropdownButtonFormField<int>(
+            value:
+                selectedInvestigatorId,
+            isExpanded: true,
+            decoration:
+                _dropdownDecoration(
+              Icons.people_alt_outlined,
+            ),
+            hint: const Text(
+              "Select investigator",
+            ),
+            items: investigators
+                .map(
+                  (user) {
+                    final int? id =
+                        _toInt(
+                      user["id"],
+                    );
+
+                    final String name =
+                        (user["full_name"] ??
+                                user["username"] ??
+                                "Unknown User")
+                            .toString();
+
+                    return DropdownMenuItem<
+                        int>(
+                      value: id,
+                      child: Text(
+                        name,
+                        overflow:
+                            TextOverflow.ellipsis,
+                      ),
+                    );
+                  },
+                )
+                .where(
+                  (item) =>
+                      item.value != null,
+                )
+                .toList(),
+            onChanged: (value) {
+              if (value == null) {
+                return;
+              }
+
+              final user =
+                  investigators.firstWhere(
+                (item) =>
+                    _toInt(
+                      item["id"],
+                    ) ==
+                    value,
+              );
+
+              setState(() {
+                selectedInvestigatorId =
+                    value;
+
+                selectedInvestigator =
+                    (user["full_name"] ??
+                            user["username"] ??
+                            "Unknown User")
+                        .toString();
+              });
+            },
+            validator: (value) {
+              if (value == null) {
+                return "Please select investigator";
+              }
+
+              return null;
+            },
+          ),
       ],
     );
   }
 
-  // =========================================================
+
+Widget _buildCyberExpertField() {
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      _fieldLabel("Cyber Expert"),
+      const SizedBox(height: 8),
+
+      DropdownButtonFormField<int>(
+        value: selectedCyberExpertId,
+        isExpanded: true,
+        decoration: _dropdownDecoration(
+          Icons.security_rounded,
+        ),
+        hint: const Text("Select cyber expert"),
+        items: cyberExperts.map((user) {
+          return DropdownMenuItem<int>(
+            value: int.parse(user["id"].toString()),
+            child: Text(
+              user["full_name"].toString(),
+              overflow: TextOverflow.ellipsis,
+            ),
+          );
+        }).toList(),
+        onChanged: (value) {
+          setState(() {
+            selectedCyberExpertId = value;
+          });
+        },
+      ),
+    ],
+  );
+}
+
+  // ============================================================
   // PRIORITY
-  // =========================================================
+  // ============================================================
 
   Widget _buildPriorityField() {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment:
+          CrossAxisAlignment.start,
       children: [
-        _fieldLabel("Priority"),
+        _fieldLabel(
+          "Priority",
+        ),
 
-        const SizedBox(height: 9),
+        const SizedBox(
+          height: 8,
+        ),
 
         DropdownButtonFormField<String>(
-          value: selectedPriority,
+          value:
+              selectedPriority,
           isExpanded: true,
-          icon: const Icon(
-            Icons.keyboard_arrow_down_rounded,
-            color: Color(0xFF071B33),
-          ),
-          decoration: _dropdownDecoration(
-            Icons.flag_rounded,
+          decoration:
+              _dropdownDecoration(
+            Icons.flag_outlined,
           ),
           hint: const Text(
             "Select priority",
-            style: TextStyle(
-              color: Color(0xFF8492A6),
-              fontSize: 14,
-            ),
           ),
-          items: priorities.map((priority) {
-            final color = _priorityColor(priority);
-
-            return DropdownMenuItem(
-              value: priority,
-              child: Row(
-                children: [
-                  Container(
-                    width: 10,
-                    height: 10,
-                    decoration: BoxDecoration(
-                      color: color,
-                      shape: BoxShape.circle,
+          items: priorities
+              .map(
+                (priority) {
+                  return DropdownMenuItem<
+                      String>(
+                    value: priority,
+                    child: Text(
+                      priority,
                     ),
-                  ),
-
-                  const SizedBox(width: 11),
-
-                  Text(
-                    priority,
-                    style: const TextStyle(
-                      color: Color(0xFF071B33),
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }).toList(),
+                  );
+                },
+              )
+              .toList(),
           onChanged: (value) {
             setState(() {
-              selectedPriority = value;
+              selectedPriority =
+                  value;
             });
           },
           validator: (value) {
-            if (value == null) {
+            if (value == null ||
+                value.isEmpty) {
               return "Please select priority";
             }
 
@@ -913,319 +892,247 @@ class _CreateCaseScreenState extends State<CreateCaseScreen> {
     );
   }
 
-  // =========================================================
+  // ============================================================
+  // CREATE BUTTON
+  // ============================================================
+
+  Widget _buildCreateButton() {
+    return Align(
+      alignment:
+          Alignment.centerRight,
+      child: SizedBox(
+        width: 250,
+        height: 52,
+        child: ElevatedButton.icon(
+          onPressed:
+              isSubmitting
+                  ? null
+                  : _createCase,
+          icon: isSubmitting
+              ? const SizedBox(
+                  width: 19,
+                  height: 19,
+                  child:
+                      CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
+              : const Icon(
+                  Icons.add,
+                ),
+          label: Text(
+            isSubmitting
+                ? "Creating Case..."
+                : "Create Case",
+            style: const TextStyle(
+              fontWeight:
+                  FontWeight.bold,
+              fontSize: 15,
+            ),
+          ),
+          style:
+              ElevatedButton.styleFrom(
+            backgroundColor:
+                const Color(0xFF0875F5),
+            foregroundColor:
+                Colors.white,
+            disabledBackgroundColor:
+                const Color(0xFF9BBDE7),
+            shape:
+                RoundedRectangleBorder(
+              borderRadius:
+                  BorderRadius.circular(
+                12,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // LABEL
+  // ============================================================
+
+  Widget _fieldLabel(
+    String text,
+  ) {
+    return Text(
+      text,
+      style: const TextStyle(
+        fontSize: 14,
+        fontWeight:
+            FontWeight.w700,
+        color:
+            Color(0xFF071B33),
+      ),
+    );
+  }
+
+  // ============================================================
+  // INPUT DECORATION
+  // ============================================================
+
+  InputDecoration _inputDecoration(
+    IconData icon,
+    String hint,
+  ) {
+    return InputDecoration(
+      hintText: hint,
+      prefixIcon: Icon(
+        icon,
+        color:
+            const Color(0xFF0875F5),
+      ),
+      filled: true,
+      fillColor:
+          const Color(0xFFF7F9FC),
+      border: OutlineInputBorder(
+        borderRadius:
+            BorderRadius.circular(12),
+        borderSide:
+            BorderSide.none,
+      ),
+      enabledBorder:
+          OutlineInputBorder(
+        borderRadius:
+            BorderRadius.circular(12),
+        borderSide: const BorderSide(
+          color:
+              Color(0xFFDCE4EF),
+        ),
+      ),
+      focusedBorder:
+          OutlineInputBorder(
+        borderRadius:
+            BorderRadius.circular(12),
+        borderSide: const BorderSide(
+          color:
+              Color(0xFF0875F5),
+          width: 1.5,
+        ),
+      ),
+      errorBorder:
+          OutlineInputBorder(
+        borderRadius:
+            BorderRadius.circular(12),
+        borderSide: const BorderSide(
+          color:
+              Colors.red,
+        ),
+      ),
+      focusedErrorBorder:
+          OutlineInputBorder(
+        borderRadius:
+            BorderRadius.circular(12),
+        borderSide: const BorderSide(
+          color:
+              Colors.red,
+          width: 1.5,
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
   // DROPDOWN DECORATION
-  // =========================================================
+  // ============================================================
 
   InputDecoration _dropdownDecoration(
     IconData icon,
   ) {
     return InputDecoration(
+      prefixIcon: Icon(
+        icon,
+        color:
+            const Color(0xFF0875F5),
+      ),
       filled: true,
-      fillColor: const Color(0xFFFBFDFF),
-
-      prefixIcon: Padding(
-        padding: const EdgeInsets.all(9),
-        child: Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            color: const Color(0xFFEAF3FF),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Icon(
-            icon,
-            color: const Color(0xFF064DB8),
-            size: 21,
-          ),
+      fillColor:
+          const Color(0xFFF7F9FC),
+      border: OutlineInputBorder(
+        borderRadius:
+            BorderRadius.circular(12),
+        borderSide:
+            BorderSide.none,
+      ),
+      enabledBorder:
+          OutlineInputBorder(
+        borderRadius:
+            BorderRadius.circular(12),
+        borderSide: const BorderSide(
+          color:
+              Color(0xFFDCE4EF),
         ),
       ),
-
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(13),
+      focusedBorder:
+          OutlineInputBorder(
+        borderRadius:
+            BorderRadius.circular(12),
         borderSide: const BorderSide(
-          color: Color(0xFFD7E1EE),
-        ),
-      ),
-
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(13),
-        borderSide: const BorderSide(
-          color: Color(0xFF0875F5),
-          width: 1.7,
-        ),
-      ),
-
-      errorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(13),
-        borderSide: const BorderSide(
-          color: Color(0xFFEF4444),
-        ),
-      ),
-
-      focusedErrorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(13),
-        borderSide: const BorderSide(
-          color: Color(0xFFEF4444),
+          color:
+              Color(0xFF0875F5),
           width: 1.5,
         ),
       ),
-
-      contentPadding: const EdgeInsets.symmetric(
-        horizontal: 14,
-        vertical: 14,
-      ),
-    );
-  }
-
-  // =========================================================
-  // CREATE BUTTON
-  // =========================================================
-
-  Widget _buildCreateButton(bool isMobile) {
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      child: Container(
-        width: isMobile ? double.infinity : 205,
-        height: 52,
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            begin: Alignment.centerLeft,
-            end: Alignment.centerRight,
-            colors: [
-              Color(0xFF064DB8),
-              Color(0xFF0875F5),
-            ],
-          ),
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFF0875F5)
-                  .withOpacity(0.30),
-              blurRadius: 18,
-              offset: const Offset(0, 6),
-            ),
-          ],
+      errorBorder:
+          OutlineInputBorder(
+        borderRadius:
+            BorderRadius.circular(12),
+        borderSide: const BorderSide(
+          color:
+              Colors.red,
         ),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: isSubmitting ? null : _createCase,
-            borderRadius: BorderRadius.circular(12),
-            child: Center(
-              child: isSubmitting
-                  ? const SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2.5,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.add_box_rounded,
-                          color: Colors.white,
-                          size: 21,
-                        ),
-                        SizedBox(width: 9),
-                        Text(
-                          "Create Case",
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ],
-                    ),
-            ),
-          ),
+      ),
+      focusedErrorBorder:
+          OutlineInputBorder(
+        borderRadius:
+            BorderRadius.circular(12),
+        borderSide: const BorderSide(
+          color:
+              Colors.red,
+          width: 1.5,
         ),
       ),
     );
   }
-}
 
-// =============================================================
-// HEADER CYBER / SHIELD PAINTER
-// =============================================================
-class HeaderCyberPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final lightPaint = Paint()
-      ..color = const Color(0xFF0875F5).withOpacity(0.10)
-      ..style = PaintingStyle.fill;
+  // ============================================================
+  // HELPERS
+  // ============================================================
 
-    final outlinePaint = Paint()
-      ..color = const Color(0xFF0875F5).withOpacity(0.14)
-      ..strokeWidth = 2
-      ..style = PaintingStyle.stroke;
-
-    // =====================================================
-    // FOLDER
-    // =====================================================
-
-    final double folderX = size.width * 0.76;
-    final double folderY = size.height * 0.28;
-    final double folderW = size.width * 0.13;
-    final double folderH = size.height * 0.38;
-
-    final folder = Path();
-
-    folder.moveTo(
-      folderX,
-      folderY + folderH * 0.18,
-    );
-
-    folder.lineTo(
-      folderX + folderW * 0.32,
-      folderY + folderH * 0.18,
-    );
-
-    folder.lineTo(
-      folderX + folderW * 0.42,
-      folderY,
-    );
-
-    folder.lineTo(
-      folderX + folderW * 0.68,
-      folderY,
-    );
-
-    folder.lineTo(
-      folderX + folderW * 0.78,
-      folderY + folderH * 0.18,
-    );
-
-    folder.lineTo(
-      folderX + folderW,
-      folderY + folderH * 0.18,
-    );
-
-    folder.lineTo(
-      folderX + folderW,
-      folderY + folderH,
-    );
-
-    folder.lineTo(
-      folderX,
-      folderY + folderH,
-    );
-
-    folder.close();
-
-    canvas.drawPath(
-      folder,
-      lightPaint,
-    );
-
-    canvas.drawPath(
-      folder,
-      outlinePaint,
-    );
-
-    // =====================================================
-    // MAGNIFYING GLASS
-    // =====================================================
-
-    final Offset searchCenter = Offset(
-      size.width * 0.88,
-      size.height * 0.58,
-    );
-
-    final double searchRadius =
-        size.height * 0.14;
-
-    canvas.drawCircle(
-      searchCenter,
-      searchRadius,
-      outlinePaint,
-    );
-
-    canvas.drawLine(
-      Offset(
-        searchCenter.dx + searchRadius * 0.70,
-        searchCenter.dy + searchRadius * 0.70,
-      ),
-      Offset(
-        searchCenter.dx + searchRadius * 1.65,
-        searchCenter.dy + searchRadius * 1.65,
-      ),
-      outlinePaint,
-    );
-
-    // =====================================================
-    // SMALL DECORATIVE PLUS
-    // =====================================================
-
-    final plusPaint = Paint()
-      ..color = const Color(0xFF0875F5).withOpacity(0.18)
-      ..strokeWidth = 2
-      ..strokeCap = StrokeCap.round;
-
-    final Offset plusCenter = Offset(
-      size.width * 0.70,
-      size.height * 0.30,
-    );
-
-    canvas.drawLine(
-      Offset(
-        plusCenter.dx - 6,
-        plusCenter.dy,
-      ),
-      Offset(
-        plusCenter.dx + 6,
-        plusCenter.dy,
-      ),
-      plusPaint,
-    );
-
-    canvas.drawLine(
-      Offset(
-        plusCenter.dx,
-        plusCenter.dy - 6,
-      ),
-      Offset(
-        plusCenter.dx,
-        plusCenter.dy + 6,
-      ),
-      plusPaint,
-    );
-
-    // =====================================================
-    // SMALL DOTS
-    // =====================================================
-
-    final dotPaint = Paint()
-      ..color = const Color(0xFF0875F5).withOpacity(0.18)
-      ..style = PaintingStyle.fill;
-
-    canvas.drawCircle(
-      Offset(
-        size.width * 0.73,
-        size.height * 0.68,
-      ),
-      3,
-      dotPaint,
-    );
-
-    canvas.drawCircle(
-      Offset(
-        size.width * 0.94,
-        size.height * 0.27,
-      ),
-      2.5,
-      dotPaint,
-    );
-  }
-
-  @override
-  bool shouldRepaint(
-    covariant CustomPainter oldDelegate,
+  int? _toInt(
+    dynamic value,
   ) {
-    return false;
+    if (value is int) {
+      return value;
+    }
+
+    return int.tryParse(
+      value?.toString() ?? "",
+    );
+  }
+
+  void _refreshFocus() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  // ============================================================
+  // DISPOSE
+  // ============================================================
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _descriptionController.dispose();
+
+    _titleFocus.dispose();
+    _descriptionFocus.dispose();
+
+    super.dispose();
   }
 }

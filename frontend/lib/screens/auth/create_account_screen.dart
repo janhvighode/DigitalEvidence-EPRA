@@ -27,8 +27,12 @@ class CreateAccountScreen extends StatelessWidget {
                     width: Responsive.cardWidth(context),
                     child: GlassCard(
                       child: mobile
-                          // MOBILE / ANDROID
+
+                          // =================================================
+                          // MOBILE / ANDROID EMULATOR
+                          // =================================================
                           ? Column(
+                              mainAxisSize: MainAxisSize.min,
                               children: const [
                                 LeftPanel(),
 
@@ -38,7 +42,9 @@ class CreateAccountScreen extends StatelessWidget {
                               ],
                             )
 
+                          // =================================================
                           // DESKTOP / CHROME
+                          // =================================================
                           : SizedBox(
                               height: 720,
                               child: Row(

@@ -7,9 +7,16 @@ import '../../widgets/glass_card.dart';
 import '../../widgets/glow_button.dart';
 import '../../widgets/left_panel.dart';
 import '../dashboard/dashboard_screen.dart';
+import '../../services/change_password_service.dart';
 
 class ChangePasswordScreen extends StatefulWidget {
-  const ChangePasswordScreen({super.key});
+  final String username;
+
+  const ChangePasswordScreen({
+    super.key,
+    required this.username,
+  });
+
 
   @override
   State<ChangePasswordScreen> createState() =>
@@ -33,9 +40,21 @@ class _ChangePasswordScreenState
   final TextEditingController confirmPasswordController =
       TextEditingController();
 
+  final ChangePasswordService _changePasswordService =
+      ChangePasswordService();
+
+  bool _isLoading = false;
+
   bool currentObscure = true;
   bool newObscure = true;
   bool confirmObscure = true;
+
+  @override
+  void initState() {
+    super.initState();
+
+    usernameController.text = widget.username;
+  }
 
   @override
   void dispose() {
@@ -222,9 +241,13 @@ class _ChangePasswordScreenState
               const SizedBox(height: 35),
 
               GlowButton(
-                title: "Change Password",
-                onPressed: onChangePasswordPressed,
-              ),
+  title: _isLoading
+      ? "Changing Password..."
+      : "Change Password",
+  onPressed: _isLoading
+      ? () {}
+      : onChangePasswordPressed,
+),
 
               const SizedBox(height: 20),
             ],
@@ -437,29 +460,55 @@ class _ChangePasswordScreenState
   // CHANGE PASSWORD
   // ============================================================
 
-  void onChangePasswordPressed() {
-    if (!_formKey.currentState!.validate()) {
-      return;
-    }
+ Future<void> onChangePasswordPressed() async {
+  if (!_formKey.currentState!.validate()) {
+    return;
+  }
 
-    // TEMPORARY FRONTEND FLOW
-    //
-    // Backend integration ke baad:
-    // Change Password API
-    //          ↓
-    // API Success
-    //          ↓
-    // Dashboard
-    //
-    // Abhi UI testing ke liye successful validation ke
-    // baad directly Dashboard open hoga.
+  setState(() {
+    _isLoading = true;
+  });
 
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(
-        builder: (context) => const DashboardScreen(),
-      ),
-      (route) => false,
+  try {
+    final result = await _changePasswordService.changePassword(
+      username: usernameController.text.trim(),
+      oldPassword: currentPasswordController.text,
+      newPassword: newPasswordController.text,
+      confirmPassword: confirmPasswordController.text,
     );
+
+    if (!mounted) return;
+
+    if (result["success"] == true) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => const DashboardScreen(),
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            result["message"] ?? "Password change failed",
+          ),
+        ),
+      );
+    }
+  } catch (e) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text("Error: $e"),
+      ),
+    );
+  } finally {
+    if (mounted) {
+      setState(() {
+        _isLoading = false;
+      });
+    }
   }
 }
+    }

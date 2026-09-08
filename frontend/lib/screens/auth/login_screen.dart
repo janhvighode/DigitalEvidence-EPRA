@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:jwt_decoder/jwt_decoder.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../utils/app_colors.dart';
 import '../../utils/responsive.dart';
@@ -7,7 +9,9 @@ import '../../widgets/glass_card.dart';
 import '../../widgets/glow_button.dart';
 import '../../widgets/left_panel.dart';
 import 'change_password_screen.dart';
-
+import '../../services/login_service.dart';
+import '../dashboard/dashboard_screen.dart';
+import '../dashboard/cyber_expert_dashboard_screen.dart';
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -24,7 +28,29 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController passwordController =
       TextEditingController();
 
+  final LoginService _loginService = LoginService();
+
+  bool _isLoading = false;
   bool obscurePassword = true;
+
+  // ============================================================
+  // MESSAGE
+  // ============================================================
+
+  void _showMessage(
+    String message, {
+    bool error = false,
+  }) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: error
+            ? const Color(0xFFE53935)
+            : const Color(0xFF059669),
+        content: Text(message),
+      ),
+    );
+  }
 
   @override
   void dispose() {
@@ -32,6 +58,10 @@ class _LoginScreenState extends State<LoginScreen> {
     passwordController.dispose();
     super.dispose();
   }
+
+  // ============================================================
+  // BUILD
+  // ============================================================
 
   @override
   Widget build(BuildContext context) {
@@ -41,6 +71,7 @@ class _LoginScreenState extends State<LoginScreen> {
       body: Stack(
         children: [
           const BackgroundDesign(),
+
           SafeArea(
             child: Center(
               child: Padding(
@@ -48,23 +79,23 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: SizedBox(
                   width: Responsive.cardWidth(context),
                   child: GlassCard(
-  child: mobile
-      ? SingleChildScrollView(
-          child: buildRightPanel(),
-        )
-      : Row(
-          children: [
-            const Expanded(
-              flex: 3,
-              child: LeftPanel(),
-            ),
-            Expanded(
-              flex: 2,
-              child: buildRightPanel(),
-            ),
-          ],
-        ),
-),
+                    child: mobile
+                        ? SingleChildScrollView(
+                            child: buildRightPanel(),
+                          )
+                        : Row(
+                            children: [
+                              const Expanded(
+                                flex: 3,
+                                child: LeftPanel(),
+                              ),
+                              Expanded(
+                                flex: 2,
+                                child: buildRightPanel(),
+                              ),
+                            ],
+                          ),
+                  ),
                 ),
               ),
             ),
@@ -73,6 +104,10 @@ class _LoginScreenState extends State<LoginScreen> {
       ),
     );
   }
+
+  // ============================================================
+  // RIGHT PANEL
+  // ============================================================
 
   Widget buildRightPanel() {
     return Container(
@@ -148,9 +183,12 @@ class _LoginScreenState extends State<LoginScreen> {
               const SizedBox(height: 40),
 
               GlowButton(
-                title: "Login",
+                title: _isLoading
+                    ? "Logging in..."
+                    : "Login",
                 onPressed: onLoginPressed,
               ),
+
               const SizedBox(height: 20),
             ],
           ),
@@ -158,6 +196,10 @@ class _LoginScreenState extends State<LoginScreen> {
       ),
     );
   }
+
+  // ============================================================
+  // USERNAME FIELD
+  // ============================================================
 
   Widget buildUsernameField() {
     return TextFormField(
@@ -174,6 +216,10 @@ class _LoginScreenState extends State<LoginScreen> {
       ),
     );
   }
+
+  // ============================================================
+  // PASSWORD FIELD
+  // ============================================================
 
   Widget buildPasswordField() {
     return TextFormField(
@@ -203,6 +249,10 @@ class _LoginScreenState extends State<LoginScreen> {
       ),
     );
   }
+
+  // ============================================================
+  // INPUT DECORATION
+  // ============================================================
 
   InputDecoration _inputDecoration({
     required String hint,
@@ -236,17 +286,190 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  void onLoginPressed() {
-    if (!_formKey.currentState!.validate()) {
+  // ============================================================
+  // LOGIN
+  // ============================================================
+
+  Future<void> onLoginPressed() async {
+  if (!_formKey.currentState!.validate()) {
+    return;
+  }
+
+  setState(() {
+    _isLoading = true;
+  });
+
+  try {
+    final result = await _loginService.loginUser(
+      username: usernameController.text.trim(),
+      password: passwordController.text,
+    );
+
+    if (!mounted) return;
+
+    // ==========================================================
+    // LOGIN SUCCESS
+    // ==========================================================
+
+    if (result["success"] == true) {
+      final bool isFirstLogin =
+          result["is_first_login"] == true;
+
+      // ========================================================
+      // FIRST TIME LOGIN
+      // Login → Change Password
+      // ========================================================
+
+      if (isFirstLogin) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ChangePasswordScreen(
+              username: usernameController.text.trim(),
+            ),
+          ),
+        );
+
+        return;
+      }
+
+      // ========================================================
+      // GET ACCESS TOKEN
+      // ========================================================
+
+      final String? accessToken =
+          result["access_token"]?.toString();
+
+      if (accessToken == null || accessToken.isEmpty) {
+        _showMessage(
+          "Login successful, but access token was not received.",
+          error: true,
+        );
+        return;
+      }
+
+      // ========================================================
+      // SAVE TOKEN + USERNAME
+      // ========================================================
+
+      final prefs =
+          await SharedPreferences.getInstance();
+
+      await prefs.setString(
+        "access_token",
+        accessToken,
+      );
+
+      await prefs.setString(
+        "username",
+        usernameController.text.trim(),
+      );
+
+      // ========================================================
+      // READ ROLE FROM JWT
+      // ========================================================
+
+      final decodedToken =
+          JwtDecoder.decode(accessToken);
+
+      final roleId =
+          int.tryParse(
+                decodedToken["role_id"]?.toString() ?? "",
+              ) ??
+              0;
+
+      // Save role locally
+      await prefs.setInt(
+        "role_id",
+        roleId,
+      );
+
+      debugPrint(
+        "====================================",
+      );
+
+      debugPrint(
+        "Logged in user: ${usernameController.text.trim()}",
+      );
+
+      debugPrint(
+        "JWT role_id: $roleId",
+      );
+
+      debugPrint(
+        "====================================",
+      );
+
+      // ========================================================
+      // ROLE 1 → ADMINISTRATOR
+      // ========================================================
+
+      if (roleId == 1) {
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(
+            builder: (_) =>
+                const DashboardScreen(),
+          ),
+          (route) => false,
+        );
+
+        return;
+      }
+
+      // ========================================================
+      // ROLE 3 → CYBER EXPERT
+      // ========================================================
+
+      if (roleId == 3) {
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(
+            builder: (_) =>
+                const CyberExpertDashboardScreen(),
+          ),
+          (route) => false,
+        );
+
+        return;
+      }
+
+      // ========================================================
+      // UNKNOWN ROLE
+      // ========================================================
+
+      _showMessage(
+        "Login successful, but role ID $roleId is not supported.",
+        error: true,
+      );
+
       return;
     }
 
-    // Temporary navigation until Login API is integrated
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => const ChangePasswordScreen(),
-      ),
+    // ==========================================================
+    // LOGIN FAILED
+    // ==========================================================
+
+    _showMessage(
+      result["message"]?.toString() ??
+          "Invalid username or password.",
+      error: true,
     );
+  } catch (e) {
+    if (!mounted) return;
+
+    debugPrint("LOGIN ERROR: $e");
+
+    _showMessage(
+      "Unable to connect to the server.",
+      error: true,
+    );
+  } finally {
+    if (mounted) {
+      setState(() {
+        _isLoading = false;
+      });
+    }
   }
+}
 }

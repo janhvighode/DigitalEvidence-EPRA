@@ -1,11 +1,13 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../services/api_service.dart';
 import '../auth/login_screen.dart';
 import '../case_management/my_cases_screen.dart';
-
+import '../../widgets/cyber_expert_notifications.dart';
+import '../profile/profile_screen.dart';
 class CyberExpertDashboardScreen extends StatefulWidget {
   const CyberExpertDashboardScreen({super.key});
 
@@ -22,8 +24,9 @@ class _CyberExpertDashboardScreenState
 
   // Sidebar is visible when dashboard opens.
   bool _sidebarVisible = true;
-
+  bool _showNotifications = false;
   bool _loading = true;
+  int _unreadNotificationCount = 0;
 
   int assignedCases = 0;
   int pendingCases = 0;
@@ -36,6 +39,7 @@ class _CyberExpertDashboardScreenState
   void initState() {
     super.initState();
     _loadDashboard();
+    _loadUnreadNotificationCount();
   }
 
   // ============================================================
@@ -157,6 +161,32 @@ class _CyberExpertDashboardScreenState
         0;
   }
 
+  Future<void> _loadUnreadNotificationCount() async {
+  try {
+    final response =
+        await _apiService.getUnreadNotificationCount();
+
+    if (!mounted) return;
+
+    if (response.statusCode >= 200 &&
+        response.statusCode < 300) {
+      final data = jsonDecode(response.body);
+
+      setState(() {
+        _unreadNotificationCount =
+            int.tryParse(
+                  data["count"]?.toString() ?? "0",
+                ) ??
+                0;
+      });
+    }
+  } catch (e) {
+    debugPrint(
+      "UNREAD COUNT ERROR = $e",
+    );
+  }
+}
+
   // ============================================================
   // MESSAGE
   // ============================================================
@@ -213,6 +243,8 @@ class _CyberExpertDashboardScreenState
       Expanded(
         child: _selectedIndex == 1
             ? const MyCasesScreen()
+            : _selectedIndex == 5
+                ? const ProfileScreen()
             : _buildDashboardContent(isMobile),
       ),
     ],
@@ -233,6 +265,23 @@ class _CyberExpertDashboardScreenState
               bottom: 0,
               child: _buildMobileSidebar(),
             ),
+        // ======================================================
+// NOTIFICATION PANEL
+// ======================================================
+
+if (_showNotifications)
+  Positioned(
+    top: 0,
+    right: 0,
+    bottom: 0,
+    child: CyberExpertNotifications(
+      onClose: () {
+        setState(() {
+          _showNotifications = false;
+        });
+      },
+    ),
+  ),
         ],
       ),
     );
@@ -543,9 +592,6 @@ class _CyberExpertDashboardScreenState
         break;
 
       case 5:
-        _showMessage(
-          "Profile",
-        );
         break;
 
       case 6:
@@ -610,17 +656,21 @@ class _CyberExpertDashboardScreenState
           // TITLE
           // ==================================================
 
-          const Expanded(
-            child: Text(
-              "Cyber Expert Dashboard",
-              style: TextStyle(
-                color: Color(0xFF071B33),
-                fontSize: 21,
-                fontWeight: FontWeight.w800,
-              ),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
+         Expanded(
+  child: Text(
+    _selectedIndex == 5
+        ? "Profile"
+        : _selectedIndex == 1
+            ? "My Cases"
+            : "Cyber Expert Dashboard",
+    style: const TextStyle(
+      color: Color(0xFF071B33),
+      fontSize: 21,
+      fontWeight: FontWeight.w800,
+    ),
+    overflow: TextOverflow.ellipsis,
+  ),
+),
 
           // ==================================================
           // NOTIFICATION ICON
@@ -634,16 +684,54 @@ class _CyberExpertDashboardScreenState
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: () {
-          _showMessage("Notifications");
-        },
-        child: const Padding(
-          padding: EdgeInsets.all(6),
-          child: Icon(
-            Icons.notifications_none_rounded,
-            color: Color(0xFF071B33),
-            size: 27,
+  setState(() {
+    _showNotifications = true;
+  });
+},
+       child: Padding(
+  padding: const EdgeInsets.all(6),
+  child: Stack(
+    clipBehavior: Clip.none,
+    children: [
+      const Icon(
+        Icons.notifications_none_rounded,
+        color: Color(0xFF071B33),
+        size: 27,
+      ),
+
+      if (_unreadNotificationCount > 0)
+        Positioned(
+          right: -5,
+          top: -7,
+          child: Container(
+            constraints: const BoxConstraints(
+              minWidth: 17,
+              minHeight: 17,
+            ),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 4,
+              vertical: 2,
+            ),
+            decoration: BoxDecoration(
+              color: const Color(0xFFEF4444),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(
+              _unreadNotificationCount > 99
+                  ? "99+"
+                  : _unreadNotificationCount.toString(),
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 9,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ),
         ),
+    ],
+  ),
+),
       ),
     ),
   ),
@@ -1759,77 +1847,67 @@ class _CyberExpertDashboardScreenState
   // ============================================================
 
   Future<void> _logout() async {
-    final bool? confirm =
-        await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          shape:
-              RoundedRectangleBorder(
-            borderRadius:
-                BorderRadius.circular(
-              18,
-            ),
-          ),
-          title: const Text(
-            "Logout",
-            style: TextStyle(
-              color:
-                  Color(0xFF071B33),
-              fontWeight:
-                  FontWeight.bold,
-            ),
-          ),
-          content: const Text(
-            "Are you sure you want to logout?",
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(
-                  dialogContext,
-                  false,
-                );
-              },
-              child:
-                  const Text("Cancel"),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(
-                  dialogContext,
-                  true,
-                );
-              },
-              style:
-                  ElevatedButton.styleFrom(
-                backgroundColor:
-                    const Color(
-                  0xFFE53935,
-                ),
-                foregroundColor:
-                    Colors.white,
-              ),
-              child:
-                  const Text("Logout"),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (confirm == true && mounted) {
-      Navigator.of(context)
-          .pushAndRemoveUntil(
-        MaterialPageRoute(
-          builder: (_) =>
-              const LoginScreen(),
+  final bool? confirm = await showDialog<bool>(
+    context: context,
+    builder: (dialogContext) {
+      return AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
         ),
-        (route) => false,
+        title: const Text(
+          "Logout",
+          style: TextStyle(
+            color: Color(0xFF071B33),
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        content: const Text(
+          "Are you sure you want to logout?",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(
+                dialogContext,
+                false,
+              );
+            },
+            child: const Text("Cancel"),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(
+                dialogContext,
+                true,
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFE53935),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text("Logout"),
+          ),
+        ],
       );
-    }
+    },
+  );
+
+  if (confirm == true && mounted) {
+    final prefs = await SharedPreferences.getInstance();
+
+    await prefs.remove("access_token");
+
+    if (!mounted) return;
+
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(
+        builder: (_) => const LoginScreen(),
+      ),
+      (route) => false,
+    );
   }
 }
+    }
 
 // ================================================================
 // SMOOTH CARD WAVE

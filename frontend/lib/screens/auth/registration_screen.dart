@@ -7,9 +7,22 @@ import '../../widgets/glass_card.dart';
 import '../../widgets/glow_button.dart';
 import '../../widgets/left_panel.dart';
 import 'registration_success_screen.dart';
+import '../../services/register_service.dart';
+import 'role_selection_screen.dart';
 
 class RegistrationScreen extends StatefulWidget {
-  const RegistrationScreen({super.key});
+  final int roleId;
+  final int cityId;
+  final int cyberCellId;
+  final String cyberCellName;
+
+  const RegistrationScreen({
+    super.key,
+    required this.roleId,
+    required this.cityId,
+    required this.cyberCellId,
+     required this.cyberCellName,
+  });
 
   @override
   State<RegistrationScreen> createState() => _RegistrationScreenState();
@@ -26,6 +39,10 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
 
   final TextEditingController phoneController =
       TextEditingController();
+
+  final RegisterService _registerService = RegisterService();
+
+bool _isLoading = false;
 
   @override
   void dispose() {
@@ -202,9 +219,9 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
             const SizedBox(height: 40),
 
             GlowButton(
-              title: "Register",
-              onPressed: onRegisterPressed,
-            ),
+  title: _isLoading ? "Registering..." : "Register",
+  onPressed: onRegisterPressed,
+),
 
             const SizedBox(height: 10),
           ],
@@ -307,17 +324,60 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     );
   }
 
-  void onRegisterPressed() {
-    if (!_formKey.currentState!.validate()) {
-      return;
-    }
+ Future<void> onRegisterPressed() async {
+  if (!_formKey.currentState!.validate()) {
+    return;
+  }
 
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) =>
-            const RegistrationSuccessScreen(),
+  setState(() {
+    _isLoading = true;
+  });
+
+  try {
+    final result = await _registerService.registerUser(
+      fullName: fullNameController.text.trim(),
+      email: emailController.text.trim(),
+      phoneNumber: phoneController.text.trim(),
+      roleId: widget.roleId,
+      cityId: widget.cityId,
+      cyberCellId: widget.cyberCellId,
+    );
+
+    if (!mounted) return;
+
+    if (result["success"] == true) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) =>
+              RegistrationSuccessScreen(
+  cyberCellName: widget.cyberCellName,
+)
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            result["message"] ?? "Registration failed",
+          ),
+        ),
+      );
+    }
+  } catch (e) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text("Error: $e"),
       ),
     );
+  } finally {
+    if (mounted) {
+      setState(() {
+        _isLoading = false;
+      });
+    }
   }
+}
 }

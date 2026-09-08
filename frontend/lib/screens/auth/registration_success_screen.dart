@@ -9,7 +9,12 @@ import '../../widgets/left_panel.dart';
 import 'login_screen.dart';
 
 class RegistrationSuccessScreen extends StatelessWidget {
-  const RegistrationSuccessScreen({super.key});
+  final String cyberCellName;
+
+  const RegistrationSuccessScreen({
+    super.key,
+    required this.cyberCellName,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -108,14 +113,14 @@ class RegistrationSuccessScreen extends StatelessWidget {
 
               const SizedBox(height: 20),
 
-              const Text(
-                "Sadar Cyber Cell\nNagpur, Maharashtra",
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+              Text(
+  cyberCellName,
+  textAlign: TextAlign.center,
+  style: const TextStyle(
+    fontSize: 18,
+    fontWeight: FontWeight.bold,
+  ),
+),
 
               const SizedBox(height: 25),
 
