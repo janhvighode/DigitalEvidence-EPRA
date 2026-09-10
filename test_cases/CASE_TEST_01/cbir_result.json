@@ -1,0 +1,77 @@
+{
+    "status": "Success",
+    "source_evidence": "EV_TEST_01",
+    "case_folder": "test_cases/CASE_TEST_01",
+    "matches": [
+        {
+            "evidence_id": "EV_TEST_03",
+            "category": "CASE_TEST_01",
+            "image": "test_cases/CASE_TEST_01\\EV_TEST_03.jpg",
+            "similarity": 1.0,
+            "semantic_score": 1.0,
+            "similarity_level": "Very High",
+            "status": "Exact Duplicate",
+            "action": "Verify Duplicate Before Merging"
+        },
+        {
+            "evidence_id": "EV_TEST_02",
+            "category": "CASE_TEST_01",
+            "image": "test_cases/CASE_TEST_01\\EV_TEST_02.jpg",
+            "similarity": 0.4408,
+            "semantic_score": 0.44,
+            "similarity_level": "Low",
+            "status": "No Significant Visual Match",
+            "action": "Do Not Treat as Investigative Match"
+        },
+        {
+            "evidence_id": "EV_TEST_04",
+            "category": "CASE_TEST_01",
+            "image": "test_cases/CASE_TEST_01\\EV_TEST_04.jpg",
+            "similarity": 0.4307,
+            "semantic_score": 0.43,
+            "similarity_level": "Low",
+            "status": "No Significant Visual Match",
+            "action": "Do Not Treat as Investigative Match"
+        },
+        {
+            "evidence_id": "EV_TEST_05",
+            "category": "CASE_TEST_01",
+            "image": "test_cases/CASE_TEST_01\\EV_TEST_05.jpg",
+            "similarity": 0.4031,
+            "semantic_score": 0.4,
+            "similarity_level": "Low",
+            "status": "No Significant Visual Match",
+            "action": "Do Not Treat as Investigative Match"
+        }
+    ],
+    "relationships": [
+        {
+            "source_evidence": "EV_TEST_01",
+            "target_evidence": "EV_TEST_03",
+            "relationship": "Exact Duplicate",
+            "confidence": 1.0,
+            "action": "Verify Duplicate Before Merging"
+        },
+        {
+            "source_evidence": "EV_TEST_01",
+            "target_evidence": "EV_TEST_02",
+            "relationship": "No Significant Visual Match",
+            "confidence": 0.44,
+            "action": "Do Not Treat as Investigative Match"
+        },
+        {
+            "source_evidence": "EV_TEST_01",
+            "target_evidence": "EV_TEST_04",
+            "relationship": "No Significant Visual Match",
+            "confidence": 0.43,
+            "action": "Do Not Treat as Investigative Match"
+        },
+        {
+            "source_evidence": "EV_TEST_01",
+            "target_evidence": "EV_TEST_05",
+            "relationship": "No Significant Visual Match",
+            "confidence": 0.4,
+            "action": "Do Not Treat as Investigative Match"
+        }
+    ]
+}
