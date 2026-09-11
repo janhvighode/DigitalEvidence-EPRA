@@ -10,6 +10,8 @@ from models.cyber_cell import CyberCell
 from models.registration_request import RegistrationRequest
 from models.user import User
 from models.case import Case
+from models.evidence import Evidence
+from models.evidence_hash import EvidenceHash
 
 # Import routes
 from routes.auth import router as auth_router
@@ -28,7 +30,6 @@ from routes.user_management_routes import router as user_management_router
 from routes.case_activity_routes import router as case_activity_router
 from models.case_timeline import CaseTimeline
 from routes.report_routes import router as report_router
-from routes.report_routes import router as report_router
 from models.notification import Notification
 from routes.notification_routes import router as notification_router
 from routes.profile_routes import router as profile_router
@@ -36,9 +37,9 @@ from models.settings import Settings
 from routes.settings_routes import router as settings_router
 from models.system_statistics import SystemStatistics
 from routes.system_statistics_routes import router as statistics_router
-from routes.user_management_routes import router as user_management_router
 from routes.cyber_expert_dashboard import router as cyber_expert_dashboard_router
 from routes.cyber_expert_cases import (router as cyber_expert_cases_router)
+from routes.evidence_routes import router as evidence_router
 
 
 app = FastAPI(
@@ -73,14 +74,13 @@ app.include_router(case_router)
 app.include_router(user_management_router)
 app.include_router(case_activity_router)
 app.include_router(report_router)
-app.include_router(report_router)
 app.include_router(notification_router)
 app.include_router(profile_router)
 app.include_router(settings_router)
 app.include_router(statistics_router)
-app.include_router(user_management_router)
 app.include_router(cyber_expert_dashboard_router)
 app.include_router(cyber_expert_cases_router)
+app.include_router(evidence_router)
 
 @app.get("/")
 def home():
