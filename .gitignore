@@ -1,0 +1,8 @@
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Generated evidence uploads
+backend/app/uploads/hash_batch/
+backend/app/uploads/hash_manifests/
