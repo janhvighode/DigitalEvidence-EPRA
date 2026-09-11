@@ -5,11 +5,7 @@ from models.role import Role
 from models.cyber_cell import CyberCell
 
 
-# Temporary Administrator ID
-ADMIN_ID = 1
-
-
-def get_profile(db: Session):
+def get_profile(db: Session, user_id: int):
 
     result = (
         db.query(
@@ -19,7 +15,7 @@ def get_profile(db: Session):
         )
         .join(Role, User.role_id == Role.id)
         .join(CyberCell, User.cyber_cell_id == CyberCell.id)
-        .filter(User.id == ADMIN_ID)
+        .filter(User.id == user_id)
         .first()
     )
 
@@ -35,15 +31,20 @@ def get_profile(db: Session):
         "email": user.email,
         "phone_number": user.phone_number,
         "role": role_name,
+        "cyber_cell_id": user.cyber_cell_id,
         "cyber_cell": cyber_cell_name
     }
 
 
-def update_profile(db: Session, data):
+def update_profile(
+    db: Session,
+    user_id: int,
+    data
+):
 
     user = (
         db.query(User)
-        .filter(User.id == ADMIN_ID)
+        .filter(User.id == user_id)
         .first()
     )
 
@@ -59,4 +60,4 @@ def update_profile(db: Session, data):
     db.commit()
     db.refresh(user)
 
-    return get_profile(db)
+    return get_profile(db, user_id)

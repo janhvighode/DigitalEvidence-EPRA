@@ -13,15 +13,18 @@ from config.settings import (
 # Encode password to handle special characters like @, #, %, etc.
 DATABASE_PASSWORD = quote_plus(DB_PASSWORD)
 
-# MySQL Database URL
+# TiDB Database URL
 DATABASE_URL = (
     f"mysql+pymysql://{DB_USER}:{DATABASE_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 )
 
-# Create database engine
+# Create TiDB engine with SSL
 engine = create_engine(
     DATABASE_URL,
-    echo=True
+    echo=True,
+    connect_args={
+        "ssl": {}
+    }
 )
 
 # Create session

@@ -1,17 +1,27 @@
 from pydantic import BaseModel
+from typing import Optional
 
 
 class DashboardStats(BaseModel):
     total_cases: int
-    evidence_files: int
-    high_priority: int
-    pending_analysis: int
+    pending_registration_requests: int
+    total_users: int
+    open_cases: int
+
+    # For Total Statistics chart
+    in_progress_cases: int
+    under_review_cases: int
+    closed_cases: int
 
 
 class RecentCase(BaseModel):
+    id: int
     case_id: str
     title: str
     status: str
+    priority: Optional[str] = None
+    investigator_name: Optional[str] = None
+    updated_at: Optional[str] = None
 
 
 class PrioritySummary(BaseModel):

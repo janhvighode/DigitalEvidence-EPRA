@@ -7,7 +7,8 @@ from datetime import datetime
 class CaseCreate(BaseModel):
     title: str
     description: Optional[str] = None
-    investigator_id: int
+    investigator_id: int | None = None
+    cyber_expert_id: int | None = None
     priority: str
 
 
