@@ -25,6 +25,7 @@ from models.evidence import Evidence
 from models.evidence_hash import EvidenceHash
 from models.epra_result import EPRAResult
 from models.possible_entity import PossibleEntity, PossibleEntityEvidenceLink
+from models.evidence_record import EvidenceRecord
 
 # Import routes
 from routes.auth import router as auth_router
@@ -55,6 +56,7 @@ from routes.cyber_expert_cases import (router as cyber_expert_cases_router)
 from routes.evidence_routes import router as evidence_router
 from routes.epra_routes import router as epra_router
 from routes.possible_entity_routes import router as possible_entity_router
+from routes.metadata_routes import router as metadata_router
 
 
 app = FastAPI(
@@ -98,6 +100,7 @@ app.include_router(cyber_expert_cases_router)
 app.include_router(evidence_router)
 app.include_router(epra_router)
 app.include_router(possible_entity_router)
+app.include_router(metadata_router)
 
 @app.get("/")
 def home():
