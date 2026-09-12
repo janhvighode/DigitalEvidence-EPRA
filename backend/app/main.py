@@ -30,6 +30,7 @@ from models.custody_log import CustodyLog
 from models.current_custody import CurrentCustodyInfo
 from models.transfer_record import TransferRecord
 from models.activity_log import ActivityLog
+from models.report_record import ReportRecord
 
 # Import routes
 from routes.auth import router as auth_router
@@ -62,6 +63,7 @@ from routes.epra_routes import router as epra_router
 from routes.possible_entity_routes import router as possible_entity_router
 from routes.metadata_routes import router as metadata_router
 from routes.custody_routes import router as custody_router
+from routes.technical_report_routes import router as technical_report_router
 
 
 app = FastAPI(
@@ -110,6 +112,7 @@ app.include_router(epra_router)
 app.include_router(possible_entity_router)
 app.include_router(metadata_router)
 app.include_router(custody_router)
+app.include_router(technical_report_router)
 
 @app.get("/")
 def home():
