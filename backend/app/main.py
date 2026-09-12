@@ -26,6 +26,10 @@ from models.evidence_hash import EvidenceHash
 from models.epra_result import EPRAResult
 from models.possible_entity import PossibleEntity, PossibleEntityEvidenceLink
 from models.evidence_record import EvidenceRecord
+from models.custody_log import CustodyLog
+from models.current_custody import CurrentCustodyInfo
+from models.transfer_record import TransferRecord
+from models.activity_log import ActivityLog
 
 # Import routes
 from routes.auth import router as auth_router
@@ -57,6 +61,7 @@ from routes.evidence_routes import router as evidence_router
 from routes.epra_routes import router as epra_router
 from routes.possible_entity_routes import router as possible_entity_router
 from routes.metadata_routes import router as metadata_router
+from routes.custody_routes import router as custody_router
 
 
 app = FastAPI(
@@ -74,7 +79,10 @@ app.add_middleware(
 
 
 # Create all database tables
-Base.metadata.create_all(bind=engine)
+try:
+    Base.metadata.create_all(bind=engine)
+except Exception as e:
+    print(f"Warning: Database table synchronization deferred or network unreachable: {e}")
 
 # Register API routes
 app.include_router(auth_router)
@@ -101,6 +109,7 @@ app.include_router(evidence_router)
 app.include_router(epra_router)
 app.include_router(possible_entity_router)
 app.include_router(metadata_router)
+app.include_router(custody_router)
 
 @app.get("/")
 def home():
