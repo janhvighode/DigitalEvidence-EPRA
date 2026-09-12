@@ -1,57 +1,44 @@
-from app.services.hash_service import HashService
-from app.services.tamper_service import TamperService
+import sys
+from pathlib import Path
+backend_dir = str(Path(__file__).resolve().parent.parent)
+if backend_dir not in sys.path:
+    sys.path.insert(0, backend_dir)
+
+from app.services.backend_adapter import map_backend_verification_status
 
 
 def run_test():
-
-    file_path = "app/test_evidence.txt"
-
-    # Generate original hash
-    original_hash = HashService.generate_sha256(file_path)
-
     print("=" * 60)
-    print("TAMPER DETECTION TEST")
+    print("VERIFICATION STATUS MAPPING TEST (RETAINED MEMBER 5)")
     print("=" * 60)
 
-    print("\nOriginal SHA-256:")
-    print(original_hash)
+    # Test 1: Verified / MATCH
+    assert map_backend_verification_status("Verified") == "Verified"
+    assert map_backend_verification_status("MATCH") == "Verified"
+    assert map_backend_verification_status("verified") == "Verified"
+    print("Outcome for 'MATCH'    :", map_backend_verification_status("MATCH"))
 
-    # Test 1: Original file
-    current_hash = HashService.generate_sha256(file_path)
+    # Test 2: Tampered / MISMATCH
+    assert map_backend_verification_status("Tampered") == "Tampered"
+    assert map_backend_verification_status("MISMATCH") == "Tampered"
+    assert map_backend_verification_status("tampered") == "Tampered"
+    print("Outcome for 'MISMATCH' :", map_backend_verification_status("MISMATCH"))
 
-    result = TamperService.detect_tampering(
-        original_hash,
-        current_hash
-    )
+    # Test 3: Pending
+    assert map_backend_verification_status("pending") == "Pending"
+    assert map_backend_verification_status("Pending") == "Pending"
+    print("Outcome for 'pending'  :", map_backend_verification_status("pending"))
 
-    print("\nTest 1 - Original Evidence")
-    print("Status :", result["status"])
-    print("Message:", result["message"])
-    print("Checked:", result["checked_at"])
+    # Test 4: Unknown and Error
+    assert map_backend_verification_status(None) == "Unknown"
+    assert map_backend_verification_status("unknown") == "Unknown"
+    assert map_backend_verification_status("error") == "Error"
+    print("Outcome for None       :", map_backend_verification_status(None))
+    print("Outcome for 'error'    :", map_backend_verification_status("error"))
 
-    # Test 2: Simulated modified hash
-    modified_hash = "0000000000000000000000000000000000000000000000000000000000000000"
-
-    result = TamperService.detect_tampering(
-        original_hash,
-        modified_hash
-    )
-
-    print("\nTest 2 - Modified Evidence")
-    print("Status :", result["status"])
-    print("Message:", result["message"])
-    print("Checked:", result["checked_at"])
-
-    # Validation
-    if result["status"] == "Tampered":
-
-        print("\n" + "=" * 60)
-        print("TAMPER DETECTION TEST SUCCESS")
-        print("=" * 60)
-
-    else:
-
-        print("\nTAMPER DETECTION TEST FAILED")
+    print("\n" + "=" * 60)
+    print("VERIFICATION MAPPING TEST SUCCESS (ALL ASSERTIONS PASSED)")
+    print("=" * 60)
 
 
 if __name__ == "__main__":

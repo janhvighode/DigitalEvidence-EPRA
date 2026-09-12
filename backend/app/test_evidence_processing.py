@@ -1,48 +1,47 @@
-from app.services.evidence_processing_service import (
-    EvidenceProcessingService
-)
+import sys
+from pathlib import Path
+backend_dir = str(Path(__file__).resolve().parent.parent)
+if backend_dir not in sys.path:
+    sys.path.insert(0, backend_dir)
+
+from app.services.evidence_validation_service import EvidenceValidationService
+from app.services.evidence_classifier import EvidenceClassifier
+from app.services.metadata_service import MetadataService
 
 
 def run_test():
-
-    evidence_id = 101
-    file_path = "app/uploads/CASE-2026-001.pdf"
+    file_path = Path(__file__).parent / "uploads" / "CASE-2026-001.pdf"
+    if not file_path.exists():
+        file_path = Path(__file__).parent / "test_evidence.txt"
 
     print("=" * 70)
-    print("DIGITAL EVIDENCE - COMPLETE PROCESSING TEST")
+    print("DIGITAL EVIDENCE - EVIDENCE PROCESSING TEST (METADATA + CLASSIFICATION)")
     print("=" * 70)
 
-    result = EvidenceProcessingService.process_evidence(
-        evidence_id=evidence_id,
-        file_path=file_path
-    )
+    val = EvidenceValidationService.validate_file(str(file_path))
+    classification = EvidenceClassifier.classify(str(file_path))
+    metadata = MetadataService.extract_metadata(str(file_path))
 
-    if not result["success"]:
+    assert val["valid"] is True, f"Validation failed: {val.get('message')}"
+    assert classification["file_name"] == file_path.name
+    assert classification["evidence_type"] in ("PDF", "DOCUMENT", "IMAGE", "VIDEO", "AUDIO", "SPREADSHEET", "ARCHIVE", "OTHER")
+    assert metadata["file_name"] == file_path.name
+    assert metadata["file_size_bytes"] == file_path.stat().st_size
+    assert "filesystem_ctime" in metadata
+    assert "filesystem_mtime" in metadata
 
-        print("\nPROCESSING FAILED")
-        print(result)
-
-        return
-
-    print("\nEvidence ID :", result["evidence_id"])
-
+    print("\nEvidence File :", file_path.name)
     print("\n--- VALIDATION ---")
-    print("Status :", result["validation"]["status"])
-
+    print("Status :", val["status"])
     print("\n--- CLASSIFICATION ---")
-    print("Type   :", result["classification"]["evidence_type"])
-    print("MIME   :", result["classification"]["mime_type"])
-
+    print("Type   :", classification["evidence_type"])
+    print("MIME   :", classification["mime_type"])
     print("\n--- METADATA ---")
-    print("File   :", result["metadata"]["file_name"])
-    print("Size   :", result["metadata"]["file_size_bytes"], "bytes")
-    print("Ext    :", result["metadata"]["file_extension"])
-
-    print("\n--- SHA-256 ---")
-    print("Hash   :", result["hash"]["sha256_hash"])
+    print("File   :", metadata["file_name"])
+    print("Size   :", metadata["file_size_bytes"], "bytes")
 
     print("\n" + "=" * 70)
-    print("COMPLETE EVIDENCE PROCESSING TEST SUCCESS")
+    print("COMPLETE EVIDENCE PROCESSING TEST SUCCESS (ASSERTIONS PASSED)")
     print("=" * 70)
 
 

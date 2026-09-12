@@ -1,72 +1,208 @@
-from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse
+import re
+from pathlib import Path
+from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import FileResponse, JSONResponse
+from sqlalchemy.orm import Session
 
+import app.database as database
+from app.database import get_db
 from app.schemas.report_schema import ReportRequest
-from app.services.timeline_service import TimelineService
-from app.services.activity_service import ActivityService
 from app.services.report_service import ReportService
-from app.services.pdf_service import PDFService
+from app.services.hash_manifest_service import validate_safe_id
+from app.models.report_record import ReportRecord
 
 router = APIRouter(
     prefix="/report",
-    tags=["Report Module"]
+    tags=["Report Generation & History"]
 )
+
+REPORT_ID_REGEX = re.compile(r"^[a-zA-Z0-9_\-]+$")
+
+
+def validate_report_id(report_id: str) -> str:
+    if not report_id or not isinstance(report_id, str):
+        raise HTTPException(status_code=400, detail="Report ID must be a non-empty string.")
+    cleaned = report_id.strip()
+    if not REPORT_ID_REGEX.match(cleaned):
+        raise HTTPException(status_code=400, detail="Invalid Report ID format.")
+    return cleaned
+
+
+@router.get("/case/{case_id}/summary")
+def get_case_reporting_summary(
+    case_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Case summary cards for report generation screen:
+    - Total Evidence
+    - Verified Evidence
+    - Changed / Possible Tampering Evidence
+    - Pending Verification
+    - Unknown / Error Evidence
+    """
+    try:
+        clean_case_id = validate_safe_id(case_id, "case_id")
+        return ReportService.get_case_reporting_summary(db, clean_case_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/preview")
+def preview_report(
+    report: ReportRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Generate an actual draft preview from selected report type, sections, and case data.
+    Uses the exact same data and rendering logic as final reports.
+    Marked as DRAFT; does NOT register preview as finalized report in database or create custody events!
+    """
+    try:
+        clean_case_id = validate_safe_id(report.case_id, "case_id")
+        report.case_id = clean_case_id
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    try:
+        res = ReportService.assemble_report_data(report=report, db=db, is_draft=True)
+        if res.get("file_format") == "JSON":
+            return JSONResponse(content=res["manifest_content"])
+        else:
+            pdf_path = Path(res["pdf_path"])
+            return FileResponse(
+                path=str(pdf_path),
+                filename=pdf_path.name,
+                media_type="application/pdf"
+            )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/generate")
-def generate_report(report: ReportRequest):
+def generate_report(
+    report: ReportRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Generate a final report (PDF or JSON manifest).
+    Pulls real case evidence records, baseline hashes, and verification statuses without recalculating.
+    Persists an immutable ReportRecord version and creates custody/activity audit logs.
+    """
+    try:
+        clean_case_id = validate_safe_id(report.case_id, "case_id")
+        report.case_id = clean_case_id
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
     try:
-
-        # Generate Timeline
-        timeline = TimelineService.generate_timeline(
-            report.case_id,
-            report.events
-        )
-
-        # Generate Activity Log
-        activity = ActivityService.generate_activity_log(
-            report.investigator_name,
-            report.events
-        )
-
-        # Prepare Report Data
-        report_data = ReportService.generate_report(
-            report,
-            timeline,
-            activity
-        )
-
-        # Generate PDF
-        pdf_path = PDFService.generate_pdf(report_data)
-
-        return {
-            "status": "success",
-            "message": "Report generated successfully.",
-            "pdf_path": pdf_path
-        }
-
+        res = ReportService.assemble_report_data(report=report, db=db, is_draft=False)
+        return res
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=str(e)
-        )
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/download")
-def download_report(path: str):
+@router.get("/history/{case_id}")
+def get_report_history(
+    case_id: str,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=100),
+    db: Session = Depends(get_db)
+):
+    """
+    Previous report history matching Section 8.E:
+    - Report ID, Name, Generated At, Generated By, Report Type, Format, Size, Preview URL, Download URL.
+    Supports stable sorting and pagination.
+    """
+    try:
+        clean_case_id = validate_safe_id(case_id, "case_id")
+        return ReportService.get_report_history(db, clean_case_id, page=page, page_size=page_size)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/preview/{report_id}")
+def preview_existing_report(
+    report_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Preview an existing finalized report by ID.
+    Enforces path containment within safe storage directory.
+    """
+    clean_id = validate_report_id(report_id)
+    record = db.query(ReportRecord).filter(ReportRecord.id == clean_id).first()
+    if not record:
+        raise HTTPException(status_code=404, detail=f"Report #{clean_id} not found.")
+
+    target_path = Path(record.file_path).resolve()
+    resolved_reports_dir = database.REPORTS_DIR.resolve()
+    resolved_manifest_dir = database.MANIFEST_DIR.resolve()
+
+    if not (target_path.is_relative_to(resolved_reports_dir) or target_path.is_relative_to(resolved_manifest_dir)):
+        raise HTTPException(status_code=403, detail="Access denied: report outside safe storage.")
+
+    if not target_path.exists() or not target_path.is_file():
+        raise HTTPException(status_code=404, detail="Report file not found on disk.")
+
+    media_type = "application/json" if record.file_format == "JSON" else "application/pdf"
+    return FileResponse(
+        path=str(target_path),
+        filename=target_path.name,
+        media_type=media_type
+    )
+
+
+@router.get("/download/{report_id}")
+def download_report_by_id(
+    report_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Safely download a generated report by report ID.
+    Strictly enforces path containment within safe storage directory, blocking path traversal.
+    """
+    clean_id = validate_report_id(report_id)
+    record = db.query(ReportRecord).filter(ReportRecord.id == clean_id).first()
+
+    if record:
+        target_path = Path(record.file_path).resolve()
+        media_type = "application/json" if record.file_format == "JSON" else "application/pdf"
+    else:
+        matches = list(database.REPORTS_DIR.glob(f"report_*_{clean_id}.pdf"))
+        if not matches:
+            raise HTTPException(status_code=404, detail=f"Report #{clean_id} not found.")
+        target_path = matches[0].resolve()
+        media_type = "application/pdf"
+
+    resolved_reports_dir = database.REPORTS_DIR.resolve()
+    resolved_manifest_dir = database.MANIFEST_DIR.resolve()
+
+    if not (target_path.is_relative_to(resolved_reports_dir) or target_path.is_relative_to(resolved_manifest_dir)):
+        raise HTTPException(status_code=403, detail="Access denied: report path outside safe storage.")
+
+    if not target_path.exists() or not target_path.is_file():
+        raise HTTPException(status_code=404, detail="Report file not found on disk.")
 
     return FileResponse(
-        path=path,
-        filename="Investigation_Report.pdf",
-        media_type="application/pdf"
+        path=str(target_path),
+        filename=target_path.name,
+        media_type=media_type
     )
 
 
 @router.get("/health")
 def health():
-
     return {
-        "module": "Report Module",
-        "status": "Running"
+        "module": "Report Generation Module",
+        "status": "Running",
+        "version": "2.0.0",
+        "supported_report_types": [
+            "Comprehensive Forensic Report",
+            "Evidence Summary Report",
+            "Chain of Custody Report",
+            "Hash Verification Report",
+            "JSON Hash Manifest"
+        ]
     }

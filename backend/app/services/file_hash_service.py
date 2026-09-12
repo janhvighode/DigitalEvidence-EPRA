@@ -1,27 +1,25 @@
-import hashlib
-from pathlib import Path
+"""
+Cryptographic Format Validator for Member 5.
+
+Validates whether string digests conform to 64-hex SHA-256 formatting.
+Notice: In accordance with confirmed ownership boundaries, Member 5 does NOT
+generate or recalculate SHA-256 hashes for evidence files.
+All evidence hashes are generated and verified exclusively by the integrated backend.
+"""
+import re
+
+EMPTY_FILE_SHA256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+SHA256_REGEX = re.compile(r"^[0-9a-fA-F]{64}$")
 
 
 class FileHashService:
 
     @staticmethod
-    def generate_sha256(file_path: str) -> str:
+    def is_valid_sha256(hash_str: str) -> bool:
         """
-        Generate SHA-256 hash for any file.
+        Validate whether a string is a well-formed 64-character hex SHA-256 digest.
+        Does NOT compute or generate any hashes.
         """
-
-        path = Path(file_path)
-
-        if not path.exists():
-            raise FileNotFoundError(f"File not found: {file_path}")
-
-        if not path.is_file():
-            raise ValueError(f"Path is not a file: {file_path}")
-
-        sha256 = hashlib.sha256()
-
-        with open(path, "rb") as file:
-            while chunk := file.read(1024 * 1024):
-                sha256.update(chunk)
-
-        return sha256.hexdigest()
+        if not hash_str or not isinstance(hash_str, str):
+            return False
+        return bool(SHA256_REGEX.match(hash_str.strip()))
