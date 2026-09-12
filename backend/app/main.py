@@ -1,3 +1,14 @@
+import sys
+from pathlib import Path
+
+# Ensure project root and backend dir are in sys.path
+root_dir = Path(__file__).resolve().parent.parent.parent
+if str(root_dir) not in sys.path:
+    sys.path.insert(0, str(root_dir))
+backend_dir = Path(__file__).resolve().parent.parent
+if str(backend_dir) not in sys.path:
+    sys.path.insert(0, str(backend_dir))
+
 from fastapi import FastAPI
 
 from database.database import Base, engine
@@ -12,6 +23,7 @@ from models.user import User
 from models.case import Case
 from models.evidence import Evidence
 from models.evidence_hash import EvidenceHash
+from models.epra_result import EPRAResult
 
 # Import routes
 from routes.auth import router as auth_router
@@ -40,6 +52,7 @@ from routes.system_statistics_routes import router as statistics_router
 from routes.cyber_expert_dashboard import router as cyber_expert_dashboard_router
 from routes.cyber_expert_cases import (router as cyber_expert_cases_router)
 from routes.evidence_routes import router as evidence_router
+from routes.epra_routes import router as epra_router
 
 
 app = FastAPI(
@@ -81,6 +94,7 @@ app.include_router(statistics_router)
 app.include_router(cyber_expert_dashboard_router)
 app.include_router(cyber_expert_cases_router)
 app.include_router(evidence_router)
+app.include_router(epra_router)
 
 @app.get("/")
 def home():
