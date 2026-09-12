@@ -234,7 +234,11 @@ def run_cbir(
 
         case_evidence=case_evidence,
 
-        top_k=top_k
+        top_k=top_k,
+
+        case_id=case_id,
+
+        query_evidence_id=evidence_id
     )
 
     # --------------------------------------------------------

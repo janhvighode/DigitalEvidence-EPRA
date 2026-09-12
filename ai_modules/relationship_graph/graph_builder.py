@@ -12,38 +12,38 @@ def connect_database():
 
     return connection
 
-def build_graph():
+def build_graph(case_id=None, cbir_relationships=None):
     """
-    Build a relationship graph from the database.
+    Build a relationship graph from the database with case isolation.
     """
+    if case_id:
+        from case_graph_engine import build_case_relationship_graph
+        return build_case_relationship_graph(case_id, cbir_relationships)
 
-    # Create an empty graph
+    # Legacy fallback: build graph across all available records
     graph = nx.Graph()
-
     connection = connect_database()
-
     cursor = connection.cursor()
 
     cursor.execute("SELECT evidence, suspect, device FROM evidence_links")
-
     rows = cursor.fetchall()
-
     connection.close()
-    
-# Add nodes and edges
+
     for evidence, suspect, device in rows:
+        if evidence:
+            graph.add_node(evidence, type="Evidence")
+        if suspect:
+            graph.add_node(suspect, type="Suspect")
+        if device:
+            graph.add_node(device, type="Device")
 
-        # Add nodes
-        graph.add_node(evidence, type="Evidence")
-        graph.add_node(suspect, type="Suspect")
-        graph.add_node(device, type="Device")
+        if evidence and suspect:
+            graph.add_edge(evidence, suspect, relationship="ASSOCIATED_WITH")
+        if evidence and device:
+            graph.add_edge(evidence, device, relationship="STORED_ON_DEVICE")
+        if suspect and device:
+            graph.add_edge(device, suspect, relationship="OWNED_OR_USED_BY")
 
-        # Connect Evidence → Suspect
-        graph.add_edge(evidence, suspect)
-
-        # Connect Evidence → Device
-        graph.add_edge(evidence, device)
-        
     return graph
     
 if __name__ == "__main__":

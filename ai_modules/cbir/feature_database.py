@@ -51,7 +51,7 @@ def connect_database():
 
 def create_table():
     """
-    Create the CBIR evidence feature table.
+    Create the CBIR evidence feature table and gracefully migrate legacy schemas.
 
     One evidence item is uniquely identified by:
         case_id + evidence_id
@@ -70,15 +70,19 @@ def create_table():
 
             id INTEGER PRIMARY KEY AUTOINCREMENT,
 
-            case_id TEXT NOT NULL,
+            case_id TEXT NOT NULL DEFAULT 'CASE_DEFAULT',
 
-            evidence_id TEXT NOT NULL,
+            evidence_id TEXT NOT NULL DEFAULT '',
 
             category TEXT,
 
-            image_path TEXT NOT NULL,
+            image_path TEXT NOT NULL DEFAULT '',
 
-            feature_path TEXT NOT NULL,
+            feature_path TEXT NOT NULL DEFAULT '',
+
+            sha256_hash TEXT,
+
+            description TEXT,
 
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
@@ -87,8 +91,77 @@ def create_table():
         )
         """
     )
-
     connection.commit()
+
+    # --------------------------------------------------------
+    # Graceful migration for existing SQLite databases
+    # --------------------------------------------------------
+    cursor.execute("PRAGMA table_info(image_features)")
+    existing_cols = {col[1] for col in cursor.fetchall()}
+
+    columns_to_add = [
+        ("case_id", "TEXT NOT NULL DEFAULT 'CASE_DEFAULT'"),
+        ("evidence_id", "TEXT NOT NULL DEFAULT ''"),
+        ("image_path", "TEXT NOT NULL DEFAULT ''"),
+        ("feature_path", "TEXT NOT NULL DEFAULT ''"),
+        ("sha256_hash", "TEXT"),
+        ("description", "TEXT"),
+        ("created_at", "TEXT")
+    ]
+
+    for col_name, col_def in columns_to_add:
+        if col_name not in existing_cols:
+            try:
+                cursor.execute(
+                    f"ALTER TABLE image_features ADD COLUMN {col_name} {col_def}"
+                )
+                connection.commit()
+            except Exception:
+                pass
+
+    # Backfill legacy records if image_name exists
+    if "image_name" in existing_cols:
+        cursor.execute(
+            """
+            SELECT id, category, image_name, feature_path, image_path, evidence_id
+            FROM image_features
+            """
+        )
+        rows = cursor.fetchall()
+        for r_id, cat, img_name, f_path, cur_img_path, cur_ev_id in rows:
+            updates = []
+            params = []
+            if (not cur_ev_id or cur_ev_id == "") and img_name:
+                stem = os.path.splitext(str(img_name))[0].replace(" ", "_").upper()
+                ev_id = f"EV_{stem}"
+                updates.append("evidence_id = ?")
+                params.append(ev_id)
+            if (not cur_img_path or cur_img_path == "") and img_name and cat:
+                possible_path = os.path.join("datasets", "images", str(cat), str(img_name))
+                updates.append("image_path = ?")
+                params.append(possible_path)
+            if updates:
+                params.append(r_id)
+                cursor.execute(
+                    f"UPDATE image_features SET {', '.join(updates)} WHERE id = ?",
+                    params
+                )
+        connection.commit()
+
+    # Backfill SHA-256 for existing evidence records if missing
+    try:
+        from hash_verifier import compute_sha256
+        cursor.execute("SELECT id, image_path FROM image_features WHERE sha256_hash IS NULL OR sha256_hash = ''")
+        unhashed = cursor.fetchall()
+        for r_id, img_p in unhashed:
+            if img_p and os.path.isfile(img_p):
+                h = compute_sha256(img_p)
+                if h:
+                    cursor.execute("UPDATE image_features SET sha256_hash = ? WHERE id = ?", (h, r_id))
+        connection.commit()
+    except Exception:
+        pass
+
     connection.close()
 
 
@@ -101,7 +174,9 @@ def insert_feature(
     evidence_id,
     image_path,
     feature_path,
-    category=None
+    category=None,
+    sha256_hash=None,
+    description=None
 ):
     """
     Insert or update feature metadata.
@@ -112,6 +187,8 @@ def insert_feature(
         image_path
         feature_path
         category
+        sha256_hash (optional, auto-computed if file exists)
+        description (optional)
 
     No case or evidence information is hardcoded.
     """
@@ -136,6 +213,13 @@ def insert_feature(
             "feature_path is required."
         )
 
+    if not sha256_hash and image_path and os.path.isfile(image_path):
+        try:
+            from hash_verifier import compute_sha256
+            sha256_hash = compute_sha256(image_path)
+        except Exception:
+            sha256_hash = None
+
     create_table()
 
     connection = connect_database()
@@ -143,30 +227,54 @@ def insert_feature(
 
     cursor.execute(
         """
-        INSERT INTO image_features
-        (
-            case_id,
-            evidence_id,
-            category,
-            image_path,
-            feature_path
-        )
-        VALUES (?, ?, ?, ?, ?)
-
-        ON CONFLICT(case_id, evidence_id)
-        DO UPDATE SET
-            category = excluded.category,
-            image_path = excluded.image_path,
-            feature_path = excluded.feature_path
+        SELECT id FROM image_features
+        WHERE case_id = ? AND evidence_id = ?
         """,
-        (
-            str(case_id),
-            str(evidence_id),
-            category,
-            str(image_path),
-            str(feature_path)
-        )
+        (str(case_id), str(evidence_id))
     )
+    existing = cursor.fetchone()
+
+    if existing:
+        cursor.execute(
+            """
+            UPDATE image_features
+            SET category = ?, image_path = ?, feature_path = ?, sha256_hash = ?, description = ?
+            WHERE id = ?
+            """,
+            (
+                category,
+                str(image_path),
+                str(feature_path),
+                sha256_hash,
+                description,
+                existing[0]
+            )
+        )
+    else:
+        cursor.execute(
+            """
+            INSERT INTO image_features
+            (
+                case_id,
+                evidence_id,
+                category,
+                image_path,
+                feature_path,
+                sha256_hash,
+                description
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                str(case_id),
+                str(evidence_id),
+                category,
+                str(image_path),
+                str(feature_path),
+                sha256_hash,
+                description
+            )
+        )
 
     connection.commit()
     connection.close()
@@ -200,7 +308,9 @@ def get_case_evidence(case_id):
             category,
             image_path,
             feature_path,
-            created_at
+            created_at,
+            sha256_hash,
+            description
 
         FROM image_features
 
@@ -227,7 +337,9 @@ def get_case_evidence(case_id):
                 "category": row[1],
                 "image_path": row[2],
                 "feature_path": row[3],
-                "created_at": row[4]
+                "created_at": row[4],
+                "sha256_hash": row[5],
+                "description": row[6]
             }
         )
 
@@ -266,7 +378,9 @@ def get_evidence(
             category,
             image_path,
             feature_path,
-            created_at
+            created_at,
+            sha256_hash,
+            description
 
         FROM image_features
 
@@ -293,7 +407,9 @@ def get_evidence(
         "category": row[1],
         "image_path": row[2],
         "feature_path": row[3],
-        "created_at": row[4]
+        "created_at": row[4],
+        "sha256_hash": row[5],
+        "description": row[6]
     }
 
 

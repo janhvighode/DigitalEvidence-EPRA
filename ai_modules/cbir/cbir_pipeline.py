@@ -45,14 +45,21 @@ from feature_extractor import (
 
 from similarity import (
     calculate_similarity,
+    compute_multi_signal_similarity,
     semantic_score,
     classify_match,
-    recommended_action
+    investigative_status,
+    recommended_action,
+    is_verification_required
 )
+
+from hash_verifier import are_exact_duplicates
 
 from relationship_engine import (
     generate_relationships
 )
+
+from image_search import render_investigator_image_card
 
 
 # ============================================================
@@ -217,58 +224,65 @@ def search_case_evidence(
         if candidate_features is None:
             continue
 
-        similarity = calculate_similarity(
+        is_exact_hash_match = are_exact_duplicates(query_image_path, image_path)
+        similarity, signals = compute_multi_signal_similarity(
             query_features,
             candidate_features
         )
 
+        cat = evidence.get("category", "Unknown")
+        is_person = "person" in str(cat).lower() or "person" in str(image_path).lower()
+
+        classification = classify_match(similarity, is_exact_hash_match=is_exact_hash_match, is_person=is_person)
+        investigative_stat = investigative_status(similarity, is_exact_hash_match=is_exact_hash_match, is_person=is_person)
+        action = recommended_action(similarity, is_exact_hash_match=is_exact_hash_match, is_person=is_person)
+        ver_req = is_verification_required(similarity, is_exact_hash_match=is_exact_hash_match, is_person=is_person)
+
+        if is_exact_hash_match:
+            reason = "SHA-256 hashes are identical; files are exact bit-for-bit duplicates."
+        elif is_person and similarity >= 0.93:
+            reason = f"Very strong visual resemblance candidate (score {similarity:.4f}). Visual evidence only; does NOT confirm identity; verification required."
+        elif is_person and similarity >= 0.85:
+            reason = f"Strong visual resemblance candidate (score {similarity:.4f}). Visual evidence only; does NOT confirm identity; verification required."
+        elif is_person and similarity >= 0.50:
+            reason = f"Possible visual resemblance candidate (score {similarity:.4f}). Visual evidence only; does NOT confirm identity; verification required."
+        elif similarity >= 0.93:
+            reason = f"Very strong visual candidate (score {similarity:.4f}). Verification required."
+        elif similarity >= 0.85:
+            reason = f"Strong visual candidate (score {similarity:.4f}) supported by multi-signal agreement. Verification required."
+        elif similarity >= 0.70:
+            reason = f"Possible visual resemblance (score {similarity:.4f}). Verification required."
+        elif similarity >= 0.50:
+            reason = f"Weak visual resemblance (score {similarity:.4f}). Verification required."
+        else:
+            reason = "No significant visual match found."
+
         results.append({
-
-            "evidence_id":
-                evidence_id,
-
-            "category":
-                evidence.get(
-                    "category",
-                    "Unknown"
-                ),
-
-            "image":
-                image_path,
-
-            "similarity":
-                float(
-                    round(
-                        similarity,
-                        4
-                    )
-                ),
-
-            "semantic_score":
-                semantic_score(
-                    similarity
-                ),
-
-            "similarity_level":
-                similarity_level_safe(
-                    similarity
-                ),
-
-            "status":
-                classify_match(
-                    similarity
-                ),
-
-            "action":
-                recommended_action(
-                    similarity
-                )
+            "evidence_id": evidence_id,
+            "category": cat,
+            "image": image_path,
+            "image_path": image_path,
+            "visual_similarity_score": float(round(similarity, 4)),
+            "similarity": float(round(similarity, 4)),
+            "edge_similarity": signals.get("edge_similarity", float(round(similarity, 4))),
+            "orb_similarity": signals.get("orb_similarity", float(round(similarity, 4))),
+            "color_similarity": signals.get("color_similarity", float(round(similarity, 4))),
+            "grayscale_similarity": signals.get("grayscale_similarity", float(round(similarity, 4))),
+            "semantic_score": semantic_score(similarity),
+            "similarity_level": similarity_level_safe(similarity),
+            "classification": classification,
+            "status": classification,
+            "investigation_status": investigative_stat,
+            "sha256_exact_duplicate": bool(is_exact_hash_match),
+            "is_exact_hash_match": bool(is_exact_hash_match),
+            "verification_required": bool(ver_req),
+            "action": action,
+            "reason": reason,
+            "signals": signals
         })
 
     results.sort(
-        key=lambda item:
-        item["similarity"],
-        reverse=True
+        key=lambda item: (-item["visual_similarity_score"], str(item["evidence_id"]))
     )
 
     return results[:top_k]
@@ -494,56 +508,17 @@ def display_results(result):
     )
 
     if not matches:
-
         print(
             "No similar evidence found."
         )
-
     else:
-
-        for rank, match in enumerate(
-            matches,
-            start=1
-        ):
-
-            print(
-                f"\nRank: {rank}"
-            )
-
-            print(
-                f"Evidence ID : "
-                f"{match['evidence_id']}"
-            )
-
-            print(
-                f"Category    : "
-                f"{match['category']}"
-            )
-
-            print(
-                f"Similarity  : "
-                f"{match['similarity']:.4f}"
-            )
-
-            print(
-                f"Semantic    : "
-                f"{match['semantic_score']:.2f}"
-            )
-
-            print(
-                f"Level       : "
-                f"{match['similarity_level']}"
-            )
-
-            print(
-                f"Status      : "
-                f"{match['status']}"
-            )
-
-            print(
-                f"Action      : "
-                f"{match['action']}"
-            )
+        for rank, match in enumerate(matches, start=1):
+            if "rank" not in match:
+                match["rank"] = rank
+            if "query_evidence_id" not in match:
+                match["query_evidence_id"] = result.get("source_evidence", "Query")
+            print()
+            print(render_investigator_image_card(match))
 
     print("\n" + "-" * 70)
     print("RELATIONSHIPS")
