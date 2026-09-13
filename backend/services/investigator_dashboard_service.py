@@ -1,5 +1,8 @@
-from typing import Optional, List, Dict, Any
+import mimetypes
+from pathlib import Path
+from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime
+from fastapi import HTTPException, status
 from sqlalchemy.orm import Session, aliased
 from sqlalchemy import or_, func
 
@@ -9,6 +12,9 @@ from models.evidence import Evidence
 from models.evidence_hash import EvidenceHash
 from models.epra_result import EPRAResult
 from models.notification import Notification
+from models.case_timeline import CaseTimeline
+from models.evidence_record import EvidenceRecord
+from services.timeline_service import TimelineService
 
 from schemas.investigator_dashboard import (
     InvestigatorDashboardStats,
@@ -16,7 +22,16 @@ from schemas.investigator_dashboard import (
     InvestigatorEvidenceStatusResponse,
     CaseStatusDistributionResponse,
     InvestigatorCaseItem,
-    InvestigatorMyCasesPage
+    InvestigatorMyCasesPage,
+    TeamMemberItem,
+    CaseDetailItem,
+    CaseStatisticsItem,
+    TimelineActivityItem,
+    CaseOverviewResponse,
+    CaseEvidenceSummaryResponse,
+    InvestigatorEvidenceRepositoryItem,
+    InvestigatorEvidenceRepositoryPage,
+    InvestigatorEvidenceDetailResponse
 )
 
 
@@ -490,3 +505,588 @@ def get_investigator_my_cases(
         limit=limit,
         cases=case_items
     )
+
+
+# ==============================================================================
+# 6. INVESTIGATOR VIEW CASE: CASE OVERVIEW
+# ==============================================================================
+
+def get_investigator_assigned_case(
+    db: Session,
+    case_identifier: str | int,
+    current_user: User
+) -> Case:
+    """
+    Resolves a case by numeric ID or human-readable case string,
+    enforcing strict authorization:
+    - User must be authenticated
+    - User must have role_id == 2 (Investigator)
+    - Case.investigator_id == current_user.id
+    """
+    if not current_user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required"
+        )
+
+    if current_user.role_id != 2:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Investigator access required"
+        )
+
+    ident_str = str(case_identifier).strip()
+    if ident_str.isdigit():
+        case = db.query(Case).filter(
+            or_(
+                Case.id == int(ident_str),
+                Case.case_id == ident_str
+            )
+        ).first()
+    else:
+        case = db.query(Case).filter(
+            Case.case_id.ilike(ident_str)
+        ).first()
+
+    if not case:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Case '{case_identifier}' not found"
+        )
+
+    if case.investigator_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied: You are not assigned to this case"
+        )
+
+    return case
+
+
+def get_investigator_case_overview(
+    db: Session,
+    case_identifier: str | int,
+    current_user: User
+) -> CaseOverviewResponse:
+    """
+    Returns full Case Overview information for the assigned investigator:
+    - Case metadata (genuine Case.description; no fake crime_type)
+    - Assigned investigator & cyber expert
+    - Key statistics (total, analyzed, pending, high priority, progress percentage)
+    - Genuine recent activity from CaseTimeline and TimelineService
+    """
+    case = get_investigator_assigned_case(db, case_identifier, current_user)
+
+    # 1. Assigned Investigator
+    inv_user = db.query(User).filter(User.id == case.investigator_id).first()
+    assigned_investigator = TeamMemberItem(
+        id=inv_user.id if inv_user else current_user.id,
+        name=inv_user.full_name if inv_user else current_user.full_name,
+        email=inv_user.email if inv_user else current_user.email,
+        role="Investigator"
+    )
+
+    # 2. Assigned Cyber Expert
+    assigned_cyber_expert = None
+    if case.cyber_expert_id:
+        exp_user = db.query(User).filter(User.id == case.cyber_expert_id).first()
+        if exp_user:
+            assigned_cyber_expert = TeamMemberItem(
+                id=exp_user.id,
+                name=exp_user.full_name,
+                email=exp_user.email,
+                role="Cyber Expert"
+            )
+
+    # 3. Statistics
+    total_evidence = db.query(Evidence).filter(Evidence.case_id == case.id).count()
+    analyzed_evidence = db.query(EPRAResult.evidence_id).filter(
+        EPRAResult.case_id == case.id,
+        EPRAResult.analysis_status == "COMPLETE"
+    ).distinct().count()
+    pending_analysis = max(0, total_evidence - analyzed_evidence)
+    high_priority_evidence = db.query(EPRAResult.evidence_id).filter(
+        EPRAResult.case_id == case.id,
+        EPRAResult.priority.in_(["High", "Critical", "HIGH", "CRITICAL"])
+    ).distinct().count()
+
+    # Progress rule: analyzed / total * 100 or 0.0 if zero evidence
+    if total_evidence > 0:
+        investigation_progress = round((analyzed_evidence / total_evidence) * 100.0, 2)
+    else:
+        investigation_progress = 0.0
+
+    statistics = CaseStatisticsItem(
+        total_evidence=total_evidence,
+        analyzed_evidence=analyzed_evidence,
+        pending_analysis=pending_analysis,
+        high_priority_evidence=high_priority_evidence,
+        investigation_progress=investigation_progress
+    )
+
+    # 4. Recent Activity: Derived strictly from genuine database records
+    timeline_items: List[TimelineActivityItem] = []
+    seen_keys = set()
+
+    # Source A: CaseTimeline
+    ct_entries = db.query(CaseTimeline).filter(
+        CaseTimeline.case_id == case.id
+    ).order_by(CaseTimeline.created_at.desc()).limit(20).all()
+
+    user_cache = {}
+    for ct in ct_entries:
+        actor_name = None
+        if ct.performed_by:
+            if ct.performed_by not in user_cache:
+                u = db.query(User).filter(User.id == ct.performed_by).first()
+                user_cache[ct.performed_by] = u.full_name if u else None
+            actor_name = user_cache[ct.performed_by]
+
+        key = (ct.event, ct.created_at.isoformat() if ct.created_at else "")
+        if key not in seen_keys:
+            seen_keys.add(key)
+            timeline_items.append(
+                TimelineActivityItem(
+                    id=f"ct_{ct.id}",
+                    event=ct.event,
+                    actor_name=actor_name,
+                    role=ct.performed_by_role,
+                    timestamp=ct.created_at
+                )
+            )
+
+    # Source B: Custody / Activity logs via TimelineService
+    try:
+        audit_timeline = TimelineService.build_case_timeline(db, str(case.case_id))
+        for at in audit_timeline:
+            dt_str = at.get("timestamp")
+            dt = datetime.fromisoformat(dt_str.replace("Z", "+00:00")) if dt_str else (case.updated_at or case.created_at)
+            event_text = at.get("description") or at.get("event_type")
+            key = (event_text, dt_str)
+            if key not in seen_keys:
+                seen_keys.add(key)
+                timeline_items.append(
+                    TimelineActivityItem(
+                        id=f"tl_{at.get('step', at.get('sort_id'))}",
+                        event=event_text,
+                        actor_name=at.get("actor"),
+                        role=None,
+                        timestamp=dt
+                    )
+                )
+    except Exception:
+        pass
+
+    # Baseline event if no timeline entries exist yet
+    if not timeline_items:
+        timeline_items.append(
+            TimelineActivityItem(
+                id=f"case_created_{case.id}",
+                event=f"Case initialized: {case.title} ({case.case_id})",
+                actor_name=inv_user.full_name if inv_user else None,
+                role="Investigator",
+                timestamp=case.created_at
+            )
+        )
+
+    # Sort descending by timestamp
+    timeline_items.sort(key=lambda x: -(x.timestamp.timestamp() if x.timestamp else 0))
+
+    case_detail = CaseDetailItem(
+        id=case.id,
+        case_id=case.case_id,
+        title=case.title,
+        description=case.description,
+        priority=case.priority,
+        status=case.status,
+        created_at=case.created_at,
+        updated_at=case.updated_at
+    )
+
+    return CaseOverviewResponse(
+        case=case_detail,
+        assigned_investigator=assigned_investigator,
+        assigned_cyber_expert=assigned_cyber_expert,
+        statistics=statistics,
+        recent_activity=timeline_items[:20]
+    )
+
+
+# ==============================================================================
+# 7. INVESTIGATOR VIEW CASE: EVIDENCE MANAGEMENT SUMMARY
+# ==============================================================================
+
+def get_investigator_case_evidence_summary(
+    db: Session,
+    case_identifier: str | int,
+    current_user: User
+) -> CaseEvidenceSummaryResponse:
+    """
+    Returns evidence summary metrics strictly for the selected assigned case:
+    - Total evidence
+    - Analyzed evidence (EPRAResult COMPLETE)
+    - Pending analysis (Total - Analyzed)
+    - Integrity issues (tampered == True, hash_match == False, or status TAMPERED/MISMATCH)
+    """
+    case = get_investigator_assigned_case(db, case_identifier, current_user)
+
+    evidences = db.query(Evidence).filter(Evidence.case_id == case.id).all()
+    total_evidence = len(evidences)
+    if total_evidence == 0:
+        return CaseEvidenceSummaryResponse(
+            total_evidence=0,
+            analyzed=0,
+            pending_analysis=0,
+            integrity_issues=0
+        )
+
+    ev_ids = [e.id for e in evidences]
+
+    analyzed = db.query(EPRAResult.evidence_id).filter(
+        EPRAResult.case_id == case.id,
+        EPRAResult.analysis_status == "COMPLETE"
+    ).distinct().count()
+
+    pending_analysis = max(0, total_evidence - analyzed)
+
+    integrity_issues = db.query(EvidenceHash).filter(
+        EvidenceHash.evidence_id.in_(ev_ids),
+        or_(
+            EvidenceHash.tampered == True,
+            EvidenceHash.hash_match == False,
+            EvidenceHash.integrity_status.in_(["TAMPERED", "MISMATCH", "Tampered", "Mismatch"])
+        )
+    ).count()
+
+    return CaseEvidenceSummaryResponse(
+        total_evidence=total_evidence,
+        analyzed=analyzed,
+        pending_analysis=pending_analysis,
+        integrity_issues=integrity_issues
+    )
+
+
+# ==============================================================================
+# 8. INVESTIGATOR VIEW CASE: EVIDENCE REPOSITORY LIST
+# ==============================================================================
+
+def get_investigator_case_evidence_repository(
+    db: Session,
+    case_identifier: str | int,
+    current_user: User,
+    search: Optional[str] = None,
+    file_type: Optional[str] = None,
+    analysis_status: Optional[str] = None,
+    priority: Optional[str] = None,
+    page: int = 1,
+    limit: int = 10
+) -> InvestigatorEvidenceRepositoryPage:
+    """
+    Returns paginated evidence repository items for the assigned case with filters:
+    - search (by evidence_id, file_name, or current_hash)
+    - file_type
+    - analysis_status (e.g. COMPLETE, Pending)
+    - priority (Critical, High, Medium, Low)
+    Note: Unanalyzed items display "Pending" without creating fake database records.
+    """
+    case = get_investigator_assigned_case(db, case_identifier, current_user)
+
+    query = (
+        db.query(Evidence, EvidenceHash, EPRAResult)
+        .outerjoin(EvidenceHash, Evidence.id == EvidenceHash.evidence_id)
+        .outerjoin(EPRAResult, Evidence.id == EPRAResult.evidence_id)
+        .filter(Evidence.case_id == case.id)
+    )
+
+    # Search filter
+    if isinstance(search, str) and search.strip():
+        s = f"%{search.strip()}%"
+        query = query.filter(
+            or_(
+                Evidence.evidence_id.ilike(s),
+                Evidence.file_name.ilike(s),
+                EvidenceHash.current_hash.ilike(s)
+            )
+        )
+
+    # File type filter
+    if isinstance(file_type, str) and file_type.strip():
+        query = query.filter(Evidence.file_type.ilike(file_type.strip()))
+
+    # Analysis status filter
+    if isinstance(analysis_status, str) and analysis_status.strip():
+        ast = analysis_status.strip().upper()
+        if ast == "PENDING":
+            # Either no EPRAResult or status is not COMPLETE
+            query = query.filter(
+                or_(
+                    EPRAResult.id == None,
+                    EPRAResult.analysis_status != "COMPLETE"
+                )
+            )
+        elif ast in ["COMPLETE", "COMPLETED"]:
+            query = query.filter(EPRAResult.analysis_status == "COMPLETE")
+        else:
+            query = query.filter(EPRAResult.analysis_status.ilike(f"%{analysis_status.strip()}%"))
+
+    # Priority filter
+    if isinstance(priority, str) and priority.strip():
+        query = query.filter(EPRAResult.priority.ilike(priority.strip()))
+
+    total = query.count()
+
+    offset = (page - 1) * limit
+    results = (
+        query
+        .order_by(Evidence.id.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+
+    items: List[InvestigatorEvidenceRepositoryItem] = []
+    for ev, h, epra in results:
+        # Fallback display values without inserting fake DB records
+        if epra:
+            ast = epra.analysis_status or "COMPLETE"
+            prio = epra.priority
+            score = epra.epra_score
+            rank = epra.rank
+        else:
+            ast = "Pending"
+            prio = None
+            score = None
+            rank = None
+
+        integrity_status = h.integrity_status if h and h.integrity_status else "Unknown"
+        current_hash = h.current_hash if h else None
+
+        items.append(
+            InvestigatorEvidenceRepositoryItem(
+                id=ev.id,
+                evidence_id=ev.evidence_id,
+                file_name=ev.file_name,
+                file_type=ev.file_type,
+                file_size=ev.file_size,
+                uploaded_on=ev.created_at,
+                current_hash=current_hash,
+                integrity_status=integrity_status,
+                analysis_status=ast,
+                priority=prio,
+                epra_score=score,
+                rank=rank
+            )
+        )
+
+    return InvestigatorEvidenceRepositoryPage(
+        total=total,
+        page=page,
+        limit=limit,
+        items=items
+    )
+
+
+# ==============================================================================
+# 9. INVESTIGATOR VIEW CASE: SINGLE EVIDENCE DETAILS
+# ==============================================================================
+
+def get_investigator_evidence_detail(
+    db: Session,
+    case_identifier: str | int,
+    evidence_identifier: str | int,
+    current_user: User
+) -> InvestigatorEvidenceDetailResponse:
+    """
+    Returns single evidence detail integrating:
+    - Core Evidence attributes
+    - EvidenceHash verification results
+    - EPRAResult priorities, risk factors, and analysis status
+    - Deepak's EvidenceRecord metadata timestamps and MIME info
+    - Pure read-only view for investigator
+    """
+    case = get_investigator_assigned_case(db, case_identifier, current_user)
+
+    ident_str = str(evidence_identifier).strip()
+    if ident_str.isdigit():
+        evidence = db.query(Evidence).filter(
+            Evidence.case_id == case.id,
+            or_(
+                Evidence.id == int(ident_str),
+                Evidence.evidence_id == ident_str
+            )
+        ).first()
+    else:
+        evidence = db.query(Evidence).filter(
+            Evidence.case_id == case.id,
+            Evidence.evidence_id.ilike(ident_str)
+        ).first()
+
+    if not evidence:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Evidence '{evidence_identifier}' not found for this case"
+        )
+
+    # 1. EvidenceHash
+    h = db.query(EvidenceHash).filter(EvidenceHash.evidence_id == evidence.id).first()
+
+    # 2. EPRAResult
+    epra = db.query(EPRAResult).filter(EPRAResult.evidence_id == evidence.id).first()
+
+    # 3. EvidenceRecord (Deepak's metadata)
+    er = db.query(EvidenceRecord).filter(
+        or_(
+            EvidenceRecord.external_evidence_id == (evidence.evidence_id or str(evidence.id)),
+            EvidenceRecord.id == evidence.id
+        )
+    ).first()
+
+    # Verified by user name
+    verified_by_name = None
+    if h and h.verified_by:
+        v_user = db.query(User).filter(User.id == h.verified_by).first()
+        if v_user:
+            verified_by_name = v_user.full_name
+
+    # Uploaded by: default to assigned investigator or timeline event
+    uploaded_by = current_user.full_name
+
+    # EPRA risk factors
+    risk_factors = None
+    if epra:
+        risk_factors = {
+            "authenticity_risk": epra.authenticity_risk,
+            "context_intelligence": epra.context_intelligence,
+            "behaviour_intelligence": epra.behaviour_intelligence,
+            "semantic_intelligence": epra.semantic_intelligence,
+            "investigative_intelligence": epra.investigative_intelligence
+        }
+
+    # Metadata dictionary
+    metadata_dict = None
+    if er:
+        metadata_dict = {
+            "mime_type": er.mime_type,
+            "mime_type_source": er.mime_type_source,
+            "file_extension": er.file_extension,
+            "file_size_bytes": er.file_size_bytes,
+            "filesystem_ctime": er.filesystem_ctime,
+            "filesystem_mtime": er.filesystem_mtime,
+            "created_at": er.created_at.isoformat() if er.created_at else None,
+            "created_at_source": er.created_at_source,
+            "modified_at": er.modified_at.isoformat() if er.modified_at else None,
+            "modified_at_source": er.modified_at_source,
+            "accessed_at": er.accessed_at.isoformat() if er.accessed_at else None,
+            "accessed_at_source": er.accessed_at_source,
+            "notes": er.notes,
+            "processing_status": er.processing_status
+        }
+
+    return InvestigatorEvidenceDetailResponse(
+        id=evidence.id,
+        evidence_id=evidence.evidence_id,
+        file_name=evidence.file_name,
+        file_type=evidence.file_type,
+        file_size=evidence.file_size,
+        uploaded_on=evidence.created_at,
+        uploaded_by=uploaded_by,
+        current_hash=h.current_hash if h else None,
+        original_hash=h.original_hash if h else None,
+        hash_match=h.hash_match if h else None,
+        tampered=h.tampered if h else None,
+        integrity_status=h.integrity_status if h else "Unknown",
+        verification_date=h.verified_at if h else None,
+        verified_by=verified_by_name,
+        analysis_status=epra.analysis_status if epra else "Pending",
+        priority=epra.priority if epra else None,
+        epra_score=epra.epra_score if epra else None,
+        rank=epra.rank if epra else None,
+        ipi=epra.ipi if epra else None,
+        risk_factors=risk_factors,
+        pending_external_inputs=epra.pending_external_inputs if epra else None,
+        metadata=metadata_dict
+    )
+
+
+# ==============================================================================
+# 10. INVESTIGATOR VIEW CASE: SECURE EVIDENCE DOWNLOAD & PREVIEW
+# ==============================================================================
+
+def get_investigator_evidence_file(
+    db: Session,
+    case_identifier: str | int,
+    evidence_identifier: str | int,
+    current_user: User,
+    for_preview: bool = False
+) -> Tuple[Path, str, str]:
+    """
+    Safely resolves the physical evidence file from disk for download or preview:
+    - Enforces assigned investigator case authorization
+    - Prevents path traversal outside uploads/evidence directory
+    - Returns 404 if file does not exist on disk
+    - For preview, ensures format is previewable, returning 400 for non-previewable files
+    Returns (resolved_file_path, file_name, mime_type).
+    """
+    case = get_investigator_assigned_case(db, case_identifier, current_user)
+
+    ident_str = str(evidence_identifier).strip()
+    if ident_str.isdigit():
+        evidence = db.query(Evidence).filter(
+            Evidence.case_id == case.id,
+            or_(
+                Evidence.id == int(ident_str),
+                Evidence.evidence_id == ident_str
+            )
+        ).first()
+    else:
+        evidence = db.query(Evidence).filter(
+            Evidence.case_id == case.id,
+            Evidence.evidence_id.ilike(ident_str)
+        ).first()
+
+    if not evidence:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Evidence '{evidence_identifier}' not found for this case"
+        )
+
+    raw_path = Path(evidence.file_path)
+    file_path = raw_path.resolve() if raw_path.is_absolute() else (Path.cwd() / raw_path).resolve()
+    base_upload_dir = (Path.cwd() / "uploads" / "evidence").resolve()
+
+    # Path traversal protection: file must be located inside base_upload_dir
+    try:
+        file_path.relative_to(base_upload_dir)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied: Invalid file path traversal"
+        )
+
+    if not file_path.is_file():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Evidence file not found on disk"
+        )
+
+    mime_type, _ = mimetypes.guess_type(evidence.file_name)
+    mime_type = mime_type or "application/octet-stream"
+
+    if for_preview:
+        is_image = mime_type.startswith("image/")
+        is_video = mime_type.startswith("video/")
+        is_audio = mime_type.startswith("audio/")
+        is_pdf = mime_type == "application/pdf"
+        is_text = mime_type.startswith("text/") or mime_type in ["application/json", "application/xml"]
+
+        ext = file_path.suffix.lower().lstrip(".")
+        non_previewable_exts = {"zip", "rar", "7z", "tar", "gz", "exe", "bin", "iso", "dmg", "dll"}
+
+        if ext in non_previewable_exts or not (is_image or is_video or is_audio or is_pdf or is_text):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Preview is not supported for file format '{evidence.file_type}'. Please download the file instead."
+            )
+
+    return file_path, evidence.file_name, mime_type
+

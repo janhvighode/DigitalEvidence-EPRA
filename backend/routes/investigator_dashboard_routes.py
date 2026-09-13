@@ -1,5 +1,6 @@
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from database.database import get_db
@@ -11,14 +12,23 @@ from schemas.investigator_dashboard import (
     CaseRequiringAttentionItem,
     InvestigatorEvidenceStatusResponse,
     CaseStatusDistributionResponse,
-    InvestigatorMyCasesPage
+    InvestigatorMyCasesPage,
+    CaseOverviewResponse,
+    CaseEvidenceSummaryResponse,
+    InvestigatorEvidenceRepositoryPage,
+    InvestigatorEvidenceDetailResponse
 )
 from services.investigator_dashboard_service import (
     get_investigator_dashboard_stats,
     get_cases_requiring_attention,
     get_evidence_status,
     get_case_status_distribution,
-    get_investigator_my_cases
+    get_investigator_my_cases,
+    get_investigator_case_overview,
+    get_investigator_case_evidence_summary,
+    get_investigator_case_evidence_repository,
+    get_investigator_evidence_detail,
+    get_investigator_evidence_file
 )
 
 
@@ -156,3 +166,171 @@ def fetch_investigator_my_cases(
         page=page,
         limit=limit
     )
+
+
+# ==============================================================================
+# 6. INVESTIGATOR VIEW CASE: CASE OVERVIEW
+# ==============================================================================
+
+@router.get(
+    "/my-cases/{case_id}/overview",
+    response_model=CaseOverviewResponse,
+    summary="Get Case Overview for Assigned Case",
+    description="Returns case metadata, assigned investigator and cyber expert, key statistics, and genuine recent activity."
+)
+def fetch_case_overview(
+    case_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    verify_investigator(current_user)
+    return get_investigator_case_overview(
+        db=db,
+        case_identifier=case_id,
+        current_user=current_user
+    )
+
+
+# ==============================================================================
+# 7. INVESTIGATOR VIEW CASE: EVIDENCE MANAGEMENT SUMMARY
+# ==============================================================================
+
+@router.get(
+    "/my-cases/{case_id}/evidence-summary",
+    response_model=CaseEvidenceSummaryResponse,
+    summary="Get Evidence Summary Cards for Assigned Case",
+    description="Returns selected-case counts for Total Evidence, Analyzed, Pending Analysis, and Integrity Issues."
+)
+def fetch_case_evidence_summary(
+    case_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    verify_investigator(current_user)
+    return get_investigator_case_evidence_summary(
+        db=db,
+        case_identifier=case_id,
+        current_user=current_user
+    )
+
+
+# ==============================================================================
+# 8. INVESTIGATOR VIEW CASE: EVIDENCE REPOSITORY LIST
+# ==============================================================================
+
+@router.get(
+    "/my-cases/{case_id}/evidence",
+    response_model=InvestigatorEvidenceRepositoryPage,
+    summary="Get Evidence Repository for Assigned Case",
+    description="Returns paginated evidence repository items joined with EPRA and hash verification statuses with filters."
+)
+def fetch_case_evidence_repository(
+    case_id: str,
+    search: Optional[str] = Query(None, description="Search by evidence ID, file name, or current hash"),
+    file_type: Optional[str] = Query(None, description="Filter by file type (Image, Video, Document, etc.)"),
+    analysis_status: Optional[str] = Query(None, description="Filter by analysis status (COMPLETE, Pending)"),
+    priority: Optional[str] = Query(None, description="Filter by priority (Critical, High, Medium, Low)"),
+    page: int = Query(1, ge=1, description="Page number"),
+    limit: int = Query(10, ge=1, le=100, description="Items per page"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    verify_investigator(current_user)
+    return get_investigator_case_evidence_repository(
+        db=db,
+        case_identifier=case_id,
+        current_user=current_user,
+        search=search if isinstance(search, str) else None,
+        file_type=file_type if isinstance(file_type, str) else None,
+        analysis_status=analysis_status if isinstance(analysis_status, str) else None,
+        priority=priority if isinstance(priority, str) else None,
+        page=page if isinstance(page, int) else 1,
+        limit=limit if isinstance(limit, int) else 10
+    )
+
+
+# ==============================================================================
+# 9. INVESTIGATOR VIEW CASE: SINGLE EVIDENCE DETAILS
+# ==============================================================================
+
+@router.get(
+    "/my-cases/{case_id}/evidence/{evidence_id}",
+    response_model=InvestigatorEvidenceDetailResponse,
+    summary="Get Single Evidence Comprehensive Forensic Details",
+    description="Returns single evidence detail combining core Evidence, EvidenceHash verification, EPRAResult priorities/factors, and Deepak's EvidenceRecord metadata."
+)
+def fetch_evidence_detail(
+    case_id: str,
+    evidence_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    verify_investigator(current_user)
+    return get_investigator_evidence_detail(
+        db=db,
+        case_identifier=case_id,
+        evidence_identifier=evidence_id,
+        current_user=current_user
+    )
+
+
+# ==============================================================================
+# 10. INVESTIGATOR VIEW CASE: SECURE EVIDENCE DOWNLOAD
+# ==============================================================================
+
+@router.get(
+    "/my-cases/{case_id}/evidence/{evidence_id}/download",
+    summary="Download Original Evidence File",
+    description="Safely downloads the physical evidence file from storage with case isolation and path traversal prevention."
+)
+def download_evidence_file(
+    case_id: str,
+    evidence_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    verify_investigator(current_user)
+    file_path, file_name, media_type = get_investigator_evidence_file(
+        db=db,
+        case_identifier=case_id,
+        evidence_identifier=evidence_id,
+        current_user=current_user,
+        for_preview=False
+    )
+    return FileResponse(
+        path=str(file_path),
+        filename=file_name,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{file_name}"'}
+    )
+
+
+# ==============================================================================
+# 11. INVESTIGATOR VIEW CASE: SECURE EVIDENCE PREVIEW
+# ==============================================================================
+
+@router.get(
+    "/my-cases/{case_id}/evidence/{evidence_id}/preview",
+    summary="Preview Evidence File",
+    description="Streams previewable evidence file (images, PDFs, text, supported media) inline with authorization checks."
+)
+def preview_evidence_file(
+    case_id: str,
+    evidence_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    verify_investigator(current_user)
+    file_path, file_name, media_type = get_investigator_evidence_file(
+        db=db,
+        case_identifier=case_id,
+        evidence_identifier=evidence_id,
+        current_user=current_user,
+        for_preview=True
+    )
+    return FileResponse(
+        path=str(file_path),
+        media_type=media_type,
+        headers={"Content-Disposition": f'inline; filename="{file_name}"'}
+    )
+
