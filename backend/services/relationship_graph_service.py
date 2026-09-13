@@ -11,6 +11,8 @@ from models.evidence_record import EvidenceRecord
 from models.possible_entity import PossibleEntity, PossibleEntityEvidenceLink
 from models.evidence_link import EvidenceLink
 from models.user import User
+from models.epra_result import EPRAResult
+from models.cbir_result import CBIRResult
 
 from schemas.relationship_graph import (
     GraphNode,
@@ -102,7 +104,15 @@ class RelationshipGraphService:
             raise PermissionError("Access denied. Only assigned Cyber Experts or Investigators can view case relationship data.")
 
     @classmethod
-    def get_relationship_graph(cls, db: Session, case_id: str, current_user: User) -> GraphResponse:
+    def get_relationship_graph(
+        cls,
+        db: Session,
+        case_id: str,
+        current_user: User,
+        node_type: Optional[str] = None,
+        relationship_type: Optional[str] = None,
+        priority: Optional[str] = None
+    ) -> GraphResponse:
         """
         Dynamically derives the complete relationship graph from genuine database records.
         Zero hardcoded placeholders: all nodes and edges are fetched from TiDB for the selected case.
@@ -115,11 +125,17 @@ class RelationshipGraphService:
         ev_ids = [ev.id for ev in evidences]
         ev_map = {ev.id: ev for ev in evidences}
 
-        # 2. Fetch real Hash records for these evidence items
+        # 2. Fetch real Hash records and EPRA records for these evidence items
         hashes = []
+        epra_records = []
         if ev_ids:
             hashes = db.query(EvidenceHash).filter(EvidenceHash.evidence_id.in_(ev_ids)).all()
+            try:
+                epra_records = db.query(EPRAResult).filter(EPRAResult.evidence_id.in_(ev_ids)).all()
+            except Exception:
+                epra_records = []
         hash_map = {h.evidence_id: h for h in hashes}
+        epra_map = {ep.evidence_id: ep for ep in epra_records}
 
         # 3. Fetch real PossibleEntities and links for this case
         entities = db.query(PossibleEntity).filter(PossibleEntity.case_id == c_id).all()
@@ -149,6 +165,12 @@ class RelationshipGraphService:
             sha = h.sha256_hash if h else None
             v_status = h.integrity_status if h else "Pending"
 
+            ep = epra_map.get(ev.id)
+            ep_priority = ep.priority if ep else None
+            ep_score = ep.epra_score if ep else None
+            ep_rank = ep.rank if ep else None
+            ep_status = ep.analysis_status if ep else "Pending"
+
             node = GraphNode(
                 id=node_id,
                 label=ev.file_name,
@@ -164,7 +186,11 @@ class RelationshipGraphService:
                     "sha256_hash": sha,
                     "verification_status": v_status,
                     "status": ev.status or "Active",
-                    "created_at": ev.created_at.isoformat() if ev.created_at else None
+                    "created_at": ev.created_at.isoformat() if ev.created_at else None,
+                    "analysis_status": ep_status,
+                    "priority": ep_priority,
+                    "epra_score": ep_score,
+                    "rank": ep_rank
                 }
             )
             nodes_dict[node_id] = node
@@ -318,12 +344,46 @@ class RelationshipGraphService:
                                 G.add_edge(ev1_node, ev2_node, **e.dict())
 
         # F. CBIR Visual Comparison Edges
-        # Only derived if genuine CBIR relationship results exist between case items
+        # Derived strictly if genuine CBIR comparison records exist in cbir_results
         cbir_matches_count = 0
-        # If there are image items, check for genuine similarity if features are stored
-        # Otherwise, 0 CBIR edges are returned truthfully
+        cbir_rows = []
+        try:
+            cbir_rows = db.query(CBIRResult).filter(
+                CBIRResult.case_id == c_id,
+                CBIRResult.sha256_exact_duplicate == False
+            ).all()
+        except Exception:
+            cbir_rows = []
+        for row in cbir_rows:
+            ev1_node = f"ev_{row.query_evidence_id}"
+            ev2_node = f"ev_{row.candidate_evidence_id}"
+            if ev1_node in nodes_dict and ev2_node in nodes_dict:
+                edge_pair = tuple(sorted([ev1_node, ev2_node]))
+                if edge_pair not in seen_edges:
+                    seen_edges.add(edge_pair)
+                    cbir_matches_count += 1
+                    edge_id = f"cbir_{min(row.query_evidence_id, row.candidate_evidence_id)}_{max(row.query_evidence_id, row.candidate_evidence_id)}"
+                    e = GraphEdge(
+                        id=edge_id,
+                        source=ev1_node,
+                        target=ev2_node,
+                        label=f"Visual Similarity ({row.classification})",
+                        relationship_type="CBIR_VISUAL_SIMILARITY",
+                        similarity=row.visual_similarity_score,
+                        confidence=row.confidence_level,
+                        investigative_status=row.recommendation,
+                        properties={
+                            "visual_similarity_score": row.visual_similarity_score,
+                            "semantic_score": row.semantic_score,
+                            "classification": row.classification,
+                            "confidence_level": row.confidence_level,
+                            "verification_required": row.verification_required
+                        }
+                    )
+                    edges_list.append(e)
+                    G.add_edge(ev1_node, ev2_node, **e.dict())
 
-        # Summary calculations
+        # Summary calculations from complete case graph
         evidence_nodes_count = sum(1 for n in nodes_dict.values() if n.node_type == "Evidence")
         suspect_nodes_count = sum(1 for n in nodes_dict.values() if n.node_type == "Suspect")
         device_nodes_count = sum(1 for n in nodes_dict.values() if n.node_type == "Device")
@@ -340,13 +400,105 @@ class RelationshipGraphService:
             manual_links_count=len(custom_links)
         )
 
+        # Apply optional filters if requested
+        result_nodes = list(nodes_dict.values())
+        if node_type and node_type.strip():
+            nt = node_type.strip().lower()
+            result_nodes = [n for n in result_nodes if n.node_type.lower() == nt]
+
+        if priority and priority.strip():
+            p = priority.strip().lower()
+            result_nodes = [
+                n for n in result_nodes
+                if (n.node_type == "Evidence" and (n.properties.get("priority") or "").lower() == p)
+                or n.node_type != "Evidence"
+            ]
+
+        kept_node_ids = {n.id for n in result_nodes}
+        result_edges = [e for e in edges_list if e.source in kept_node_ids and e.target in kept_node_ids]
+
+        if relationship_type and relationship_type.strip():
+            rt = relationship_type.strip().lower()
+            result_edges = [e for e in result_edges if e.relationship_type.lower() == rt]
+
         return GraphResponse(
             status="Success",
             case_id=case.case_id,
-            nodes=list(nodes_dict.values()),
-            edges=edges_list,
+            nodes=result_nodes,
+            edges=result_edges,
             summary=summary
         )
+
+    @classmethod
+    def get_node_detail(
+        cls,
+        db: Session,
+        case_id: str,
+        node_id: str,
+        current_user: User
+    ) -> Dict[str, Any]:
+        """
+        Retrieves deep, genuine details for a specific graph node:
+        - Evidence: file attributes, verified hash, EPRA rank, priority, score, status, connected edges
+        - Possible Entity / Suspect: confidence, rank, total EPRA score, linked evidence
+        - Device: linked evidence items and notes
+        - Case: genuine case details
+        """
+        case = cls._verify_case_read_access(db, case_id, current_user)
+        clean_node_id = str(node_id).strip()
+
+        # Generate the full case graph
+        graph_resp = cls.get_relationship_graph(db, case_id, current_user)
+
+        target_node = None
+        for n in graph_resp.nodes:
+            if n.id == clean_node_id:
+                target_node = n
+                break
+            # Match numeric ID or evidence ID
+            if str(n.properties.get("numeric_id")) == clean_node_id or str(n.properties.get("evidence_id")) == clean_node_id:
+                target_node = n
+                break
+            if str(n.properties.get("suspect_id")) == clean_node_id:
+                target_node = n
+                break
+
+        # Check if node is the Case node itself
+        if not target_node and (clean_node_id.lower() in [f"case_{case.id}", str(case.id), str(case.case_id).lower()]):
+            return {
+                "node_id": f"case_{case.id}",
+                "node_type": "Case",
+                "label": case.title,
+                "properties": {
+                    "case_id": case.case_id,
+                    "title": case.title,
+                    "description": case.description,
+                    "priority": case.priority,
+                    "status": case.status,
+                    "created_at": case.created_at.isoformat() if case.created_at else None
+                },
+                "connected_nodes_count": len(graph_resp.nodes),
+                "connected_edges": []
+            }
+
+        if not target_node:
+            raise FileNotFoundError(f"Node '{node_id}' not found in case relationship graph.")
+
+        connected_edges = [
+            e.dict() for e in graph_resp.edges
+            if e.source == target_node.id or e.target == target_node.id
+        ]
+
+        display_node_type = "Possible Entity" if target_node.node_type == "Suspect" else target_node.node_type
+
+        return {
+            "node_id": target_node.id,
+            "node_type": display_node_type,
+            "label": target_node.label,
+            "properties": target_node.properties,
+            "connected_nodes_count": len(connected_edges),
+            "connected_edges": connected_edges
+        }
 
     @classmethod
     def get_relationship_summary(cls, db: Session, case_id: str, current_user: User) -> GraphSummary:

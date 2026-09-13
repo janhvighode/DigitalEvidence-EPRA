@@ -10,7 +10,18 @@
 import os
 import numpy as np
 
-from sklearn.metrics.pairwise import cosine_similarity
+try:
+    from sklearn.metrics.pairwise import cosine_similarity
+except ImportError:
+    def cosine_similarity(a, b):
+        a = np.asarray(a, dtype=np.float32)
+        b = np.asarray(b, dtype=np.float32)
+        norm_a = np.linalg.norm(a, axis=1, keepdims=True)
+        norm_b = np.linalg.norm(b, axis=1, keepdims=True)
+        denom = norm_a * norm_b.T
+        denom[denom == 0] = 1e-9
+        return np.dot(a, b.T) / denom
+
 
 
 # ============================================================
@@ -455,9 +466,16 @@ def is_verification_required(score, is_exact_hash_match=False, is_person=False):
     FORENSIC PRINCIPLES:
     - Exact cryptographic duplicates (SHA-256 match bit-for-bit) have verification_required=False
       (file identity verified cryptographically).
-    - For all analytical visual comparisons (SHA differs), verification_required MUST be True.
+    - Actual visual matches/resemblances (score >= WEAK_MATCH_THRESHOLD) have verification_required=True.
+    - No Significant Visual Match (score < WEAK_MATCH_THRESHOLD) has verification_required=False.
     """
     if is_exact_hash_match:
+        return False
+    try:
+        score = float(score)
+    except (TypeError, ValueError):
+        score = 0.0
+    if score < WEAK_MATCH_THRESHOLD:
         return False
     return True
 

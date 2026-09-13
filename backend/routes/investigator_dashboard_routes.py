@@ -16,8 +16,15 @@ from schemas.investigator_dashboard import (
     CaseOverviewResponse,
     CaseEvidenceSummaryResponse,
     InvestigatorEvidenceRepositoryPage,
-    InvestigatorEvidenceDetailResponse
+    InvestigatorEvidenceDetailResponse,
+    AnalysisProgressSummaryResponse,
+    EvidenceAnalysisPage,
+    EPRAPriorityDistributionResponse,
+    PendingAnalysisResponse,
+    InvestigatorAnalysisDetailResponse,
+    RelationshipNodeDetailResponse
 )
+from schemas.relationship_graph import GraphResponse
 from services.investigator_dashboard_service import (
     get_investigator_dashboard_stats,
     get_cases_requiring_attention,
@@ -28,7 +35,14 @@ from services.investigator_dashboard_service import (
     get_investigator_case_evidence_summary,
     get_investigator_case_evidence_repository,
     get_investigator_evidence_detail,
-    get_investigator_evidence_file
+    get_investigator_evidence_file,
+    get_investigator_analysis_summary,
+    get_investigator_analysis_evidence_repository,
+    get_investigator_epra_priority_distribution,
+    get_investigator_pending_analysis,
+    get_investigator_single_analysis_detail,
+    get_investigator_relationship_view,
+    get_investigator_relationship_node_detail
 )
 
 
@@ -333,4 +347,188 @@ def preview_evidence_file(
         media_type=media_type,
         headers={"Content-Disposition": f'inline; filename="{file_name}"'}
     )
+
+
+# ==============================================================================
+# 12. INVESTIGATOR VIEW CASE: ANALYSIS PROGRESS SUMMARY
+# ==============================================================================
+
+@router.get(
+    "/my-cases/{case_id}/analysis-progress/summary",
+    response_model=AnalysisProgressSummaryResponse,
+    summary="Get Analysis Progress Summary",
+    description="Returns genuine case-level EPRA metrics (total evidence, analyzed, pending, partial, high/critical, progress percentage)."
+)
+def fetch_analysis_progress_summary(
+    case_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    verify_investigator(current_user)
+    return get_investigator_analysis_summary(
+        db=db,
+        case_identifier=case_id,
+        current_user=current_user
+    )
+
+
+# ==============================================================================
+# 13. INVESTIGATOR VIEW CASE: ANALYSIS PROGRESS EVIDENCE REPOSITORY
+# ==============================================================================
+
+@router.get(
+    "/my-cases/{case_id}/analysis-progress/evidence",
+    response_model=EvidenceAnalysisPage,
+    summary="Get Analysis Progress Evidence Repository",
+    description="Returns paginated evidence analysis items with priority, EPRA score, rank, pending inputs, and filters."
+)
+def fetch_analysis_progress_evidence(
+    case_id: str,
+    search: Optional[str] = Query(None, description="Search by evidence ID or file name"),
+    file_type: Optional[str] = Query(None, description="Filter by file type (Image, Video, Document, etc.)"),
+    analysis_status: Optional[str] = Query(None, description="Filter by analysis status (COMPLETE, PARTIAL / PENDING INPUTS, Pending)"),
+    priority: Optional[str] = Query(None, description="Filter by priority (Critical, High, Medium, Low, Very Low)"),
+    page: int = Query(1, ge=1, description="Page number"),
+    limit: int = Query(10, ge=1, le=100, description="Items per page"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    verify_investigator(current_user)
+    return get_investigator_analysis_evidence_repository(
+        db=db,
+        case_identifier=case_id,
+        current_user=current_user,
+        search=search if isinstance(search, str) else None,
+        file_type=file_type if isinstance(file_type, str) else None,
+        analysis_status=analysis_status if isinstance(analysis_status, str) else None,
+        priority=priority if isinstance(priority, str) else None,
+        page=page if isinstance(page, int) else 1,
+        limit=limit if isinstance(limit, int) else 10
+    )
+
+
+# ==============================================================================
+# 14. INVESTIGATOR VIEW CASE: EPRA PRIORITY DISTRIBUTION
+# ==============================================================================
+
+@router.get(
+    "/my-cases/{case_id}/analysis-progress/priority-distribution",
+    response_model=EPRAPriorityDistributionResponse,
+    summary="Get EPRA Priority Distribution",
+    description="Returns priority distribution counts (Critical, High, Medium, Low, Very Low) for analyzed evidence in the case."
+)
+def fetch_epra_priority_distribution(
+    case_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    verify_investigator(current_user)
+    return get_investigator_epra_priority_distribution(
+        db=db,
+        case_identifier=case_id,
+        current_user=current_user
+    )
+
+
+# ==============================================================================
+# 15. INVESTIGATOR VIEW CASE: PENDING ANALYSIS ITEMS
+# ==============================================================================
+
+@router.get(
+    "/my-cases/{case_id}/analysis-progress/pending",
+    response_model=PendingAnalysisResponse,
+    summary="Get Pending Analysis Items",
+    description="Returns list of evidence items awaiting complete analysis (Pending or Partial with pending inputs)."
+)
+def fetch_pending_analysis(
+    case_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    verify_investigator(current_user)
+    return get_investigator_pending_analysis(
+        db=db,
+        case_identifier=case_id,
+        current_user=current_user
+    )
+
+
+# ==============================================================================
+# 16. INVESTIGATOR VIEW CASE: SINGLE EVIDENCE ANALYSIS DETAIL
+# ==============================================================================
+
+@router.get(
+    "/my-cases/{case_id}/analysis-progress/evidence/{evidence_id}",
+    response_model=InvestigatorAnalysisDetailResponse,
+    summary="Get Single Evidence Analysis Detail",
+    description="Returns single evidence EPRA risk factors, score, priority, rank, pending inputs, and status read-only."
+)
+def fetch_single_analysis_detail(
+    case_id: str,
+    evidence_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    verify_investigator(current_user)
+    return get_investigator_single_analysis_detail(
+        db=db,
+        case_identifier=case_id,
+        evidence_identifier=evidence_id,
+        current_user=current_user
+    )
+
+
+# ==============================================================================
+# 17. INVESTIGATOR VIEW CASE: RELATIONSHIP VIEW GRAPH
+# ==============================================================================
+
+@router.get(
+    "/my-cases/{case_id}/relationship-view",
+    response_model=GraphResponse,
+    summary="Get Case Relationship View Graph",
+    description="Returns case relationship graph nodes (Evidence, Possible Entity, Device, Case) and edges (links, SHA-256 duplicates, CBIR similarity)."
+)
+def fetch_relationship_view(
+    case_id: str,
+    node_type: Optional[str] = Query(None, description="Filter by node type (Evidence, Possible Entity, Device, Case)"),
+    relationship_type: Optional[str] = Query(None, description="Filter by relationship type (LINKED_TO, SUSPECT_INVOLVED, DEVICE_LINK, VERIFIED_DUPLICATE_SHA256, CBIR_VISUAL_SIMILARITY)"),
+    priority: Optional[str] = Query(None, description="Filter evidence nodes by EPRA priority (Critical, High, Medium, Low)"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    verify_investigator(current_user)
+    return get_investigator_relationship_view(
+        db=db,
+        case_identifier=case_id,
+        current_user=current_user,
+        node_type=node_type if isinstance(node_type, str) else None,
+        relationship_type=relationship_type if isinstance(relationship_type, str) else None,
+        priority=priority if isinstance(priority, str) else None
+    )
+
+
+# ==============================================================================
+# 18. INVESTIGATOR VIEW CASE: RELATIONSHIP NODE DETAIL
+# ==============================================================================
+
+@router.get(
+    "/my-cases/{case_id}/relationship-view/nodes/{node_id}",
+    response_model=RelationshipNodeDetailResponse,
+    summary="Get Case Relationship Node Detail",
+    description="Returns deep inspection properties for a node (Evidence with EPRA, Possible Entity, Device, Case) and connected edges."
+)
+def fetch_relationship_node_detail(
+    case_id: str,
+    node_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    verify_investigator(current_user)
+    return get_investigator_relationship_node_detail(
+        db=db,
+        case_identifier=case_id,
+        node_id=node_id,
+        current_user=current_user
+    )
+
 

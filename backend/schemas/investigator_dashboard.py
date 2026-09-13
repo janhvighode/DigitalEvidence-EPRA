@@ -191,3 +191,99 @@ class InvestigatorEvidenceDetailResponse(BaseModel):
     pending_external_inputs: Optional[List[str]] = None
     metadata: Optional[Dict[str, Any]] = None
 
+
+# ==========================================
+# 8. ANALYSIS PROGRESS TAB SCHEMAS
+# ==========================================
+
+class AnalysisProgressSummaryResponse(BaseModel):
+    case_id: str
+    total_evidence: int
+    analyzed_evidence: int
+    pending_analysis: int
+    partial_analysis: int
+    high_critical_evidence: int
+    overall_analysis_progress: float
+
+
+class EvidenceAnalysisItem(BaseModel):
+    id: int
+    evidence_id: str
+    file_name: str
+    file_type: str
+    analysis_status: str
+    priority: Optional[str] = None
+    epra_score: Optional[float] = None
+    rank: Optional[int] = None
+    pending_inputs: List[str] = Field(default_factory=list)
+    processed_at: Optional[datetime] = None
+
+
+class EvidenceAnalysisPage(BaseModel):
+    total: int
+    page: int
+    limit: int
+    items: List[EvidenceAnalysisItem]
+
+
+class EPRAPriorityDistributionResponse(BaseModel):
+    case_id: str
+    critical: int
+    high: int
+    medium: int
+    low: int
+    very_low: int
+    total_analyzed: int
+
+
+class PendingAnalysisItem(BaseModel):
+    id: int
+    evidence_id: str
+    file_name: str
+    file_type: str
+    analysis_status: str
+    pending_inputs: List[str] = Field(default_factory=list)
+    last_updated: Optional[datetime] = None
+
+
+class PendingAnalysisResponse(BaseModel):
+    case_id: str
+    total_pending: int
+    items: List[PendingAnalysisItem]
+
+
+class InvestigatorAnalysisDetailResponse(BaseModel):
+    evidence_id: str
+    file_name: str
+    evidence_type: str
+    file_size: Optional[int] = None
+    analysis_status: str
+    semantic_status: Optional[str] = None
+    authenticity_risk: Optional[float] = None
+    context_intelligence: Optional[float] = None
+    behaviour_intelligence: Optional[float] = None
+    semantic_intelligence: Optional[float] = None
+    investigative_intelligence: Optional[float] = None
+    ipi: Optional[float] = None
+    epra_score: Optional[float] = None
+    priority: Optional[str] = None
+    rank: Optional[int] = None
+    pending_inputs: List[str] = Field(default_factory=list)
+    hash_verified: bool = False
+    duplicate: bool = False
+    processed_at: Optional[datetime] = None
+
+
+# ==========================================
+# 9. RELATIONSHIP VIEW TAB SCHEMAS
+# ==========================================
+
+class RelationshipNodeDetailResponse(BaseModel):
+    node_id: str
+    node_type: str
+    label: str
+    properties: Dict[str, Any]
+    connected_nodes_count: int
+    connected_edges: List[Dict[str, Any]]
+
+

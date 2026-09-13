@@ -31,8 +31,18 @@ from schemas.investigator_dashboard import (
     CaseEvidenceSummaryResponse,
     InvestigatorEvidenceRepositoryItem,
     InvestigatorEvidenceRepositoryPage,
-    InvestigatorEvidenceDetailResponse
+    InvestigatorEvidenceDetailResponse,
+    AnalysisProgressSummaryResponse,
+    EvidenceAnalysisItem,
+    EvidenceAnalysisPage,
+    EPRAPriorityDistributionResponse,
+    PendingAnalysisItem,
+    PendingAnalysisResponse,
+    InvestigatorAnalysisDetailResponse,
+    RelationshipNodeDetailResponse
 )
+from schemas.relationship_graph import GraphResponse
+from services.relationship_graph_service import RelationshipGraphService
 
 
 # ==============================================================================
@@ -1089,4 +1099,425 @@ def get_investigator_evidence_file(
             )
 
     return file_path, evidence.file_name, mime_type
+
+
+# ==============================================================================
+# 11. INVESTIGATOR VIEW CASE: ANALYSIS PROGRESS TAB
+# ==============================================================================
+
+def get_investigator_analysis_summary(
+    db: Session,
+    case_identifier: str | int,
+    current_user: User
+) -> AnalysisProgressSummaryResponse:
+    """
+    Returns genuine selected-case EPRA analysis summary metrics for the assigned investigator:
+    - total_evidence
+    - analyzed_evidence (EPRAResult COMPLETE)
+    - pending_analysis
+    - partial_analysis (EPRAResult PARTIAL / PENDING INPUTS)
+    - high_critical_evidence
+    - overall_analysis_progress
+    """
+    case = get_investigator_assigned_case(db, case_identifier, current_user)
+    total_evidence = db.query(Evidence).filter(Evidence.case_id == case.id).count()
+
+    if total_evidence == 0:
+        return AnalysisProgressSummaryResponse(
+            case_id=case.case_id,
+            total_evidence=0,
+            analyzed_evidence=0,
+            pending_analysis=0,
+            partial_analysis=0,
+            high_critical_evidence=0,
+            overall_analysis_progress=0.0
+        )
+
+    analyzed_evidence = db.query(EPRAResult.evidence_id).filter(
+        EPRAResult.case_id == case.id,
+        EPRAResult.analysis_status == "COMPLETE"
+    ).distinct().count()
+
+    partial_analysis = db.query(EPRAResult.evidence_id).filter(
+        EPRAResult.case_id == case.id,
+        EPRAResult.analysis_status == "PARTIAL / PENDING INPUTS"
+    ).distinct().count()
+
+    pending_analysis = max(0, total_evidence - analyzed_evidence - partial_analysis)
+
+    high_critical_evidence = db.query(EPRAResult.evidence_id).filter(
+        EPRAResult.case_id == case.id,
+        EPRAResult.priority.in_(["High", "Critical", "HIGH", "CRITICAL"])
+    ).distinct().count()
+
+    overall_analysis_progress = round((analyzed_evidence / total_evidence) * 100.0, 2)
+
+    return AnalysisProgressSummaryResponse(
+        case_id=case.case_id,
+        total_evidence=total_evidence,
+        analyzed_evidence=analyzed_evidence,
+        pending_analysis=pending_analysis,
+        partial_analysis=partial_analysis,
+        high_critical_evidence=high_critical_evidence,
+        overall_analysis_progress=overall_analysis_progress
+    )
+
+
+def get_investigator_analysis_evidence_repository(
+    db: Session,
+    case_identifier: str | int,
+    current_user: User,
+    search: Optional[str] = None,
+    file_type: Optional[str] = None,
+    analysis_status: Optional[str] = None,
+    priority: Optional[str] = None,
+    page: int = 1,
+    limit: int = 10
+) -> EvidenceAnalysisPage:
+    """
+    Returns paginated evidence analysis items for the assigned case with filters:
+    - search
+    - file_type
+    - analysis_status (COMPLETE, PARTIAL / PENDING INPUTS, Pending)
+    - priority (Critical, High, Medium, Low, Very Low)
+    Unanalyzed evidence cleanly falls back to analysis_status = 'Pending' without DB insertion.
+    """
+    case = get_investigator_assigned_case(db, case_identifier, current_user)
+
+    query = (
+        db.query(Evidence, EPRAResult)
+        .outerjoin(EPRAResult, Evidence.id == EPRAResult.evidence_id)
+        .filter(Evidence.case_id == case.id)
+    )
+
+    if isinstance(search, str) and search.strip():
+        s = f"%{search.strip()}%"
+        query = query.filter(
+            or_(
+                Evidence.evidence_id.ilike(s),
+                Evidence.file_name.ilike(s)
+            )
+        )
+
+    if isinstance(file_type, str) and file_type.strip():
+        query = query.filter(Evidence.file_type.ilike(file_type.strip()))
+
+    if isinstance(analysis_status, str) and analysis_status.strip():
+        ast = analysis_status.strip().upper()
+        if ast == "PENDING":
+            query = query.filter(
+                or_(
+                    EPRAResult.id == None,
+                    EPRAResult.analysis_status != "COMPLETE"
+                )
+            )
+        elif ast in ["COMPLETE", "COMPLETED"]:
+            query = query.filter(EPRAResult.analysis_status == "COMPLETE")
+        elif ast in ["PARTIAL", "PARTIAL / PENDING INPUTS"]:
+            query = query.filter(EPRAResult.analysis_status == "PARTIAL / PENDING INPUTS")
+        else:
+            query = query.filter(EPRAResult.analysis_status.ilike(f"%{analysis_status.strip()}%"))
+
+    if isinstance(priority, str) and priority.strip():
+        query = query.filter(EPRAResult.priority.ilike(priority.strip()))
+
+    total = query.count()
+    offset = (page - 1) * limit
+    results = (
+        query
+        .order_by(EPRAResult.rank.asc().nullslast(), Evidence.id.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+
+    items: List[EvidenceAnalysisItem] = []
+    for ev, epra in results:
+        if epra:
+            status_val = epra.analysis_status or "COMPLETE"
+            prio = epra.priority
+            score = epra.epra_score
+            rank = epra.rank
+            pending_inputs = epra.pending_external_inputs or []
+            processed_at = epra.processed_at
+        else:
+            status_val = "Pending"
+            prio = None
+            score = None
+            rank = None
+            pending_inputs = []
+            processed_at = None
+
+        items.append(
+            EvidenceAnalysisItem(
+                id=ev.id,
+                evidence_id=ev.evidence_id,
+                file_name=ev.file_name,
+                file_type=ev.file_type,
+                analysis_status=status_val,
+                priority=prio,
+                epra_score=score,
+                rank=rank,
+                pending_inputs=pending_inputs,
+                processed_at=processed_at
+            )
+        )
+
+    return EvidenceAnalysisPage(
+        total=total,
+        page=page,
+        limit=limit,
+        items=items
+    )
+
+
+def get_investigator_epra_priority_distribution(
+    db: Session,
+    case_identifier: str | int,
+    current_user: User
+) -> EPRAPriorityDistributionResponse:
+    """
+    Returns genuine priority breakdown across all analyzed evidence in the assigned case.
+    """
+    case = get_investigator_assigned_case(db, case_identifier, current_user)
+
+    results = db.query(EPRAResult.priority).filter(
+        EPRAResult.case_id == case.id
+    ).all()
+
+    crit = 0
+    high = 0
+    med = 0
+    low = 0
+    very_low = 0
+
+    for (prio,) in results:
+        if not prio:
+            continue
+        p = prio.strip().lower()
+        if p == "critical":
+            crit += 1
+        elif p == "high":
+            high += 1
+        elif p == "medium":
+            med += 1
+        elif p == "low":
+            low += 1
+        elif p in ["very low", "very_low"]:
+            very_low += 1
+
+    total_analyzed = crit + high + med + low + very_low
+
+    return EPRAPriorityDistributionResponse(
+        case_id=case.case_id,
+        critical=crit,
+        high=high,
+        medium=med,
+        low=low,
+        very_low=very_low,
+        total_analyzed=total_analyzed
+    )
+
+
+def get_investigator_pending_analysis(
+    db: Session,
+    case_identifier: str | int,
+    current_user: User
+) -> PendingAnalysisResponse:
+    """
+    Returns evidence items awaiting complete analysis:
+    - Not yet analyzed
+    - OR status == 'PARTIAL / PENDING INPUTS'
+    """
+    case = get_investigator_assigned_case(db, case_identifier, current_user)
+
+    rows = (
+        db.query(Evidence, EPRAResult)
+        .outerjoin(EPRAResult, Evidence.id == EPRAResult.evidence_id)
+        .filter(
+            Evidence.case_id == case.id,
+            or_(
+                EPRAResult.id == None,
+                EPRAResult.analysis_status != "COMPLETE"
+            )
+        )
+        .order_by(Evidence.id.asc())
+        .all()
+    )
+
+    items: List[PendingAnalysisItem] = []
+    for ev, epra in rows:
+        if epra:
+            st = epra.analysis_status or "PARTIAL / PENDING INPUTS"
+            p_inputs = epra.pending_external_inputs or []
+            dt = epra.processed_at or ev.created_at
+        else:
+            st = "Pending"
+            p_inputs = []
+            dt = ev.created_at
+
+        items.append(
+            PendingAnalysisItem(
+                id=ev.id,
+                evidence_id=ev.evidence_id,
+                file_name=ev.file_name,
+                file_type=ev.file_type,
+                analysis_status=st,
+                pending_inputs=p_inputs,
+                last_updated=dt
+            )
+        )
+
+    return PendingAnalysisResponse(
+        case_id=case.case_id,
+        total_pending=len(items),
+        items=items
+    )
+
+
+def get_investigator_single_analysis_detail(
+    db: Session,
+    case_identifier: str | int,
+    evidence_identifier: str | int,
+    current_user: User
+) -> InvestigatorAnalysisDetailResponse:
+    """
+    Returns single evidence EPRA analysis detail read-only:
+    - If analyzed, returns genuine risk factors (AR, CI, BI, SI, II), IPI, score, priority, rank, pending_inputs.
+    - If unanalyzed, returns clean 'Pending' fallback without fake DB row.
+    """
+    case = get_investigator_assigned_case(db, case_identifier, current_user)
+
+    ident_str = str(evidence_identifier).strip()
+    if ident_str.isdigit():
+        evidence = db.query(Evidence).filter(
+            Evidence.case_id == case.id,
+            or_(
+                Evidence.id == int(ident_str),
+                Evidence.evidence_id == ident_str
+            )
+        ).first()
+    else:
+        evidence = db.query(Evidence).filter(
+            Evidence.case_id == case.id,
+            Evidence.evidence_id.ilike(ident_str)
+        ).first()
+
+    if not evidence:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Evidence '{evidence_identifier}' not found for this case"
+        )
+
+    epra = db.query(EPRAResult).filter(EPRAResult.evidence_id == evidence.id).first()
+
+    if not epra:
+        return InvestigatorAnalysisDetailResponse(
+            evidence_id=evidence.evidence_id,
+            file_name=evidence.file_name,
+            evidence_type=evidence.file_type,
+            file_size=evidence.file_size,
+            analysis_status="Pending",
+            semantic_status="PENDING",
+            authenticity_risk=None,
+            context_intelligence=None,
+            behaviour_intelligence=None,
+            semantic_intelligence=None,
+            investigative_intelligence=None,
+            ipi=None,
+            epra_score=None,
+            priority=None,
+            rank=None,
+            pending_inputs=[],
+            hash_verified=False,
+            duplicate=False,
+            processed_at=None
+        )
+
+    return InvestigatorAnalysisDetailResponse(
+        evidence_id=evidence.evidence_id,
+        file_name=evidence.file_name,
+        evidence_type=evidence.file_type,
+        file_size=evidence.file_size,
+        analysis_status=epra.analysis_status or "COMPLETE",
+        semantic_status=epra.semantic_status,
+        authenticity_risk=epra.authenticity_risk,
+        context_intelligence=epra.context_intelligence,
+        behaviour_intelligence=epra.behaviour_intelligence,
+        semantic_intelligence=epra.semantic_intelligence,
+        investigative_intelligence=epra.investigative_intelligence,
+        ipi=epra.ipi,
+        epra_score=epra.epra_score,
+        priority=epra.priority,
+        rank=epra.rank,
+        pending_inputs=epra.pending_external_inputs or [],
+        hash_verified=epra.hash_verified or False,
+        duplicate=epra.is_duplicate or False,
+        processed_at=epra.processed_at
+    )
+
+
+# ==============================================================================
+# 12. INVESTIGATOR VIEW CASE: RELATIONSHIP VIEW TAB
+# ==============================================================================
+
+def get_investigator_relationship_view(
+    db: Session,
+    case_identifier: str | int,
+    current_user: User,
+    node_type: Optional[str] = None,
+    relationship_type: Optional[str] = None,
+    priority: Optional[str] = None
+) -> GraphResponse:
+    """
+    Returns complete case relationship graph for assigned investigator with optional filtering:
+    - Node types: Evidence, Possible Entity, Device, Case
+    - Edges: Evidence-Suspect, Evidence-Device, Verified Duplicate (SHA-256), CBIR Visual Similarity
+    """
+    case = get_investigator_assigned_case(db, case_identifier, current_user)
+    return RelationshipGraphService.get_relationship_graph(
+        db=db,
+        case_id=str(case.case_id),
+        current_user=current_user,
+        node_type=node_type,
+        relationship_type=relationship_type,
+        priority=priority
+    )
+
+
+def get_investigator_relationship_node_detail(
+    db: Session,
+    case_identifier: str | int,
+    node_id: str,
+    current_user: User
+) -> RelationshipNodeDetailResponse:
+    """
+    Returns deep, genuine details for a selected relationship graph node:
+    - Evidence node: file attributes, verified hash, genuine EPRA rank, score, priority, status, connected edges
+    - Possible Entity: confidence, rank, total EPRA score, linked evidence (labeled Possible Entity, not confirmed)
+    - Device node: linked evidence items and notes
+    - Case node: genuine case details
+    """
+    case = get_investigator_assigned_case(db, case_identifier, current_user)
+    try:
+        detail = RelationshipGraphService.get_node_detail(
+            db=db,
+            case_id=str(case.case_id),
+            node_id=node_id,
+            current_user=current_user
+        )
+    except FileNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e)
+        )
+    return RelationshipNodeDetailResponse(
+        node_id=detail["node_id"],
+        node_type=detail["node_type"],
+        label=detail["label"],
+        properties=detail["properties"],
+        connected_nodes_count=detail["connected_nodes_count"],
+        connected_edges=detail["connected_edges"]
+    )
+
 
