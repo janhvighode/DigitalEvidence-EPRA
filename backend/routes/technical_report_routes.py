@@ -37,7 +37,7 @@ def validate_report_id(report_id: str) -> str:
     return cleaned
 
 
-def verify_cyber_expert_case_access(case_id: int, current_user: User, db: Session) -> Case:
+def verify_cyber_expert_case_access(case_id: str | int, current_user: User, db: Session) -> Case:
     """
     Enforce Cyber Expert authorization and assigned case boundary.
     - Missing/invalid JWT -> 401
@@ -56,9 +56,15 @@ def verify_cyber_expert_case_access(case_id: int, current_user: User, db: Sessio
             detail="Access restricted to Cyber Experts only"
         )
 
-    case = db.query(Case).filter(
-        (Case.id == case_id) | (Case.case_id == str(case_id))
-    ).first()
+    clean_id = str(case_id).strip()
+    if clean_id.isdigit():
+        case = db.query(Case).filter(
+            (Case.id == int(clean_id)) | (Case.case_id == clean_id)
+        ).first()
+    else:
+        case = db.query(Case).filter(
+            Case.case_id == clean_id
+        ).first()
 
     if not case:
         raise HTTPException(
@@ -75,7 +81,7 @@ def verify_cyber_expert_case_access(case_id: int, current_user: User, db: Sessio
     return case
 
 
-def verify_report_read_access(case_id: int, current_user: User, db: Session) -> Case:
+def verify_report_read_access(case_id: str | int, current_user: User, db: Session) -> Case:
     """
     Enforce authorization and assigned case boundary for viewing and downloading reports:
     - Missing/invalid JWT -> 401
@@ -89,9 +95,15 @@ def verify_report_read_access(case_id: int, current_user: User, db: Session) -> 
             detail="Authentication required"
         )
 
-    case = db.query(Case).filter(
-        (Case.id == case_id) | (Case.case_id == str(case_id))
-    ).first()
+    clean_id = str(case_id).strip()
+    if clean_id.isdigit():
+        case = db.query(Case).filter(
+            (Case.id == int(clean_id)) | (Case.case_id == clean_id)
+        ).first()
+    else:
+        case = db.query(Case).filter(
+            Case.case_id == clean_id
+        ).first()
 
     if not case:
         raise HTTPException(
@@ -122,7 +134,7 @@ def verify_report_read_access(case_id: int, current_user: User, db: Session) -> 
 
 @router.get("/summary", response_model=ReportSummaryResponse)
 def get_case_reporting_summary(
-    case_id: int,
+    case_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -141,7 +153,7 @@ def get_case_reporting_summary(
 
 @router.post("/preview")
 def preview_report(
-    case_id: int,
+    case_id: str,
     report: ReportRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -177,7 +189,7 @@ def preview_report(
 
 @router.post("/generate", response_model=ReportGenerateResponse)
 def generate_report(
-    case_id: int,
+    case_id: str,
     payload: Optional[ReportRequest] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -207,7 +219,7 @@ def generate_report(
 
 @router.get("/history", response_model=ReportHistoryResponse)
 def get_report_history(
-    case_id: int,
+    case_id: str,
     page: int = Query(1, ge=1),
     page_size: int = Query(10, ge=1, le=100),
     db: Session = Depends(get_db),
@@ -224,7 +236,7 @@ def get_report_history(
 
 @router.get("/preview/{report_id}")
 def preview_existing_report(
-    case_id: int,
+    case_id: str,
     report_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -267,7 +279,7 @@ def preview_existing_report(
 
 @router.get("/download/{report_id}")
 def download_report_by_id(
-    case_id: int,
+    case_id: str,
     report_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)

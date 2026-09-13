@@ -22,7 +22,11 @@ from schemas.investigator_dashboard import (
     EPRAPriorityDistributionResponse,
     PendingAnalysisResponse,
     InvestigatorAnalysisDetailResponse,
-    RelationshipNodeDetailResponse
+    RelationshipNodeDetailResponse,
+    InvestigatorCaseActivitySummaryResponse,
+    InvestigatorCaseActivityItem,
+    InvestigatorCaseActivityPage,
+    InvestigatorActivityDetailResponse
 )
 from schemas.relationship_graph import GraphResponse
 from services.investigator_dashboard_service import (
@@ -42,7 +46,10 @@ from services.investigator_dashboard_service import (
     get_investigator_pending_analysis,
     get_investigator_single_analysis_detail,
     get_investigator_relationship_view,
-    get_investigator_relationship_node_detail
+    get_investigator_relationship_node_detail,
+    get_investigator_case_activity_summary,
+    get_investigator_case_activity_timeline,
+    get_investigator_case_activity_detail
 )
 
 
@@ -530,5 +537,132 @@ def fetch_relationship_node_detail(
         node_id=node_id,
         current_user=current_user
     )
+
+
+# ==============================================================================
+# 19. INVESTIGATOR VIEW CASE: CASE ACTIVITY SUMMARY
+# ==============================================================================
+
+@router.get(
+    "/my-cases/{case_id}/activity/summary",
+    response_model=InvestigatorCaseActivitySummaryResponse,
+    summary="Get Case Activity Summary Metrics",
+    description="Returns categorized activity counts (evidence, analysis, integrity, custody, relationships, reports, case milestones) for the selected case."
+)
+def fetch_case_activity_summary(
+    case_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    verify_investigator(current_user)
+    return get_investigator_case_activity_summary(
+        db=db,
+        case_identifier=case_id,
+        current_user=current_user
+    )
+
+
+# ==============================================================================
+# 20. INVESTIGATOR VIEW CASE: CASE ACTIVITY TIMELINE
+# ==============================================================================
+
+@router.get(
+    "/my-cases/{case_id}/activity",
+    response_model=InvestigatorCaseActivityPage,
+    summary="Get Case Activity Timeline",
+    description="Returns paginated, searchable, filterable forensic activity timeline sorted newest first."
+)
+def fetch_case_activity_timeline(
+    case_id: str,
+    activity_type: Optional[str] = Query(None, description="Filter by activity category (CASE, EVIDENCE, METADATA, INTEGRITY, CUSTODY, EPRA, CBIR, RELATIONSHIP, REPORT, ALL)"),
+    source_module: Optional[str] = Query(None, description="Filter by source module"),
+    start_date: Optional[str] = Query(None, description="Filter by start date (ISO format)"),
+    end_date: Optional[str] = Query(None, description="Filter by end date (ISO format)"),
+    search: Optional[str] = Query(None, description="Search keyword across title, description, action, actor, or evidence"),
+    page: int = Query(1, ge=1, description="Page number"),
+    limit: int = Query(10, ge=1, le=100, description="Items per page"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    verify_investigator(current_user)
+
+    parsed_start = None
+    if start_date:
+        try:
+            parsed_start = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
+        except ValueError:
+            pass
+
+    parsed_end = None
+    if end_date:
+        try:
+            parsed_end = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
+        except ValueError:
+            pass
+
+    return get_investigator_case_activity_timeline(
+        db=db,
+        case_identifier=case_id,
+        current_user=current_user,
+        activity_type=activity_type,
+        source_module=source_module,
+        start_date=parsed_start,
+        end_date=parsed_end,
+        search=search,
+        page=page,
+        limit=limit
+    )
+
+
+# ==============================================================================
+# 21. INVESTIGATOR VIEW CASE: RECENT ACTIVITY
+# ==============================================================================
+
+@router.get(
+    "/my-cases/{case_id}/activity/recent",
+    response_model=InvestigatorCaseActivityPage,
+    summary="Get Recent Activity for Assigned Case",
+    description="Returns top recent forensic activities for the selected case."
+)
+def fetch_case_activity_recent(
+    case_id: str,
+    limit: int = Query(5, ge=1, le=20, description="Number of recent activities to return"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    verify_investigator(current_user)
+    return get_investigator_case_activity_timeline(
+        db=db,
+        case_identifier=case_id,
+        current_user=current_user,
+        page=1,
+        limit=limit
+    )
+
+
+# ==============================================================================
+# 22. INVESTIGATOR VIEW CASE: ACTIVITY EVENT DETAIL
+# ==============================================================================
+
+@router.get(
+    "/my-cases/{case_id}/activity/{activity_id}",
+    response_model=InvestigatorActivityDetailResponse,
+    summary="Get Activity Event Detail",
+    description="Returns rich contextual detail for a timeline event (evidence, hash integrity, metadata, EPRA, custody, or report info)."
+)
+def fetch_case_activity_detail(
+    case_id: str,
+    activity_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    verify_investigator(current_user)
+    return get_investigator_case_activity_detail(
+        db=db,
+        case_identifier=case_id,
+        activity_id=activity_id,
+        current_user=current_user
+    )
+
 
 

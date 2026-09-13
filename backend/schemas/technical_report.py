@@ -79,6 +79,9 @@ class ReportSummaryResponse(BaseModel):
     tampered_evidence: int
     pending_evidence: int
     unknown_evidence: int = 0
+    total_reports: Optional[int] = 0
+    latest_report_name: Optional[str] = None
+    latest_generated_at: Optional[str] = None
 
 
 class ReportHistoryItem(BaseModel):

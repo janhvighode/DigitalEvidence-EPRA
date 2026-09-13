@@ -287,3 +287,75 @@ class RelationshipNodeDetailResponse(BaseModel):
     connected_edges: List[Dict[str, Any]]
 
 
+# ==========================================
+# 10. CASE ACTIVITY TAB SCHEMAS
+# ==========================================
+
+class InvestigatorCaseActivitySummaryResponse(BaseModel):
+    case_id: str
+    total_activity_count: int
+    evidence_activity_count: int
+    analysis_activity_count: int
+    integrity_activity_count: int
+    custody_activity_count: int
+    relationship_activity_count: int
+    report_activity_count: int
+    case_activity_count: int
+    latest_activity_at: Optional[datetime] = None
+    latest_activity_formatted: Optional[str] = None
+
+
+class InvestigatorCaseActivityItem(BaseModel):
+    activity_id: str
+    case_id: str
+    activity_type: str  # CASE, EVIDENCE, METADATA, INTEGRITY, CUSTODY, EPRA, CBIR, RELATIONSHIP, REPORT
+    action: str
+    title: str
+    description: str
+    source_module: str
+    evidence_id: Optional[str] = None
+    report_id: Optional[str] = None
+    actor_user_id: Optional[int] = None
+    actor_name: Optional[str] = None
+    actor_role: Optional[str] = None
+    timestamp: datetime
+    timestamp_formatted: Optional[str] = None
+    status: Optional[str] = None
+    additional_details: Optional[Dict[str, Any]] = None
+
+
+class InvestigatorCaseActivityPage(BaseModel):
+    case_id: str
+    total: int
+    page: int
+    limit: int
+    total_pages: int
+    activities: List[InvestigatorCaseActivityItem]
+
+
+class InvestigatorActivityDetailResponse(BaseModel):
+    activity_id: str
+    case_id: str
+    activity_type: str
+    action: str
+    title: str
+    description: str
+    source_module: str
+    timestamp: datetime
+    timestamp_formatted: Optional[str] = None
+    actor_name: Optional[str] = None
+    actor_role: Optional[str] = None
+    evidence_id: Optional[str] = None
+    report_id: Optional[str] = None
+    status: Optional[str] = None
+    evidence_details: Optional[Dict[str, Any]] = None
+    integrity_details: Optional[Dict[str, Any]] = None
+    metadata_details: Optional[Dict[str, Any]] = None
+    epra_details: Optional[Dict[str, Any]] = None
+    custody_details: Optional[Dict[str, Any]] = None
+    report_details: Optional[Dict[str, Any]] = None
+    relationship_details: Optional[Dict[str, Any]] = None
+    raw_details: Optional[Dict[str, Any]] = None
+
+
+

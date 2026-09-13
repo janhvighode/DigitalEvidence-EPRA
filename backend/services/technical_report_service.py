@@ -128,13 +128,38 @@ class TechnicalReportService:
                 else:
                     pending += 1
 
+        # Fetch report records for this case
+        match_case_ids = [clean_case_id]
+        if num_case_id is not None:
+            c_by_id = db.query(Case).filter(Case.id == num_case_id).first()
+            if c_by_id and c_by_id.case_id:
+                match_case_ids.append(str(c_by_id.case_id))
+        else:
+            c_by_code = db.query(Case).filter(Case.case_id == clean_case_id).first()
+            if c_by_code:
+                match_case_ids.append(str(c_by_code.id))
+        match_case_ids = list(set(match_case_ids))
+
+        reports_query = db.query(ReportRecord).filter(
+            ReportRecord.case_id.in_(match_case_ids),
+            ReportRecord.is_draft == False
+        ).order_by(ReportRecord.generated_at.desc())
+
+        total_reports = reports_query.count()
+        latest_rep = reports_query.first()
+        latest_name = latest_rep.file_name if latest_rep else None
+        latest_dt = latest_rep.generated_at.isoformat() if (latest_rep and latest_rep.generated_at) else None
+
         return {
             "case_id": clean_case_id,
             "total_evidence": total,
             "verified_evidence": verified,
             "tampered_evidence": tampered,
             "pending_evidence": pending,
-            "unknown_evidence": unknown
+            "unknown_evidence": unknown,
+            "total_reports": total_reports,
+            "latest_report_name": latest_name,
+            "latest_generated_at": latest_dt
         }
 
     @staticmethod
