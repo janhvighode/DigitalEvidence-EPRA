@@ -85,6 +85,46 @@ def authorize_cyber_expert_case_access(
     return case
 
 
+def authorize_epra_read_case_access(
+    db: Session,
+    case_identifier: str | int,
+    current_user: User
+) -> Case:
+    """
+    Authorizes read-only access to EPRA outputs:
+    - Cyber Expert (role_id == 3): Assigned to this case (Case.cyber_expert_id == current_user.id)
+    - Investigator (role_id == 2): Assigned to this case (Case.investigator_id == current_user.id)
+    - Prohibits unauthorized roles and cross-case access.
+    """
+    if not current_user:
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required"
+        )
+
+    case = get_case_or_404(db, case_identifier)
+
+    if current_user.role_id == 3:
+        if case.cyber_expert_id != current_user.id:
+            raise HTTPException(
+                status_code=403,
+                detail="Access denied: You are not assigned as Cyber Expert to this case"
+            )
+        return case
+    elif current_user.role_id == 2:
+        if case.investigator_id != current_user.id:
+            raise HTTPException(
+                status_code=403,
+                detail="Access denied: You are not assigned as Investigator to this case"
+            )
+        return case
+    else:
+        raise HTTPException(
+            status_code=403,
+            detail="Access denied: Only assigned Cyber Experts or Investigators can view EPRA results"
+        )
+
+
 def process_case_epra(
     db: Session,
     case: Case,

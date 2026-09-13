@@ -15,6 +15,7 @@ from schemas.epra import (
 )
 from services.epra_service import (
     authorize_cyber_expert_case_access,
+    authorize_epra_read_case_access,
     process_case_epra,
     get_case_epra_summary,
     get_case_ranked_evidence,
@@ -84,7 +85,7 @@ def fetch_case_epra_summary(
     - score_distribution breakdown
     - top 5 ranked evidence items
     """
-    case = authorize_cyber_expert_case_access(db, case_id, current_user)
+    case = authorize_epra_read_case_access(db, case_id, current_user)
     return get_case_epra_summary(db, case)
 
 
@@ -106,7 +107,7 @@ def fetch_case_ranked_evidence(
     """
     Returns the prioritized evidence table for the selected case, sorted strictly by EPRA rank.
     """
-    case = authorize_cyber_expert_case_access(db, case_id, current_user)
+    case = authorize_epra_read_case_access(db, case_id, current_user)
     return get_case_ranked_evidence(
         db=db,
         case=case,
@@ -133,7 +134,7 @@ def fetch_evidence_epra_detail(
     Returns comprehensive forensic detail, risk factors (AR, CI, BI, SI, II),
     IPI, EPRA score, priority, rank, and external integration pending reasons for a single evidence item.
     """
-    case = authorize_cyber_expert_case_access(db, case_id, current_user)
+    case = authorize_epra_read_case_access(db, case_id, current_user)
     return get_evidence_epra_detail(
         db=db,
         case=case,

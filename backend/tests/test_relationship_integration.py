@@ -100,11 +100,22 @@ def setup_in_memory_db():
         email="gunjan@police.gov.in",
         phone_number="9876543212",
         password="hashed_password_123",
-        role_id=2,  # Investigator
+        role_id=2,  # Assigned Investigator
         cyber_cell_id=1,
         is_active=True
     )
-    db.add_all([expert_user, other_expert, investigator_user])
+    unassigned_inv = User(
+        id=304,
+        full_name="Officer Unassigned",
+        username="unassigned_inv",
+        email="unassigned@police.gov.in",
+        phone_number="9876543213",
+        password="hashed_password_123",
+        role_id=2,  # Unassigned Investigator
+        cyber_cell_id=1,
+        is_active=True
+    )
+    db.add_all([expert_user, other_expert, investigator_user, unassigned_inv])
     db.commit()
 
     # Seed Cases
@@ -136,16 +147,28 @@ def test_authorization_controls():
     """Verify role authorization and case scoping."""
     print("Testing Authorization Controls...")
     db, expert_user, other_expert, investigator_user, case_a, case_b = setup_in_memory_db()
+    unassigned_inv = db.query(User).filter(User.id == 304).first()
 
-    # 1. Non-expert user (Investigator) rejected
+    # 1. Unassigned investigator rejected from reading case
     try:
-        get_relationship_graph("CASE-REL-01", db=db, current_user=investigator_user)
-        assert False, "Non-expert should have been forbidden"
+        get_relationship_graph("CASE-REL-01", db=db, current_user=unassigned_inv)
+        assert False, "Unassigned investigator should have been forbidden"
+    except HTTPException as e:
+        assert e.status_code == 403
+
+    # 2. Assigned investigator CAN read relationship graph
+    inv_graph = get_relationship_graph("CASE-REL-01", db=db, current_user=investigator_user)
+    assert inv_graph.status == "Success"
+
+    # 3. Investigator CANNOT create relationship links (mutation forbidden)
+    try:
+        create_evidence_link("CASE-REL-01", CreateLinkRequest(evidence_id="1", suspect_name="Test Suspect"), db=db, current_user=investigator_user)
+        assert False, "Investigator should be forbidden from creating links"
     except HTTPException as e:
         assert e.status_code == 403
         assert "Only Cyber Experts" in e.detail
 
-    # 2. Expert accessing case assigned to another expert rejected
+    # 4. Expert accessing case assigned to another expert rejected
     try:
         get_relationship_graph("CASE-REL-02", db=db, current_user=expert_user)
         assert False, "Unassigned expert should have been forbidden"
@@ -153,7 +176,7 @@ def test_authorization_controls():
         assert e.status_code == 403
         assert "not assigned as the Cyber Expert" in e.detail
 
-    # 3. Non-existent case rejected with 404
+    # 5. Non-existent case rejected with 404
     try:
         get_relationship_graph("CASE-NON-EXISTENT", db=db, current_user=expert_user)
         assert False, "Non-existent case should return 404"

@@ -32,6 +32,7 @@ from models.transfer_record import TransferRecord
 from models.activity_log import ActivityLog
 from models.report_record import ReportRecord
 from models.evidence_link import EvidenceLink
+from models.cbir_result import CBIRResult
 
 # Import routes
 from routes.auth import router as auth_router
@@ -66,6 +67,8 @@ from routes.metadata_routes import router as metadata_router
 from routes.custody_routes import router as custody_router
 from routes.technical_report_routes import router as technical_report_router
 from routes.relationship_routes import relationship_router
+from routes.cbir_routes import cbir_router
+from routes.investigator_dashboard_routes import router as investigator_router
 
 
 app = FastAPI(
@@ -116,6 +119,8 @@ app.include_router(metadata_router)
 app.include_router(custody_router)
 app.include_router(technical_report_router)
 app.include_router(relationship_router)
+app.include_router(cbir_router)
+app.include_router(investigator_router)
 
 @app.get("/")
 def home():

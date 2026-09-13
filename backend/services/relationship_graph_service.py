@@ -51,10 +51,10 @@ class RelationshipGraphService:
     def _verify_case_access(db: Session, case_id: str, current_user: User) -> Case:
         """
         Enforce strict Cyber Expert authentication, role authorization,
-        and assigned-case scoping.
+        and assigned-case scoping for mutation operations (e.g. creating/deleting links).
         """
         if getattr(current_user, "role_id", None) != 3:
-            raise PermissionError("Access denied. Only Cyber Experts can access case relationship graphs.")
+            raise PermissionError("Access denied. Only Cyber Experts can modify case relationship links.")
 
         case = None
         if str(case_id).isdigit():
@@ -70,13 +70,44 @@ class RelationshipGraphService:
 
         return case
 
+    @staticmethod
+    def _verify_case_read_access(db: Session, case_id: str, current_user: User) -> Case:
+        """
+        Enforce role-based read access to relationship graphs:
+        - Cyber Expert (role_id == 3): Must be assigned to this case
+        - Investigator (role_id == 2): Must be assigned to this case
+        """
+        if not current_user:
+            raise PermissionError("Authentication required.")
+
+        case = None
+        if str(case_id).isdigit():
+            case = db.query(Case).filter(Case.id == int(case_id)).first()
+        if not case:
+            case = db.query(Case).filter(Case.case_id == str(case_id)).first()
+
+        if not case:
+            raise FileNotFoundError(f"Case '{case_id}' was not found.")
+
+        role_id = getattr(current_user, "role_id", None)
+        if role_id == 3:
+            if case.cyber_expert_id != current_user.id:
+                raise PermissionError(f"Access denied. You are not assigned as the Cyber Expert for Case '{case.case_id}'.")
+            return case
+        elif role_id == 2:
+            if case.investigator_id != current_user.id:
+                raise PermissionError(f"Access denied. You are not assigned as the Investigator for Case '{case.case_id}'.")
+            return case
+        else:
+            raise PermissionError("Access denied. Only assigned Cyber Experts or Investigators can view case relationship data.")
+
     @classmethod
     def get_relationship_graph(cls, db: Session, case_id: str, current_user: User) -> GraphResponse:
         """
         Dynamically derives the complete relationship graph from genuine database records.
         Zero hardcoded placeholders: all nodes and edges are fetched from TiDB for the selected case.
         """
-        case = cls._verify_case_access(db, case_id, current_user)
+        case = cls._verify_case_read_access(db, case_id, current_user)
         c_id = case.id
 
         # 1. Fetch real Evidence items for this case
@@ -329,7 +360,7 @@ class RelationshipGraphService:
         Returns all verified bitwise duplicate pairs in the case based strictly
         on genuine SHA-256 verification in evidence_hashes.
         """
-        case = cls._verify_case_access(db, case_id, current_user)
+        case = cls._verify_case_read_access(db, case_id, current_user)
         c_id = case.id
 
         evidences = db.query(Evidence).filter(Evidence.case_id == c_id).all()
@@ -429,7 +460,7 @@ class RelationshipGraphService:
     @classmethod
     def list_evidence_links(cls, db: Session, case_id: str, current_user: User) -> List[EvidenceLinkResponse]:
         """Lists all explicit links for the case."""
-        case = cls._verify_case_access(db, case_id, current_user)
+        case = cls._verify_case_read_access(db, case_id, current_user)
         c_id = case.id
 
         links = db.query(EvidenceLink).filter(EvidenceLink.case_id == c_id).all()
@@ -485,7 +516,7 @@ class RelationshipGraphService:
         Executes Trisha's CBIR visual comparison strictly within the selected case.
         Returns truthful match results and forensic disclaimers.
         """
-        case = cls._verify_case_access(db, case_id, current_user)
+        case = cls._verify_case_read_access(db, case_id, current_user)
         c_id = case.id
 
         # Resolve query evidence
