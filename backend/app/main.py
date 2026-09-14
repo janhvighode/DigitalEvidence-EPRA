@@ -70,6 +70,7 @@ from routes.relationship_routes import relationship_router
 from routes.cbir_routes import cbir_router
 from routes.investigator_dashboard_routes import router as investigator_router
 from routes.investigator_analysis_updates_routes import router as investigator_analysis_updates_router
+from routes.admin_system_statistics_routes import router as admin_system_statistics_router
 
 
 app = FastAPI(
@@ -123,6 +124,7 @@ app.include_router(relationship_router)
 app.include_router(cbir_router)
 app.include_router(investigator_router)
 app.include_router(investigator_analysis_updates_router)
+app.include_router(admin_system_statistics_router)
 
 @app.get("/")
 def home():
