@@ -9,6 +9,8 @@ from sqlalchemy import (
 from sqlalchemy.sql import func
 
 from database.database import Base
+import models.cyber_cell  # Ensure ForeignKey target table registration
+import models.user        # Ensure ForeignKey target table registration
 
 
 class Notification(Base):

@@ -13,6 +13,12 @@ def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db)
 ):
+    if not credentials or not credentials.credentials:
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication token is required"
+        )
+
     payload = verify_access_token(credentials.credentials)
 
     if payload is None:

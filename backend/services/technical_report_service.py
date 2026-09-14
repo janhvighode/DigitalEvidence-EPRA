@@ -27,6 +27,7 @@ from models.user import User
 
 from services.timeline_service import TimelineService
 from services.pdf_service import PDFService, DEFAULT_REPORTS_DIR
+from services.notification_service import create_notification
 
 MANIFEST_DIR = DEFAULT_REPORTS_DIR.parent / "hash_manifests"
 MANIFEST_DIR.mkdir(parents=True, exist_ok=True)
@@ -565,6 +566,20 @@ class TechnicalReportService:
             )
             db.add(a_rep)
             db.commit()
+
+            # Event-driven notification for assigned Investigator and Cyber Expert
+            case_obj = db.query(Case).filter((Case.id == case_id) | (Case.case_id == str(case_id))).first()
+            if case_obj:
+                rep_recipients = [uid for uid in [case_obj.investigator_id, case_obj.cyber_expert_id] if uid]
+                for rec_id in rep_recipients:
+                    create_notification(
+                        db=db,
+                        title="Technical Report Generated",
+                        message=f"Forensic report '{report_data['report_type']}' finalized for case {case_obj.case_id} (Ref: #{report_id}).",
+                        notification_type="REPORT_GENERATED",
+                        user_id=rec_id,
+                        cyber_cell_id=None
+                    )
 
         return {
             "status": "success",

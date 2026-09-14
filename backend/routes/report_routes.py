@@ -4,6 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from database.database import get_db
+from models.user import User
+from utils.current_user import get_current_user
 
 from services.report_service import (
     get_completed_reports,
@@ -31,9 +33,10 @@ router = APIRouter(
     response_model=List[ReportListResponse]
 )
 def fetch_reports(
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    return get_completed_reports(db)
+    return get_completed_reports(db, current_user)
 
 
 # ==========================================
@@ -43,9 +46,10 @@ def fetch_reports(
 @router.get("/search")
 def search_report(
     keyword: str,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    return search_reports(db, keyword)
+    return search_reports(db, keyword, current_user)
 
 
 # ==========================================
@@ -58,15 +62,16 @@ def search_report(
 )
 def fetch_report(
     case_id: int,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
 
-    report = get_report_details(db, case_id)
+    report = get_report_details(db, case_id, current_user)
 
     if report is None:
         raise HTTPException(
             status_code=404,
-            detail="Report not found"
+            detail="Report not found or access denied"
         )
 
     return report
@@ -77,9 +82,20 @@ def fetch_report(
 # ==========================================
 
 @router.get("/{case_id}/download")
-def download_report(case_id: int):
+def download_report(
+    case_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    report = get_report_details(db, case_id, current_user)
+
+    if report is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Report not found or access denied"
+        )
 
     return {
         "message": "PDF generation will be integrated after Report Generation module is completed.",
         "case_id": case_id
-    }
+    }

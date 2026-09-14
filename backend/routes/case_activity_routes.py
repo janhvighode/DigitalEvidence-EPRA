@@ -12,8 +12,8 @@ from services.case_activity_service import (
     get_case_board,
     get_case_details,
     assign_investigator,
-    assign_cyber_expert
-    
+    assign_cyber_expert,
+    update_case_status
 )
 
 from services.timeline_read_service import (
@@ -24,8 +24,11 @@ from schemas.case_activity import (
     AssignInvestigatorRequest,
     AssignInvestigatorResponse,
     AssignCyberExpertRequest,
-    AssignCyberExpertResponse
+    AssignCyberExpertResponse,
+    UpdateCaseStatusRequest,
+    UpdateCaseStatusResponse
 )
+
 
 from schemas.timeline import (
     TimelineResponse
@@ -195,3 +198,39 @@ def assign_case_to_cyber_expert(
         )
 
     return result
+
+
+# ==========================================
+# UPDATE CASE STATUS
+# ==========================================
+
+@router.put(
+    "/{case_id}/status",
+    response_model=UpdateCaseStatusResponse
+)
+def change_case_status(
+    case_id: int,
+    data: UpdateCaseStatusRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    result = update_case_status(
+        db=db,
+        case_id=case_id,
+        new_status=data.status,
+        current_user=current_user
+    )
+
+    if result == "INVALID_STATUS":
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid status. Allowed values: Open, In Progress, Under Review, Closed"
+        )
+
+    if result is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Case not found or access denied"
+        )
+
+    return result

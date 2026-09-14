@@ -10,6 +10,7 @@ from models.evidence_hash import EvidenceHash
 from services.hash_service import HashService
 from services.hash_verification_service import HashVerificationService
 from services.timeline_service import create_timeline_event
+from services.notification_service import create_notification
 
 
 def get_case_or_404(db: Session, case_identifier: str | int) -> Case:
@@ -172,6 +173,75 @@ def create_case_evidence(
         performed_by=current_user.id,
         performed_by_role=role_name
     )
+
+    # 6. Event-Driven Notifications
+    # Notify assigned Investigator (if not the uploader)
+    if case.investigator_id and case.investigator_id != current_user.id:
+        create_notification(
+            db=db,
+            title="Evidence Uploaded",
+            message=f"New evidence '{file_data['file_name']}' added to case {case.case_id}.",
+            notification_type="EVIDENCE_UPLOAD",
+            user_id=case.investigator_id,
+            cyber_cell_id=None
+        )
+
+    # Notify assigned Cyber Expert (if not the uploader)
+    if case.cyber_expert_id and case.cyber_expert_id != current_user.id:
+        create_notification(
+            db=db,
+            title="Evidence Uploaded",
+            message=f"New evidence '{file_data['file_name']}' ready for technical analysis in case {case.case_id}.",
+            notification_type="EVIDENCE_UPLOAD",
+            user_id=case.cyber_expert_id,
+            cyber_cell_id=None
+        )
+
+    # Critical Integrity Alert (only if tampering or mismatch detected)
+    is_tampered = (
+        verification.get("tampered") is True
+        or verification.get("hash_match") is False
+        or str(verification.get("integrity_status", "")).upper() in ["TAMPERED", "MISMATCH"]
+    )
+    if is_tampered:
+        tamper_msg = f"CRITICAL: Evidence '{file_data['file_name']}' in case {case.case_id} failed integrity verification (Tampered/Mismatch)."
+        if case.investigator_id:
+            create_notification(
+                db=db,
+                title="Integrity Alert: Tampered Evidence",
+                message=tamper_msg,
+                notification_type="INTEGRITY_ALERT",
+                user_id=case.investigator_id,
+                cyber_cell_id=None
+            )
+        if case.cyber_expert_id:
+            create_notification(
+                db=db,
+                title="Integrity Alert: Tampered Evidence",
+                message=tamper_msg,
+                notification_type="INTEGRITY_ALERT",
+                user_id=case.cyber_expert_id,
+                cyber_cell_id=None
+            )
+        # Notify Branch Admins responsible for this case
+        branch_admins = (
+            db.query(User)
+            .filter(
+                User.role_id == 1,
+                User.cyber_cell_id == current_user.cyber_cell_id,
+                User.is_active == True
+            )
+            .all()
+        )
+        for admin in branch_admins:
+            create_notification(
+                db=db,
+                title="Integrity Alert: Tampered Evidence",
+                message=tamper_msg,
+                notification_type="INTEGRITY_ALERT",
+                user_id=admin.id,
+                cyber_cell_id=None
+            )
 
     return new_evidence, new_hash
 

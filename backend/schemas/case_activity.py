@@ -33,3 +33,15 @@ class AssignCyberExpertResponse(BaseModel):
     case_id: str
     cyber_expert_name: str
 
+
+class UpdateCaseStatusRequest(BaseModel):
+    status: str
+
+
+class UpdateCaseStatusResponse(BaseModel):
+    message: str
+    case_id: str
+    previous_status: str
+    current_status: str
+
+

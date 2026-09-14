@@ -21,6 +21,7 @@ from models.evidence import Evidence
 from models.evidence_hash import EvidenceHash
 from models.epra_result import EPRAResult
 from services.timeline_service import create_timeline_event
+from services.notification_service import create_notification
 
 # Import Janhvi's EPRA v2 engine directly without altering methodology
 from ai_modules.epra_v2.models.evidence import Evidence as JanhviEvidence
@@ -393,6 +394,29 @@ def process_case_epra(
         performed_by=current_user.id,
         performed_by_role="Cyber Expert"
     )
+
+    # Event-Driven Notifications (Investigator and Cyber Expert)
+    has_critical = any(str(r.get("priority", "")).upper() == "CRITICAL" for r in ranked_responses)
+    epra_recipients = [uid for uid in [case.investigator_id, case.cyber_expert_id] if uid]
+
+    for rec_id in epra_recipients:
+        create_notification(
+            db=db,
+            title="EPRA Analysis Completed",
+            message=f"EPRA prioritization completed for case {case.case_id} ({len(ranked_responses)} items prioritized).",
+            notification_type="EPRA_COMPLETE",
+            user_id=rec_id,
+            cyber_cell_id=None
+        )
+        if has_critical:
+            create_notification(
+                db=db,
+                title="Critical Evidence Detected",
+                message=f"Critical priority evidence identified in case {case.case_id} during EPRA analysis.",
+                notification_type="EPRA_CRITICAL_ALERT",
+                user_id=rec_id,
+                cyber_cell_id=None
+            )
 
     summary = calculate_summary_metrics(
         case=case,

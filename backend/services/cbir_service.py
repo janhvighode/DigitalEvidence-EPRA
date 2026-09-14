@@ -19,6 +19,7 @@ from models.evidence import Evidence
 from models.evidence_hash import EvidenceHash
 from models.cbir_result import CBIRResult
 from models.user import User
+from services.notification_service import create_notification
 
 from schemas.cbir import (
     CBIRImageEvidenceItem,
@@ -316,6 +317,30 @@ def run_cbir_comparison(
             )
             db.add(db_record)
         db.commit()
+
+        # Emit event-driven notifications for meaningful matches
+        meaningful_matches = [
+            r for r in raw_results
+            if r.get("classification") in ["Exact Duplicate", "Very Strong Visual Match", "Strong Visual Match"]
+        ]
+        if meaningful_matches:
+            top_match = meaningful_matches[0]
+            case_obj = db.query(Case).filter(Case.id == case_id).first()
+            if case_obj:
+                cbir_recipients = [uid for uid in [case_obj.investigator_id, case_obj.cyber_expert_id] if uid]
+                for rec_id in cbir_recipients:
+                    create_notification(
+                        db=db,
+                        title="CBIR Match Detected",
+                        message=(
+                            f"Significant visual match ({top_match['classification']}, "
+                            f"{round(top_match['visual_similarity_score'] * 100, 1)}%) "
+                            f"detected in case {case_obj.case_id} for evidence '{top_match['query_filename']}'."
+                        ),
+                        notification_type="CBIR_MATCH_ALERT",
+                        user_id=rec_id,
+                        cyber_cell_id=None
+                    )
     except Exception as e:
         db.rollback()
         # Non-blocking persistence failure

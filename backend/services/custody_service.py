@@ -11,6 +11,7 @@ from models.activity_log import ActivityLog
 from models.transfer_record import TransferRecord
 from models.current_custody import CurrentCustodyInfo
 from services.activity_service import ActivityService
+from services.notification_service import create_notification
 
 
 class CustodyService:
@@ -608,6 +609,17 @@ class CustodyService:
 
         db.commit()
         db.refresh(transfer_record)
+
+        # Notify intended recipient if valid user ID is specified
+        if recipient_id and str(recipient_id).isdigit():
+            create_notification(
+                db=db,
+                title="Custody Transfer Pending",
+                message=f"Evidence transfer pending receipt for evidence #{clean_ev_id} (Ref: {transfer_ref}).",
+                notification_type="CUSTODY_TRANSFER",
+                user_id=int(recipient_id),
+                cyber_cell_id=None
+            )
 
         return {
             "transfer_reference": transfer_ref,

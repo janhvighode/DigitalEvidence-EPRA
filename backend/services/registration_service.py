@@ -131,7 +131,7 @@ def create_registration_request(
                 f"New registration request received "
                 f"from {registration.full_name}."
             ),
-            notification_type="registration",
+            notification_type="USER_REGISTRATION",
 
             # Personal notification
             user_id=admin.id,
