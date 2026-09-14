@@ -55,7 +55,8 @@ from models.notification import Notification
 from routes.notification_routes import router as notification_router
 from routes.profile_routes import router as profile_router
 from models.settings import Settings
-from routes.settings_routes import router as settings_router
+from models.user_settings import UserSettings
+from routes.user_settings_routes import router as user_settings_router
 from models.system_statistics import SystemStatistics
 from routes.system_statistics_routes import router as statistics_router
 from routes.cyber_expert_dashboard import router as cyber_expert_dashboard_router
@@ -110,7 +111,7 @@ app.include_router(case_activity_router)
 app.include_router(report_router)
 app.include_router(notification_router)
 app.include_router(profile_router)
-app.include_router(settings_router)
+app.include_router(user_settings_router)
 app.include_router(statistics_router)
 app.include_router(cyber_expert_dashboard_router)
 app.include_router(cyber_expert_cases_router)
