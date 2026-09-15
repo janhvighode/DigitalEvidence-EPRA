@@ -1,5 +1,9 @@
-from typing import List
-from fastapi import HTTPException
+from typing import List, Optional
+import shutil
+import mimetypes
+from pathlib import Path
+from uuid import uuid4
+from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 
@@ -11,6 +15,8 @@ from services.hash_service import HashService
 from services.hash_verification_service import HashVerificationService
 from services.timeline_service import create_timeline_event
 from services.notification_service import create_notification
+from services.storage_service import StorageService, BASE_UPLOAD_DIR
+from utils.zip_security import ZipSecurityValidator, SafeArchiveMember
 
 
 def get_case_or_404(db: Session, case_identifier: str | int) -> Case:
@@ -88,9 +94,10 @@ def authorize_case_access(
     return case
 
 
-def generate_evidence_id(db: Session, case: Case) -> str:
+def generate_evidence_id(db: Session, case: Case, offset: int = 0) -> str:
     """
     Generates human-readable evidence ID (e.g., EV-1024-001).
+    Supports offset for safe sequential batch generation without duplicate IDs.
     """
     case_code = (
         case.case_id
@@ -102,11 +109,24 @@ def generate_evidence_id(db: Session, case: Case) -> str:
     if not case_code:
         case_code = str(case.id)
 
-    count = db.query(Evidence).filter(
-        Evidence.case_id == case.id
-    ).count() + 1
+    existing_eids = [
+        r[0] for r in db.query(Evidence.evidence_id)
+        .filter(Evidence.case_id == case.id)
+        .all()
+    ]
+    max_seq = 0
+    prefix = f"EV-{case_code}-"
+    for eid in existing_eids:
+        if eid and eid.startswith(prefix):
+            suffix = eid[len(prefix):]
+            if suffix.isdigit():
+                max_seq = max(max_seq, int(suffix))
 
-    return f"EV-{case_code}-{count:03d}"
+    if max_seq == 0:
+        max_seq = len(existing_eids)
+
+    next_seq = max_seq + 1 + offset
+    return f"EV-{case_code}-{next_seq:03d}"
 
 
 def create_case_evidence(
@@ -335,3 +355,224 @@ def get_evidence_details(
         "verification_date": h.verified_at,
         "verified_by": verified_by_name
     }
+
+
+async def ingest_zip_evidence_batch(
+    db: Session,
+    case: Case,
+    archive: UploadFile,
+    current_user: User
+) -> dict:
+    """
+    Ingests a ZIP evidence archive for a case:
+    1. Validates Admin role.
+    2. Streams ZIP to staging and checks max archive size (100 MB).
+    3. Calculates container package SHA-256 for audit provenance.
+    4. Securely validates ZIP and extracts leaf files to sandbox via ZipSecurityValidator.
+    5. In an atomic transaction:
+       - Moves files to permanent case storage uploads/evidence/{case.id}/
+       - Computes individual SHA-256 for each file
+       - Creates Evidence and EvidenceHash records
+       - Generates 1 batch timeline event
+       - Dispatches 1 batch notification to assigned Investigator and Cyber Expert
+    6. Commits transaction and cleans up staging sandbox.
+    7. Rolls back DB and cleans up any permanent files copied on failure.
+    """
+    if current_user.role_id != 1:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Administrator access required for batch evidence ingestion"
+        )
+
+    orig_filename = Path(archive.filename or "archive.zip").name
+    if not orig_filename.lower().endswith(".zip"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only .zip archive files are supported for batch evidence ingestion."
+        )
+
+    staging_root = Path("uploads/staging")
+    staging_root.mkdir(parents=True, exist_ok=True)
+    batch_uuid = uuid4().hex
+    staging_zip = staging_root / f"upload_{batch_uuid}_{orig_filename}"
+
+    # Stream upload archive to staging with size enforcement (100 MB)
+    max_archive_bytes = 100 * 1024 * 1024
+    total_uploaded = 0
+    try:
+        with open(staging_zip, "wb") as buffer:
+            while chunk := await archive.read(1024 * 1024):
+                total_uploaded += len(chunk)
+                if total_uploaded > max_archive_bytes:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Archive size exceeds maximum permitted limit of 100 MB."
+                    )
+                buffer.write(chunk)
+    except Exception as e:
+        if staging_zip.exists():
+            try:
+                staging_zip.unlink()
+            except Exception:
+                pass
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to read uploaded archive: {str(e)}"
+        )
+
+    # Calculate Container Package SHA-256 on the uploaded archive
+    archive_hash = HashService.generate_sha256(str(staging_zip))
+    archive_size = staging_zip.stat().st_size
+
+    # Validate and extract members safely into staging sandbox
+    try:
+        extracted_members, staging_dir = ZipSecurityValidator.validate_and_stage_zip(
+            archive_path=staging_zip,
+            staging_root=staging_root
+        )
+    finally:
+        # We can safely delete the uploaded raw zip file once extracted/validated
+        if staging_zip.exists():
+            try:
+                staging_zip.unlink()
+            except Exception:
+                pass
+
+    case_dir = BASE_UPLOAD_DIR / str(case.id)
+    case_dir.mkdir(parents=True, exist_ok=True)
+    permanent_files_copied: List[Path] = []
+
+    try:
+        evidence_batch_items = []
+        db_evidences = []
+
+        for idx, member in enumerate(extracted_members):
+            ext = Path(member.safe_name).suffix
+            unique_name = f"{uuid4().hex}_{member.safe_name}"
+            perm_dest = case_dir / unique_name
+
+            # Copy from staging sandbox to permanent storage
+            shutil.copy2(member.staged_path, perm_dest)
+            permanent_files_copied.append(perm_dest)
+
+            # Compute genuine individual SHA-256
+            file_sha256 = HashService.generate_sha256(str(perm_dest))
+
+            # Categorize file type
+            mime_type, _ = mimetypes.guess_type(member.safe_name)
+            file_category = StorageService._categorize_file_type(mime_type, ext)
+
+            # Generate unique sequential evidence ID
+            ev_id = generate_evidence_id(db, case, offset=idx)
+
+            ev_model = Evidence(
+                evidence_id=ev_id,
+                case_id=case.id,
+                file_name=member.relative_path,
+                file_type=file_category,
+                file_size=member.file_size,
+                file_path=str(perm_dest).replace("\\", "/"),
+                status="Active"
+            )
+            db.add(ev_model)
+            db_evidences.append((ev_model, file_sha256, member))
+
+        # Flush to populate primary keys for EvidenceHash
+        db.flush()
+
+        for ev_model, file_sha256, member in db_evidences:
+            hash_model = EvidenceHash(
+                evidence_id=ev_model.id,
+                file_name=member.relative_path,
+                sha256_hash=file_sha256,
+                current_hash=file_sha256,
+                original_hash=None,
+                hash_match=None,
+                tampered=False,
+                integrity_status="Unknown",
+                verified_at=None,
+                verified_by=None
+            )
+            db.add(hash_model)
+
+            evidence_batch_items.append({
+                "evidence_id": ev_model.evidence_id,
+                "file_name": ev_model.file_name,
+                "file_type": ev_model.file_type,
+                "file_size": ev_model.file_size,
+                "sha256_hash": file_sha256,
+                "current_hash": file_sha256,
+                "integrity_status": "Unknown",
+                "uploaded_on": ev_model.created_at
+            })
+
+        # Single batch timeline event
+        timeline_msg = (
+            f"Batch evidence ingested from ZIP archive '{orig_filename}': "
+            f"{len(extracted_members)} files added. "
+            f"Container SHA-256: {archive_hash}"
+        )
+        create_timeline_event(
+            db=db,
+            case_id=case.id,
+            event=timeline_msg,
+            performed_by=current_user.id,
+            performed_by_role="Administrator"
+        )
+
+        # Single batch notifications (strictly user-specific)
+        if case.investigator_id and case.investigator_id != current_user.id:
+            create_notification(
+                db=db,
+                title="Batch Evidence Uploaded",
+                message=f"{len(extracted_members)} evidence files were added to case {case.case_id} from '{orig_filename}'.",
+                notification_type="EVIDENCE_UPLOAD",
+                user_id=case.investigator_id,
+                cyber_cell_id=None
+            )
+
+        if case.cyber_expert_id and case.cyber_expert_id != current_user.id:
+            create_notification(
+                db=db,
+                title="Batch Evidence Uploaded",
+                message=f"{len(extracted_members)} evidence files in case {case.case_id} are ready for technical analysis.",
+                notification_type="EVIDENCE_UPLOAD",
+                user_id=case.cyber_expert_id,
+                cyber_cell_id=None
+            )
+
+        # Commit entire batch transaction atomically
+        db.commit()
+
+        return {
+            "success": True,
+            "message": f"ZIP archive processed successfully: {len(extracted_members)} evidence files extracted and hashed.",
+            "case_id": case.case_id,
+            "archive_name": orig_filename,
+            "archive_size": archive_size,
+            "archive_hash": archive_hash,
+            "total_files": len(extracted_members),
+            "items": evidence_batch_items
+        }
+
+    except Exception as exc:
+        db.rollback()
+        for p_file in permanent_files_copied:
+            try:
+                if p_file.exists():
+                    p_file.unlink()
+            except Exception:
+                pass
+
+        if isinstance(exc, HTTPException):
+            raise exc
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Batch evidence ingestion failed: {str(exc)}"
+        )
+    finally:
+        ZipSecurityValidator.cleanup_staging(staging_dir)
+

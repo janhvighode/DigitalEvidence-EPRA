@@ -5,6 +5,7 @@ from fastapi import (
     UploadFile,
     File,
     Form,
+    HTTPException,
     status
 )
 from sqlalchemy.orm import Session
@@ -15,7 +16,8 @@ from utils.current_user import get_current_user
 
 from schemas.evidence import (
     EvidenceListItem,
-    EvidenceUploadResponse
+    EvidenceUploadResponse,
+    EvidenceBatchUploadResponse
 )
 from schemas.hash_verification import (
     CaseHashSummaryResponse,
@@ -25,7 +27,8 @@ from services.evidence_service import (
     authorize_case_access,
     create_case_evidence,
     get_case_evidence_list,
-    get_evidence_details
+    get_evidence_details,
+    ingest_zip_evidence_batch
 )
 from services.hash_verification_service import HashVerificationService
 from services.storage_service import StorageService
@@ -143,3 +146,46 @@ async def upload_evidence(
         current_hash=new_hash.current_hash,
         integrity_status=new_hash.integrity_status
     )
+
+
+# ============================================================
+# 5. BATCH EVIDENCE INGESTION (ADMIN ZIP ARCHIVE)
+# ============================================================
+
+@router.post(
+    "/{case_id}/evidence/batch",
+    response_model=EvidenceBatchUploadResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Batch evidence ingestion from a secure ZIP archive (Administrator only)"
+)
+async def upload_evidence_batch(
+    case_id: str,
+    archive: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Authenticated batch evidence ingestion for a selected case:
+    - Enforces Administrator role (role_id == 1) and Cyber Cell branch scoping.
+    - Securely validates archive integrity, Zip Slip, file counts, and compression bombs.
+    - Extracts individual files to isolated case storage.
+    - Computes genuine SHA-256 for EACH extracted member file.
+    - Atomically creates individual Evidence and EvidenceHash records.
+    - Adds 1 batch timeline event and user-scoped batch notifications.
+    - The ZIP container itself does NOT become an evidence item.
+    """
+    if current_user.role_id != 1:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Administrator access required for batch evidence ingestion"
+        )
+
+    case = authorize_case_access(db, case_id, current_user)
+
+    return await ingest_zip_evidence_batch(
+        db=db,
+        case=case,
+        archive=archive,
+        current_user=current_user
+    )
+

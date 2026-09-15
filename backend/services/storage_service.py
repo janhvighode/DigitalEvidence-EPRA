@@ -26,7 +26,11 @@ class StorageService:
                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                 "text/plain",
                 "application/vnd.ms-excel",
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "application/json",
+                "application/xml",
+                "text/xml",
+                "text/csv"
             ]:
                 return "Document"
             elif mime_type in ["application/zip", "application/x-rar-compressed", "application/x-7z-compressed"]:
@@ -35,7 +39,7 @@ class StorageService:
         ext = extension.lower().lstrip(".")
         if ext in ["jpg", "jpeg", "png", "gif", "bmp", "webp"]:
             return "Image"
-        elif ext in ["pdf", "doc", "docx", "txt", "xlsx", "xls", "csv"]:
+        elif ext in ["pdf", "doc", "docx", "txt", "xlsx", "xls", "csv", "log", "json", "xml", "tsv", "eml", "msg"]:
             return "Document"
         elif ext in ["mp4", "avi", "mov", "mkv"]:
             return "Video"
