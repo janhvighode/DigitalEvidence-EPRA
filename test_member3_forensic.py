@@ -1011,6 +1011,93 @@ class TestMember3Forensic(unittest.TestCase):
         self.assertNotIn("SHA Duplicate: No", top_card)
         print("  [PASS] Test 33: Clean investigator node details and UI confirmed with zero raw SHA exposure.")
 
+    # ------------------------------------------------------------
+    # TEST 34 — RELATIONSHIP VIEW TERMINOLOGY: POSSIBLE SUSPECT
+    # ------------------------------------------------------------
+    def test_34_relationship_view_possible_suspect_terminology(self):
+        """
+        Verify that CBIR person candidates are consistently displayed as 'Possible Suspect'
+        in Graph Legend, Node labels, Node Details, badges, filters, and tooltips,
+        while strictly preserving trusted registered case persons as 'Person / Suspect'.
+        """
+        from graph_visualizer import get_graph_legend
+
+        # 1. Graph Legend contains "Possible Suspect" and NOT "Person / Entity"
+        legend_labels = [item["label"] for item in get_graph_legend()]
+        self.assertIn("Case", legend_labels)
+        self.assertIn("Evidence (File)", legend_labels)
+        self.assertIn("Possible Suspect", legend_labels)
+        self.assertIn("Device", legend_labels)
+        self.assertNotIn("Person / Entity", legend_labels)
+
+        # 2. Simulate CBIR visual similarity match with a person candidate
+        cbir_person_rel = [{
+            "source_evidence": "EV_TEST_01",
+            "target_evidence": "CANDIDATE_PERSON_01",
+            "relationship": "Strong Visual Resemblance (Verification Required)",
+            "relationship_type": "CBIR_VISUAL_RELATIONSHIP",
+            "similarity": 0.88,
+            "confidence": 0.88,
+            "category": "persons",
+            "is_person": True,
+            "is_person_candidate": True,
+            "verification_required": True,
+            "investigation_status": "Requires Investigator Review"
+        }]
+
+        g = build_case_relationship_graph(self.case_id, cbir_relationships=cbir_person_rel)
+        serialized = serialize_graph(g, case_id=self.case_id)
+
+        # Locate the CBIR person candidate node
+        cbir_node = next((n for n in serialized["nodes"] if n["id"] == "CANDIDATE_PERSON_01"), None)
+        self.assertIsNotNone(cbir_node, "CANDIDATE_PERSON_01 node must exist in graph")
+
+        # Must display type/badge as 'Possible Suspect'
+        self.assertEqual(cbir_node["display_type"], "Possible Suspect")
+        self.assertEqual(cbir_node["type_badge"], "Possible Suspect")
+        self.assertEqual(cbir_node["badge"], "Possible Suspect")
+        self.assertEqual(cbir_node["type"], "Possible Suspect")
+
+        # Must NOT display as confirmed person/suspect terms
+        for forbidden in ["Person", "Person / Entity", "Suspect", "Confirmed Suspect", "Identified Person"]:
+            self.assertNotEqual(cbir_node["display_type"], forbidden)
+            self.assertNotEqual(cbir_node["badge"], forbidden)
+
+        # Tooltip must reflect analytical status requiring verification
+        self.assertIn("Possible Suspect", cbir_node["tooltip"])
+        self.assertIn("Verification required", cbir_node["tooltip"])
+
+        # 3. Node Details panel for CBIR person candidate
+        from metadata_adapter import MetadataAdapter
+        details = MetadataAdapter.build_clean_node_details("CANDIDATE_PERSON_01", g.nodes["CANDIDATE_PERSON_01"])
+        self.assertEqual(details["entity_category"], "Possible Suspect")
+        self.assertEqual(details["badge"], "Possible Suspect")
+        self.assertEqual(details["role"], "Possible Suspect")
+        self.assertTrue(details["verification_required"])
+
+        # 4. IMPORTANT DISTINCTION: Trusted case data (Rahul Sharma) is NOT relabeled to Possible Suspect
+        trusted_node = next((n for n in serialized["nodes"] if n["id"] == "Rahul Sharma"), None)
+        self.assertIsNotNone(trusted_node, "Rahul Sharma must exist in graph")
+        self.assertEqual(trusted_node["display_type"], "Person / Suspect")
+        self.assertEqual(trusted_node["type_badge"], "Person / Suspect")
+        self.assertNotEqual(trusted_node["display_type"], "Possible Suspect", "Trusted case data must NOT be relabeled to Possible Suspect")
+
+        trusted_details = get_node_details(self.case_id, "Rahul Sharma")
+        self.assertEqual(trusted_details["entity_category"], "Person / Suspect")
+
+        # 5. Graph filters/dropdowns contain 'Possible Suspect'
+        self.assertIn("Possible Suspect", serialized["filter_categories"])
+
+        # 6. Forensic safety: CBIR relationship must remain analytical and require verification
+        cbir_edge = next((e for e in serialized["edges"] if e["target_id"] == "CANDIDATE_PERSON_01" or e["source_id"] == "CANDIDATE_PERSON_01"), None)
+        self.assertIsNotNone(cbir_edge)
+        self.assertEqual(cbir_edge["relationship_type"], "CBIR_VISUAL_RELATIONSHIP")
+        self.assertTrue(cbir_edge["verification_required"])
+        self.assertNotIn("SAME_PERSON", [e["relationship_type"] for e in serialized["edges"]])
+        self.assertNotIn("CONFIRMED_SUSPECT", [e["relationship_type"] for e in serialized["edges"]])
+
+        print("  [PASS] Test 34: Possible Suspect terminology verified across legend, node labels, details, badges, and filters.")
+
 
 if __name__ == "__main__":
     print("\n" + "=" * 70)
@@ -1022,3 +1109,4 @@ if __name__ == "__main__":
 
     if not result.wasSuccessful():
         sys.exit(1)
+

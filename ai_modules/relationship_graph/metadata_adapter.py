@@ -167,13 +167,49 @@ class MetadataAdapter:
                 "case_name": lbl
             }
 
-        # 2. Person / Suspect Node Details (Only standalone person entities, NOT evidence photos)
+        # Check if node represents a person candidate obtained through CBIR visual similarity
+        src_str = str(data.get("source", "")).lower()
+        is_cbir_person = bool(
+            data.get("is_cbir_candidate")
+            or data.get("is_cbir_person")
+            or data.get("is_possible_suspect")
+            or n_type.lower() in ["possible suspect", "cbir person candidate", "person / entity"]
+            or (
+                ("person" in n_type.lower() or "suspect" in n_type.lower() or "entity" in n_type.lower())
+                and "cbir" in src_str
+            )
+        )
+
+        if is_cbir_person:
+            return {
+                "entity_category": "Possible Suspect",
+                "display_type": "Possible Suspect",
+                "type_badge": "Possible Suspect",
+                "badge": "Possible Suspect",
+                "person_id": str(node_id),
+                "name": lbl,
+                "role": "Possible Suspect",
+                "status": "Candidate Only (Verification Required)",
+                "verification_required": True,
+                "investigative_status": "Analytical Candidate — Verification Required",
+                "source": data.get("source", "CBIR Visual Analysis"),
+                "forensic_notice": (
+                    "CBIR visual similarity candidate only. Does NOT establish confirmed identity. "
+                    "Verification required by authorized investigator."
+                ),
+                "case_id": data.get("case_id", "Not Available")
+            }
+
+        # 2. Person / Suspect Node Details (Only standalone person entities from trusted case records)
         if (
             "evidence" not in n_type.lower()
             and ("person" in n_type.lower() or "suspect" in n_type.lower())
         ):
             return {
                 "entity_category": "Person / Suspect",
+                "display_type": "Person / Suspect",
+                "type_badge": "Person / Suspect",
+                "badge": "Person / Suspect",
                 "person_id": str(node_id),
                 "name": lbl,
                 "role": "Person of Interest / Suspect",

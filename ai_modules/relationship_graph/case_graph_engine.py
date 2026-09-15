@@ -362,11 +362,43 @@ def build_case_relationship_graph(case_id, cbir_relationships=None):
             src_str = str(src)
             tgt_str = str(tgt)
 
+            # Check if relationship candidate is a person candidate from CBIR
+            is_person_candidate = bool(
+                rel.get("is_person_candidate")
+                or rel.get("is_possible_suspect")
+                or rel.get("candidate_type") in ["person", "suspect", "possible_suspect"]
+                or rel.get("target_type") in ["person", "suspect", "possible_suspect", "Person", "Suspect", "Possible Suspect", "Person / Entity"]
+                or rel.get("category") in ["persons", "person"]
+            )
+
             # Ensure nodes exist
             if not graph.has_node(src_str):
                 graph.add_node(src_str, type="Evidence", label=src_str)
             if not graph.has_node(tgt_str):
-                graph.add_node(tgt_str, type="Evidence", label=tgt_str)
+                if is_person_candidate:
+                    candidate_details = MetadataAdapter.build_clean_node_details(
+                        tgt_str,
+                        {
+                            "type": "Possible Suspect",
+                            "label": tgt_str,
+                            "case_id": case_id_str,
+                            "source": "CBIR Visual Analysis",
+                            "is_cbir_candidate": True,
+                            "is_cbir_person": True
+                        }
+                    )
+                    graph.add_node(
+                        tgt_str,
+                        type="Possible Suspect",
+                        label=tgt_str,
+                        entity_id=tgt_str,
+                        is_cbir_candidate=True,
+                        is_cbir_person=True,
+                        source="CBIR Visual Analysis",
+                        node_details=candidate_details
+                    )
+                else:
+                    graph.add_node(tgt_str, type="Evidence", label=tgt_str)
 
             is_exact = bool(rel.get("sha256_exact_duplicate") or rel.get("is_exact_hash_match"))
             cbir_rel_type = "EXACT_FILE_DUPLICATE" if is_exact else "CBIR_VISUAL_RELATIONSHIP"
@@ -402,6 +434,43 @@ def build_case_relationship_graph(case_id, cbir_relationships=None):
     return graph
 
 
+def is_cbir_person_candidate(node_id, data, graph=None):
+    """
+    Determine whether a graph node represents a person candidate obtained
+    through CBIR visual similarity.
+    Forensic safety: CBIR-created person-related nodes must be displayed as
+    'Possible Suspect', NEVER as a confirmed suspect or confirmed person.
+    Strictly preserves confirmed/registered persons from trusted case database records.
+    """
+    if not data:
+        return False
+    if data.get("is_cbir_candidate") or data.get("is_cbir_person") or data.get("is_possible_suspect"):
+        return True
+
+    raw_type = str(data.get("type", "")).strip()
+    if raw_type.lower() == "possible suspect":
+        return True
+
+    src = str(data.get("source", "")).lower()
+    src_type = str(data.get("source_type", "")).lower()
+
+    # Generic internal types like PERSON, ENTITY, Person / Entity derived from CBIR
+    if raw_type.upper() in ["PERSON", "ENTITY", "PERSON / ENTITY", "PERSON/ENTITY", "CANDIDATE"]:
+        if "cbir" in src or "cbir" in src_type:
+            return True
+        if graph and graph.has_node(node_id):
+            edge_sources = [
+                str(graph.get_edge_data(node_id, n, {}).get("source", "")).lower()
+                for n in graph.neighbors(node_id)
+            ]
+            has_cbir_edge = any("cbir" in s for s in edge_sources)
+            has_db_edge = any("database" in s or "case registry" in s for s in edge_sources)
+            if has_cbir_edge and not has_db_edge:
+                return True
+
+    return False
+
+
 def serialize_graph(graph, case_id=None):
     """
     Serialize a NetworkX graph into clean machine-readable dictionaries
@@ -413,13 +482,49 @@ def serialize_graph(graph, case_id=None):
     for node_id, data in graph.nodes(data=True):
         img_p = data.get("image_path")
         fn = os.path.basename(img_p) if img_p else data.get("filename")
-        nodes.append({
+        raw_type = data.get("type", "Entity")
+
+        is_cbir_person = is_cbir_person_candidate(node_id, data, graph)
+
+        if is_cbir_person:
+            display_type = "Possible Suspect"
+            type_badge = "Possible Suspect"
+            badge = "Possible Suspect"
+            tooltip = f"Possible Suspect: Visual resemblance candidate from CBIR for {data.get('label', node_id)}. Verification required; does not confirm identity."
+        elif raw_type.lower() in ["case", "case root"]:
+            display_type = "Case"
+            type_badge = "Case"
+            badge = "Case"
+            tooltip = f"Case: {data.get('label', node_id)}"
+        elif "device" in raw_type.lower():
+            display_type = "Device"
+            type_badge = raw_type
+            badge = "Device"
+            tooltip = f"Device: {data.get('label', node_id)}"
+        elif "person" in raw_type.lower() or "suspect" in raw_type.lower():
+            # Trusted case data (Registered in database link)
+            display_type = "Person / Suspect"
+            type_badge = "Person / Suspect"
+            badge = "Person / Suspect"
+            tooltip = f"Person / Suspect: {data.get('label', node_id)} (Registered in case data)"
+        else:
+            display_type = "Evidence (File)" if raw_type == "Evidence" else raw_type
+            type_badge = "Evidence (File)" if raw_type == "Evidence" else raw_type
+            badge = "Evidence"
+            tooltip = f"{raw_type}: {data.get('label', node_id)}"
+
+        node_entry = {
             "id": str(node_id),
             "evidence_id": str(node_id),
             "label": data.get("label", str(node_id)),
             "name": data.get("label", str(node_id)),
-            "type": data.get("type", "Entity"),
-            "evidence_type": data.get("type", "Entity"),
+            "type": "Possible Suspect" if is_cbir_person else raw_type,
+            "display_type": display_type,
+            "type_badge": type_badge,
+            "badge": badge,
+            "tooltip": tooltip,
+            "is_possible_suspect": is_cbir_person,
+            "evidence_type": "Possible Suspect" if is_cbir_person else raw_type,
             "category": data.get("category"),
             "image_path": img_p,
             "filename": fn,
@@ -428,17 +533,31 @@ def serialize_graph(graph, case_id=None):
             "case_id": str(case_id) if case_id else None,
             "metadata": data.get("metadata", {}),
             "node_details": data.get("node_details", {})
-        })
+        }
+
+        # If node_details is present, ensure its terminology matches
+        if is_cbir_person and "node_details" in node_entry and node_entry["node_details"]:
+            node_entry["node_details"] = dict(node_entry["node_details"])
+            node_entry["node_details"]["entity_category"] = "Possible Suspect"
+            node_entry["node_details"]["display_type"] = "Possible Suspect"
+            node_entry["node_details"]["type_badge"] = "Possible Suspect"
+            node_entry["node_details"]["badge"] = "Possible Suspect"
+            node_entry["node_details"]["role"] = "Possible Suspect"
+            node_entry["node_details"]["verification_required"] = True
+
+        nodes.append(node_entry)
 
     for u, v, data in graph.edges(data=True):
+        rel_disp = data.get("relationship", "ASSOCIATED_WITH")
+        conf_val = float(data.get("confidence", 1.0))
         edges.append({
             "source_id": str(u),
             "target_id": str(v),
             "source": str(u),
             "target": str(v),
-            "relationship": data.get("relationship", "ASSOCIATED_WITH"),
+            "relationship": rel_disp,
             "relationship_type": data.get("relationship_type", "ASSOCIATION"),
-            "confidence": float(data.get("confidence", 1.0)),
+            "confidence": conf_val,
             "similarity": data.get("similarity"),
             "source_type": data.get("source", "Case Database Link"),
             "source": data.get("source", "Case Database Link"),
@@ -446,15 +565,41 @@ def serialize_graph(graph, case_id=None):
             "verification_required": bool(data.get("verification_required", True)),
             "investigation_status": data.get("investigative_status", "Candidate"),
             "reason": data.get("reason", f"Relationship {data.get('relationship_type')} between {u} and {v}"),
-            "case_id": data.get("case_id", str(case_id) if case_id else "")
+            "case_id": data.get("case_id", str(case_id) if case_id else ""),
+            "tooltip": f"{rel_disp} (Confidence: {conf_val:.2f})"
         })
+
+    # Standard Graph Legend: Case, Evidence (File), Possible Suspect, Device
+    legend = [
+        {"label": "Case", "type": "Case", "color": "#FFD700"},
+        {"label": "Evidence (File)", "type": "Evidence", "color": "#87CEEB"},
+        {"label": "Possible Suspect", "type": "Possible Suspect", "color": "#FF7F7F", "description": "Candidate associated via CBIR visual similarity (verification required)"},
+        {"label": "Device", "type": "Device", "color": "#DDA0DD"},
+    ]
+    # If trusted confirmed/registered persons exist in this case, include Person / Suspect in legend
+    has_trusted_person = any(
+        ("person" in str(n.get("type", "")).lower() or "suspect" in str(n.get("type", "")).lower())
+        and not n.get("is_possible_suspect")
+        for n in nodes
+    )
+    if has_trusted_person:
+        legend.append({
+            "label": "Person / Suspect",
+            "type": "Person / Suspect",
+            "color": "#FF7F7F",
+            "description": "Confirmed/registered person or suspect entity from case records"
+        })
+
+    filter_categories = [item["label"] for item in legend]
 
     return {
         "nodes": nodes,
         "edges": edges,
         "total_nodes": len(nodes),
         "total_edges": len(edges),
-        "case_id": str(case_id) if case_id else None
+        "case_id": str(case_id) if case_id else None,
+        "legend": legend,
+        "filter_categories": filter_categories
     }
 
 
@@ -472,10 +617,34 @@ def get_node_details(case_id, node_id):
         return {"status": "not_found", "message": f"Node '{nid}' not found in case '{case_id}'"}
 
     data = graph.nodes[nid]
-    if "node_details" in data and data["node_details"]:
-        return data["node_details"]
+    is_cbir = is_cbir_person_candidate(nid, data, graph)
 
-    return MetadataAdapter.build_clean_node_details(nid, data)
+    if "node_details" in data and data["node_details"]:
+        details = dict(data["node_details"])
+        if is_cbir:
+            details["entity_category"] = "Possible Suspect"
+            details["display_type"] = "Possible Suspect"
+            details["type_badge"] = "Possible Suspect"
+            details["badge"] = "Possible Suspect"
+            details["role"] = "Possible Suspect"
+            details["status"] = "Candidate Only (Verification Required)"
+            details["verification_required"] = True
+            details["investigative_status"] = "Candidate Only — Verification Required"
+            details["forensic_notice"] = (
+                "CBIR visual similarity candidate only. Does NOT establish confirmed identity. "
+                "Verification required by authorized investigator."
+            )
+        return details
+
+    details = MetadataAdapter.build_clean_node_details(nid, data)
+    if is_cbir:
+        details["entity_category"] = "Possible Suspect"
+        details["display_type"] = "Possible Suspect"
+        details["type_badge"] = "Possible Suspect"
+        details["badge"] = "Possible Suspect"
+        details["role"] = "Possible Suspect"
+        details["verification_required"] = True
+    return details
 
 
 def find_relationship_path(case_id, source_id, target_id):

@@ -406,6 +406,14 @@ def create_graph_nodes(
                 evidence_id
             )
 
+            is_person = bool(
+                category in ["persons", "person"]
+                or relationship.get("is_person")
+                or relationship.get("is_person_candidate")
+                or relationship.get("is_possible_suspect")
+            )
+            display_badge = "Possible Suspect" if is_person else "Evidence (File)"
+
             nodes.append({
 
                 "evidence_id":
@@ -415,7 +423,19 @@ def create_graph_nodes(
                     category,
 
                 "image":
-                    image
+                    image,
+
+                "display_type":
+                    display_badge,
+
+                "type_badge":
+                    display_badge,
+
+                "badge":
+                    display_badge,
+
+                "is_possible_suspect":
+                    is_person
             })
 
     return nodes

@@ -1,12 +1,14 @@
 import os
 import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
 import networkx as nx
 from graph_builder import build_graph
 
 
 COLOR_MAP = {
     "Case": "#FFD700",                     # Gold
-    "Person / Suspect": "#FF7F7F",         # Light Coral
+    "Possible Suspect": "#FF7F7F",         # Light Coral (CBIR visual similarity candidate)
+    "Person / Suspect": "#FF7F7F",         # Light Coral (Trusted case database record)
     "Suspect": "#FF7F7F",                  # Light Coral
     "Device": "#DDA0DD",                   # Plum
     "Device: Mobile Phone": "#BA55D3",     # Medium Orchid
@@ -18,6 +20,20 @@ COLOR_MAP = {
     "Evidence: Vehicle": "#20B2AA",        # Light Sea Green
     "Evidence": "#87CEEB"                  # Sky Blue
 }
+
+GRAPH_LEGEND = [
+    {"label": "Case", "type": "Case", "color": "#FFD700", "description": "Case root entity"},
+    {"label": "Evidence (File)", "type": "Evidence", "color": "#87CEEB", "description": "Evidence item (Image, Document, Audio, Video, etc.)"},
+    {"label": "Possible Suspect", "type": "Possible Suspect", "color": "#FF7F7F", "description": "Candidate associated via CBIR visual similarity (verification required)"},
+    {"label": "Device", "type": "Device", "color": "#DDA0DD", "description": "Hardware device (Phone, Computer, etc.)"}
+]
+
+
+def get_graph_legend():
+    """
+    Return the standard investigator-facing Graph Legend specification.
+    """
+    return list(GRAPH_LEGEND)
 
 
 def get_node_color(node_type):
@@ -76,9 +92,19 @@ def visualize_graph(case_id=None, save_path=None, show=True):
         lbl = str(data.get("label", n))
         img_p = data.get("image_path")
         fn = os.path.basename(img_p) if img_p else ""
+        src = str(data.get("source", "")).lower()
+
+        is_cbir_person = (
+            "possible suspect" in node_type
+            or data.get("is_cbir_candidate")
+            or data.get("is_cbir_person")
+            or (("person" in node_type or "suspect" in node_type or "entity" in node_type) and "cbir" in src)
+        )
 
         if "case" in node_type:
             clean_labels[n] = f"CASE\n{lbl}"
+        elif is_cbir_person:
+            clean_labels[n] = f"Possible Suspect:\n{lbl}"
         elif "person" in node_type or "suspect" in node_type:
             clean_labels[n] = f"Person:\n{lbl}"
         elif "device" in node_type or "phone" in node_type or "laptop" in node_type or "computer" in node_type:
@@ -114,6 +140,22 @@ def visualize_graph(case_id=None, save_path=None, show=True):
             font_size=7,
             font_color="#333333"
         )
+
+    # Graph Legend: Case, Evidence (File), Possible Suspect, Device
+    legend_elements = [
+        mpatches.Patch(facecolor="#FFD700", edgecolor="#333333", label="Case"),
+        mpatches.Patch(facecolor="#87CEEB", edgecolor="#333333", label="Evidence (File)"),
+        mpatches.Patch(facecolor="#FF7F7F", edgecolor="#333333", label="Possible Suspect"),
+        mpatches.Patch(facecolor="#DDA0DD", edgecolor="#333333", label="Device"),
+    ]
+    plt.legend(
+        handles=legend_elements,
+        loc="upper right",
+        title="Graph Legend",
+        framealpha=0.9,
+        fontsize=8,
+        title_fontsize=9
+    )
 
     title = f"Evidence Relationship Graph ({case_id})" if case_id else "Evidence Relationship Graph"
     plt.title(title, fontsize=14, fontweight="bold")
