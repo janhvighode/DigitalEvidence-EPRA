@@ -87,6 +87,7 @@ def verify_report_read_access(case_id: str | int, current_user: User, db: Sessio
     - Missing/invalid JWT -> 401
     - Role == 3 (Cyber Expert): Must be assigned (Case.cyber_expert_id == current_user.id)
     - Role == 2 (Investigator): Must be assigned (Case.investigator_id == current_user.id)
+    - Role == 1 (Admin): Scoped to their cyber cell
     - Otherwise -> 403 Forbidden
     """
     if not current_user:
@@ -125,11 +126,28 @@ def verify_report_read_access(case_id: str | int, current_user: User, db: Sessio
                 detail=f"You are not assigned as Investigator to Case #{case_id}"
             )
         return case
+    elif current_user.role_id == 1:
+        if current_user.cyber_cell_id is not None:
+            creator = case.creator if hasattr(case, "creator") else None
+            if creator and creator.cyber_cell_id and creator.cyber_cell_id != current_user.cyber_cell_id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"You are not assigned to Case #{case_id}"
+                )
+        return case
     else:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access restricted to assigned Cyber Experts and Investigators only"
         )
+
+
+def verify_case_report_access(case_id: str | int, current_user: User, db: Session) -> Case:
+    """
+    Enforce authorization for generating, previewing, viewing, and downloading reports.
+    Both assigned Investigator and assigned Cyber Expert (and Cell Admin) are authorized.
+    """
+    return verify_report_read_access(case_id, current_user, db)
 
 
 @router.get("/summary", response_model=ReportSummaryResponse)
@@ -160,9 +178,10 @@ def preview_report(
 ):
     """
     Generate an actual draft preview from selected report type, sections, and real case data.
+    Accessible to assigned Cyber Experts, assigned Investigators, and Admins.
     Marked with DRAFT watermark; does NOT register preview as finalized report in database or create custody events.
     """
-    verify_cyber_expert_case_access(case_id, current_user, db)
+    verify_case_report_access(case_id, current_user, db)
     report.case_id = str(case_id)
 
     try:
@@ -179,7 +198,11 @@ def preview_report(
             return FileResponse(
                 path=str(pdf_path),
                 filename=pdf_path.name,
-                media_type="application/pdf"
+                media_type="application/pdf",
+                headers={
+                    "Content-Disposition": f'inline; filename="{pdf_path.name}"',
+                    "Content-Type": "application/pdf"
+                }
             )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
@@ -196,10 +219,11 @@ def generate_report(
 ):
     """
     Generate a final report (PDF or JSON manifest).
+    Accessible to assigned Cyber Experts, assigned Investigators, and Admins.
     Pulls real case evidence records, baseline hashes, and verification statuses without recalculating.
-    Persists an immutable ReportRecord version and creates custody/activity audit logs.
+    Persists an immutable ReportRecord version in MySQL and creates custody/activity audit logs.
     """
-    verify_cyber_expert_case_access(case_id, current_user, db)
+    verify_case_report_access(case_id, current_user, db)
     report = payload or ReportRequest(case_id=str(case_id))
     report.case_id = str(case_id)
 
@@ -232,6 +256,19 @@ def get_report_history(
     """
     verify_report_read_access(case_id, current_user, db)
     return TechnicalReportService.get_report_history(db, str(case_id), page=page, page_size=page_size)
+
+
+@router.get("/view", summary="View Case Report")
+def view_case_report(
+    case_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    View complete structured report data for Case Workspace -> Reports -> View Report.
+    """
+    from services.report_service import get_report_view_data
+    return get_report_view_data(db, str(case_id), current_user)
 
 
 @router.get("/preview/{report_id}")
@@ -273,7 +310,10 @@ def preview_existing_report(
     return FileResponse(
         path=str(target_path),
         filename=target_path.name,
-        media_type=media_type
+        media_type=media_type,
+        headers={
+            "Content-Type": media_type
+        }
     )
 
 
@@ -287,6 +327,7 @@ def download_report_by_id(
     """
     Safely download a generated report by report ID.
     Strictly enforces case scoping and path containment within safe storage directory.
+    Returns genuine application/pdf with proper Content-Disposition attachment header.
     """
     case = verify_report_read_access(case_id, current_user, db)
     clean_id = validate_report_id(report_id)
@@ -303,18 +344,15 @@ def download_report_by_id(
             detail=f"Report #{clean_id} does not belong to Case #{case_id}."
         )
 
-    target_path = Path(record.file_path).resolve()
-    resolved_storage_root = DEFAULT_REPORTS_DIR.parent.resolve()
+    from services.report_service import get_report_pdf_file_path
+    pdf_path, download_filename = get_report_pdf_file_path(db, clean_id, current_user)
 
-    if not target_path.is_relative_to(resolved_storage_root):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied: report outside safe storage.")
-
-    if not target_path.exists() or not target_path.is_file():
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report file not found on disk.")
-
-    media_type = "application/json" if record.file_format == "JSON" else "application/pdf"
     return FileResponse(
-        path=str(target_path),
-        filename=target_path.name,
-        media_type=media_type
+        path=str(pdf_path),
+        filename=download_filename,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{download_filename}"',
+            "Content-Type": "application/pdf"
+        }
     )

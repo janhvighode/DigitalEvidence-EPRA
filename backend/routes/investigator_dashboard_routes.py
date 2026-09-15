@@ -665,4 +665,119 @@ def fetch_case_activity_detail(
     )
 
 
+# ==============================================================================
+# 23. INVESTIGATOR REPORTS MODULE ENDPOINTS
+# ==============================================================================
 
+from schemas.report import (
+    ReportOverviewResponse,
+    ReportTrendItem,
+    ReportTablePage,
+    ReportStructuredViewResponse
+)
+from services.report_service import (
+    get_investigator_reports_overview,
+    get_investigator_reports_trend,
+    get_investigator_reports_table,
+    get_report_view_data,
+    get_report_pdf_file_path
+)
+
+
+@router.get(
+    "/reports/overview",
+    response_model=ReportOverviewResponse,
+    summary="Get Investigator Reports Overview Counts",
+    description="Returns genuine aggregated counts for Total, Ongoing, Completed/Final, Draft, and Not Generated reports."
+)
+def fetch_investigator_reports_overview(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    verify_investigator(current_user)
+    return get_investigator_reports_overview(db, current_user)
+
+
+@router.get(
+    "/reports/trend",
+    response_model=List[ReportTrendItem],
+    summary="Get Investigator Reports Trend Data",
+    description="Returns 6-month monthly report metrics (Reports Generated vs Final Reports) derived from genuine database records."
+)
+def fetch_investigator_reports_trend(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    verify_investigator(current_user)
+    return get_investigator_reports_trend(db, current_user)
+
+
+@router.get(
+    "/reports",
+    response_model=ReportTablePage,
+    summary="Get Investigator Reports Table",
+    description="Returns paginated, searchable, filterable table rows strictly scoped to the authenticated Investigator's assigned cases."
+)
+def fetch_investigator_reports_table(
+    keyword: Optional[str] = None,
+    case_status: Optional[str] = None,
+    report_status: Optional[str] = None,
+    crime_type: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 10,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    verify_investigator(current_user)
+    return get_investigator_reports_table(
+        db=db,
+        current_user=current_user,
+        keyword=keyword,
+        case_status=case_status,
+        report_status=report_status,
+        crime_type=crime_type,
+        date_from=date_from,
+        date_to=date_to,
+        page=page,
+        page_size=page_size
+    )
+
+
+@router.get(
+    "/reports/{report_or_case_id}/view",
+    response_model=ReportStructuredViewResponse,
+    summary="View Investigator Report",
+    description="Returns complete structured report data across all 12+ forensic sections without raw JSON dumps."
+)
+def fetch_investigator_report_view(
+    report_or_case_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    verify_investigator(current_user)
+    return get_report_view_data(db, report_or_case_id, current_user)
+
+
+@router.get(
+    "/reports/{report_or_case_id}/download",
+    summary="Download Investigator Report PDF",
+    description="Downloads the persistent forensic report PDF with proper application/pdf Content-Type."
+)
+def download_investigator_report_pdf(
+    report_or_case_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    verify_investigator(current_user)
+    pdf_path, download_filename = get_report_pdf_file_path(db, report_or_case_id, current_user)
+    return FileResponse(
+        path=str(pdf_path),
+        filename=download_filename,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{download_filename}"',
+            "Content-Type": "application/pdf"
+        }
+    )
