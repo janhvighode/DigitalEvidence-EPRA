@@ -313,8 +313,8 @@ class LiveBackendAdapter(BackendAdapter):
 
                 if h_rec:
                     v_status = h_rec.integrity_status or ("Verified" if h_rec.hash_match else "Tampered")
-                    orig_hash = h_rec.original_hash
-                    curr_hash = h_rec.current_hash
+                    orig_hash = h_rec.original_hash or h_rec.sha256_hash or h_rec.current_hash
+                    curr_hash = h_rec.current_hash or h_rec.sha256_hash or h_rec.original_hash
                     v_time = h_rec.verified_at
                     v_notes = f"Integrity status: {v_status}"
 

@@ -179,6 +179,21 @@ def create_case_evidence(
         verified_by=verification["verified_by"]
     )
     db.add(new_hash)
+    db.flush()
+
+    # 4b. Persist technical metadata record in MySQL
+    try:
+        from services.metadata_service import MetadataService
+        MetadataService.persist_evidence_metadata(
+            db=db,
+            case=case,
+            evidence=new_evidence,
+            evidence_hash=new_hash,
+            current_user=current_user
+        )
+    except Exception as e:
+        print(f"Warning: Metadata persistence for {new_evidence.evidence_id} deferred: {e}")
+
     db.commit()
     db.refresh(new_hash)
 
@@ -496,6 +511,19 @@ async def ingest_zip_evidence_batch(
                 verified_by=None
             )
             db.add(hash_model)
+
+            # Persist technical metadata record in MySQL
+            try:
+                from services.metadata_service import MetadataService
+                MetadataService.persist_evidence_metadata(
+                    db=db,
+                    case=case,
+                    evidence=ev_model,
+                    evidence_hash=hash_model,
+                    current_user=current_user
+                )
+            except Exception as e:
+                print(f"Warning: Metadata persistence for batch {ev_model.evidence_id} deferred: {e}")
 
             evidence_batch_items.append({
                 "evidence_id": ev_model.evidence_id,
