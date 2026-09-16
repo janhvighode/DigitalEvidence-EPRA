@@ -191,7 +191,7 @@ class AdminSystemStatisticsService:
             "PENDING": 0
         }
         for r in latest_results:
-            p = (r.priority or "").upper().strip()
+            p = (r.priority or "").upper().strip().replace("_", " ")
             if p in priority_dist:
                 priority_dist[p] += 1
             elif p:

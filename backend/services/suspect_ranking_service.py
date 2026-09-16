@@ -20,7 +20,12 @@ from models.user import User
 from models.evidence import Evidence
 from models.epra_result import EPRAResult
 from models.possible_entity import PossibleEntity, PossibleEntityEvidenceLink
-from services.epra_service import get_case_or_404, authorize_cyber_expert_case_access, process_case_epra
+from services.epra_service import (
+    get_case_or_404,
+    authorize_cyber_expert_case_access,
+    process_case_epra,
+    normalize_epra_evidence_type,
+)
 from services.timeline_service import create_timeline_event
 from schemas.possible_entity import (
     RankedEntityResponse,
@@ -183,6 +188,11 @@ def process_case_suspect_ranking(
         resolved_path = resolve_evidence_file_path(ev.file_path)
         ext = Path(ev.file_name).suffix.lower()
 
+        canon_type = normalize_epra_evidence_type(
+            filename=ev.file_name,
+            raw_type=ev.file_type
+        )
+
         meta = JanhviMetadata(
             file_name=ev.file_name,
             extension=ext,
@@ -192,10 +202,11 @@ def process_case_suspect_ranking(
             parent_directory=str(Path(resolved_path).parent) if resolved_path else "",
             case_id=str(case.case_id),
             evidence_id=str(ev.evidence_id),
-            evidence_type=ev.file_type,
+            evidence_type=canon_type,
         )
 
         j_ev = JanhviEvidence(metadata=meta)
+        j_ev.metadata.evidence_type = canon_type
         j_ev.epra_score = epra_score_map.get(ev.id, 0.0)
 
         # Attach reference to original DB id for robust relational link creation
@@ -525,7 +536,7 @@ def get_possible_entity_detail(
             LinkedEvidenceSummary(
                 evidence_id=ev.evidence_id,
                 file_name=ev.file_name,
-                file_type=ev.file_type,
+                file_type=normalize_epra_evidence_type(ev.file_type or ev.file_name),
                 epra_score=epra_rec.epra_score if epra_rec else None,
                 priority=epra_rec.priority if epra_rec else None,
             )

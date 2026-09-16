@@ -64,6 +64,7 @@ def get_or_create_test_entities(db):
             phone_number="9876543210",
             password="hashed_pw_test",
             role_id=3,
+            cyber_cell_id=1,
             is_active=True
         )
         db.add(ce_user)
@@ -80,6 +81,7 @@ def get_or_create_test_entities(db):
             phone_number="9876543211",
             password="hashed_pw_test",
             role_id=3,
+            cyber_cell_id=1,
             is_active=True
         )
         db.add(other_ce)
@@ -96,6 +98,7 @@ def get_or_create_test_entities(db):
             phone_number="9876543212",
             password="hashed_pw_test",
             role_id=2,
+            cyber_cell_id=1,
             is_active=True
         )
         db.add(inv_user)

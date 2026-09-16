@@ -211,7 +211,7 @@ class InvestigatorAnalysisUpdatesService:
 
         for ep in epra_records:
             if ep.priority:
-                p_text = ep.priority.strip()
+                p_text = ep.priority.strip().replace("_", " ")
                 p_key = p_text.title()
                 rnk = priority_rank.get(p_key, 90)
                 if rnk < best_rank:
@@ -483,7 +483,7 @@ class InvestigatorAnalysisUpdatesService:
                 attention_reasons.append(f"Evidence integrity compromised ({th.file_name})")
 
         # Condition 2: Critical priority EPRA evidence
-        critical_epra_count = sum(1 for ep in epra_records if str(ep.priority).title() == "Critical")
+        critical_epra_count = sum(1 for ep in epra_records if (ep.priority or "").strip().upper() == "CRITICAL")
         if critical_epra_count > 0:
             attention_reasons.append(
                 f"Critical EPRA evidence identified ({critical_epra_count} item{'s' if critical_epra_count > 1 else ''})"

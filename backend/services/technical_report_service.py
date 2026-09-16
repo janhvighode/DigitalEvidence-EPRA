@@ -28,6 +28,7 @@ from models.user import User
 from services.timeline_service import TimelineService
 from services.pdf_service import PDFService, DEFAULT_REPORTS_DIR
 from services.notification_service import create_notification
+from services.epra_service import normalize_epra_evidence_type
 
 MANIFEST_DIR = DEFAULT_REPORTS_DIR.parent / "hash_manifests"
 MANIFEST_DIR.mkdir(parents=True, exist_ok=True)
@@ -163,8 +164,9 @@ class TechnicalReportService:
             "latest_generated_at": latest_dt
         }
 
-    @staticmethod
-    def assemble_report_data(
+    @classmethod
+    def build_report_data(
+        cls,
         report: ReportRequest,
         db: Session,
         current_user: Optional[User] = None,
@@ -172,8 +174,7 @@ class TechnicalReportService:
     ) -> Dict[str, Any]:
         """
         Synthesizes genuine case records, resolves selected sections,
-        reads existing hashes/verification outcomes without recalculation, and generates report.
-        If is_draft=True, does NOT persist to database or create custody/audit events.
+        reads existing hashes/verification outcomes without recalculation, and generates report payload.
         """
         report_id = str(uuid4())
         now_utc = datetime.now(timezone.utc)
@@ -245,12 +246,17 @@ class TechnicalReportService:
 
             f_size = ev.file_size or (er.file_size_bytes if er else 0) or 0
             up_time = ev.created_at or (er.uploaded_at if er else None)
+            canon_type = normalize_epra_evidence_type(
+                filename=ev.file_name or (er.original_filename if er else None),
+                mime_type=er.mime_type if er else None,
+                raw_type=ev.file_type or (er.evidence_type if er else None)
+            )
 
             evidence_records_data.append({
                 "evidence_id": ev_str_id,
                 "case_id": case_id,
                 "original_filename": ev.file_name or (er.original_filename if er else "unknown"),
-                "file_type": ev.file_type or (er.evidence_type if er else "FILE"),
+                "file_type": canon_type,
                 "file_size_bytes": f_size,
                 "file_size_formatted": format_bytes(f_size),
                 "uploaded_at": up_time.isoformat() if up_time else None,
@@ -398,15 +404,28 @@ class TechnicalReportService:
             for erow in epra_rows:
                 ev_match = db.query(Evidence).filter(Evidence.id == erow.evidence_id).first()
                 ev_label = (ev_match.evidence_id if ev_match and ev_match.evidence_id else str(erow.evidence_id))
+                ev_type = normalize_epra_evidence_type(
+                    filename=ev_match.file_name if ev_match else None,
+                    mime_type=ev_match.file_type if ev_match else None
+                )
                 if not clean_ev_ids or ev_label in clean_ev_ids or str(erow.evidence_id) in clean_ev_ids:
                     epra_analysis.append({
                         "evidence_id": ev_label,
+                        "evidence_type": ev_type,
                         "priority_rank": erow.rank,
                         "rank": erow.rank,
                         "priority_score": erow.epra_score,
                         "epra_score": erow.epra_score,
+                        "ipi": erow.ipi,
                         "status": erow.analysis_status or "MEASURED",
                         "priority": erow.priority,
+                        "authenticity_risk": erow.authenticity_risk,
+                        "context_intelligence": erow.context_intelligence,
+                        "behaviour_intelligence": erow.behaviour_intelligence,
+                        "semantic_intelligence": erow.semantic_intelligence,
+                        "investigative_intelligence": erow.investigative_intelligence,
+                        "semantic_status": erow.semantic_status,
+                        "pending_external_inputs": erow.pending_external_inputs or [],
                         "provenance_source": "EPRA Prioritization Model v2",
                         "notes": f"IPI: {erow.ipi:.4f}, Priority: {erow.priority}" if erow.ipi is not None else f"Priority: {erow.priority}"
                     })
@@ -436,6 +455,34 @@ class TechnicalReportService:
             "recommendations_text": report.recommendations_text,
             "is_draft": is_draft
         }
+        return report_data
+
+    @classmethod
+    def assemble_report_data(
+        cls,
+        report: ReportRequest,
+        db: Session,
+        current_user: Optional[User] = None,
+        is_draft: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Builds the report payload, persists artifacts/records to database (when not draft),
+        creates custody/audit events, and renders PDF or JSON Hash Manifest.
+        """
+        report_data = cls.build_report_data(report=report, db=db, current_user=current_user, is_draft=is_draft)
+        report_id = report_data["report_id"]
+        now_utc = datetime.now(timezone.utc)
+        case_id = report_data["case_id"]
+        effective_title = report_data["case_title"]
+        effective_crime = report_data["crime_type"]
+        effective_dept = report_data["department"]
+        author_name = report_data["investigator_name"]
+        author_id = report_data["investigator_id"]
+        author_role = report_data["investigator_role"]
+        active_sections = report_data["selected_sections"]
+        evidence_records_data = report_data["evidence_records"]
+        evidence_summary = report_data["evidence_summary"]
+        total_ev = report_data["evidence_count"]
 
         # Handle Report Type: JSON Hash Manifest
         if report.report_type == ReportType.HASH_MANIFEST:
@@ -672,3 +719,22 @@ class TechnicalReportService:
             "total_pages": total_pages,
             "reports": items
         }
+
+    @classmethod
+    def generate_case_report_data(
+        cls,
+        db: Session,
+        case_id: str,
+        current_user: Optional[User] = None,
+        report_type: ReportType = ReportType.COMPREHENSIVE,
+        is_draft: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Generate technical report dictionary data directly for a given case.
+        """
+        clean_case_id = str(case_id).strip()
+        req = ReportRequest(
+            case_id=clean_case_id,
+            report_type=report_type
+        )
+        return cls.build_report_data(report=req, db=db, current_user=current_user, is_draft=is_draft)

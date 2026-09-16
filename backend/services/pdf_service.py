@@ -488,10 +488,13 @@ class PDFService:
                 for res in epra_results:
                     ev_id = res.get("evidence_id", "N/A")
                     rank = str(res.get("priority_rank") or res.get("rank") or "N/A")
-                    score = f"{res.get('priority_score', res.get('epra_score', 0)):.2f}" if (res.get("priority_score") is not None or res.get("epra_score") is not None) else "N/A"
+                    score_val = res.get("priority_score")
+                    if score_val is None:
+                        score_val = res.get("epra_score")
+                    score = f"{score_val:.2f}" if score_val is not None else "N/A"
                     status = res.get("status") or res.get("analysis_status", "PENDING")
                     prov = res.get("provenance_source") or "EPRA Model v2"
-                    notes = res.get("notes") or res.get("missing_input_reason") or f"Priority: {res.get('priority', 'N/A')}"
+                    notes = res.get("notes") or res.get("missing_input_reason") or f"Priority: {str(res.get('priority', 'N/A')).replace('_', ' ')}"
 
                     epra_rows.append([
                         Paragraph(cls._safe_text(ev_id), body_style),

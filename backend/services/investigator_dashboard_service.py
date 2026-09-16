@@ -21,6 +21,7 @@ from models.cbir_result import CBIRResult
 from models.evidence_link import EvidenceLink
 from models.current_custody import CurrentCustodyInfo
 from services.timeline_service import TimelineService
+from services.epra_service import normalize_epra_evidence_type
 
 from schemas.investigator_dashboard import (
     InvestigatorDashboardStats,
@@ -1263,7 +1264,7 @@ def get_investigator_analysis_evidence_repository(
                 id=ev.id,
                 evidence_id=ev.evidence_id,
                 file_name=ev.file_name,
-                file_type=ev.file_type,
+                file_type=normalize_epra_evidence_type(ev.file_type or ev.file_name),
                 analysis_status=status_val,
                 priority=prio,
                 epra_score=score,
@@ -1371,7 +1372,7 @@ def get_investigator_pending_analysis(
                 id=ev.id,
                 evidence_id=ev.evidence_id,
                 file_name=ev.file_name,
-                file_type=ev.file_type,
+                file_type=normalize_epra_evidence_type(ev.file_type or ev.file_name),
                 analysis_status=st,
                 pending_inputs=p_inputs,
                 last_updated=dt
@@ -1425,7 +1426,7 @@ def get_investigator_single_analysis_detail(
         return InvestigatorAnalysisDetailResponse(
             evidence_id=evidence.evidence_id,
             file_name=evidence.file_name,
-            evidence_type=evidence.file_type,
+            evidence_type=normalize_epra_evidence_type(evidence.file_type or evidence.file_name),
             file_size=evidence.file_size,
             analysis_status="Pending",
             semantic_status="PENDING",
@@ -1447,7 +1448,7 @@ def get_investigator_single_analysis_detail(
     return InvestigatorAnalysisDetailResponse(
         evidence_id=evidence.evidence_id,
         file_name=evidence.file_name,
-        evidence_type=evidence.file_type,
+        evidence_type=normalize_epra_evidence_type(evidence.file_type or evidence.file_name),
         file_size=evidence.file_size,
         analysis_status=epra.analysis_status or "COMPLETE",
         semantic_status=epra.semantic_status,
