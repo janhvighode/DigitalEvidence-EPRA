@@ -224,7 +224,7 @@ class RelationshipGraphService:
             pe_node = f"suspect_{el.entity_id}"
             pe = entity_map.get(el.entity_id)
             if ev_node in nodes_dict and pe_node in nodes_dict:
-                edge_pair = tuple(sorted([ev_node, pe_node]))
+                edge_pair = (min(ev_node, pe_node), max(ev_node, pe_node), "EVIDENCE_SUSPECT_LINK")
                 if edge_pair not in seen_edges:
                     seen_edges.add(edge_pair)
                     edge_id = f"edge_suspect_{el.id}"
@@ -263,7 +263,7 @@ class RelationshipGraphService:
                     device_node_ids.add(dev_node_id)
                     G.add_node(dev_node_id, **d_node.dict())
 
-                edge_pair = tuple(sorted([ev_node, dev_node_id]))
+                edge_pair = (min(ev_node, dev_node_id), max(ev_node, dev_node_id), "EVIDENCE_DEVICE_LINK")
                 if edge_pair not in seen_edges:
                     seen_edges.add(edge_pair)
                     edge_id = f"edge_dev_{cl.id}"
@@ -293,7 +293,8 @@ class RelationshipGraphService:
                     nodes_dict[susp_node_id] = s_node
                     G.add_node(susp_node_id, **s_node.dict())
 
-                edge_pair = tuple(sorted([ev_node, susp_node_id]))
+                custom_rel_type = cl.relationship_type or "MANUAL_LINK"
+                edge_pair = (min(ev_node, susp_node_id), max(ev_node, susp_node_id), custom_rel_type)
                 if edge_pair not in seen_edges:
                     seen_edges.add(edge_pair)
                     edge_id = f"edge_custom_susp_{cl.id}"
@@ -302,7 +303,7 @@ class RelationshipGraphService:
                         source=ev_node,
                         target=susp_node_id,
                         label=cl.relationship_type or "Investigative Link",
-                        relationship_type="MANUAL_LINK",
+                        relationship_type=custom_rel_type,
                         properties={"link_id": cl.id, "notes": cl.notes}
                     )
                     edges_list.append(e)
@@ -324,7 +325,7 @@ class RelationshipGraphService:
                         ev1_node = f"ev_{h1.evidence_id}"
                         ev2_node = f"ev_{h2.evidence_id}"
                         if ev1_node in nodes_dict and ev2_node in nodes_dict:
-                            edge_pair = tuple(sorted([ev1_node, ev2_node]))
+                            edge_pair = (min(ev1_node, ev2_node), max(ev1_node, ev2_node), "EXACT_FILE_DUPLICATE")
                             if edge_pair not in seen_edges:
                                 seen_edges.add(edge_pair)
                                 duplicate_pairs_count += 1
@@ -334,7 +335,7 @@ class RelationshipGraphService:
                                     source=ev1_node,
                                     target=ev2_node,
                                     label="Exact Duplicate (SHA-256 Match)",
-                                    relationship_type="EXACT_DUPLICATE",
+                                    relationship_type="EXACT_FILE_DUPLICATE",
                                     similarity=1.0,
                                     confidence="1.0",
                                     investigative_status="Verified Bitwise Duplicate",
@@ -358,7 +359,7 @@ class RelationshipGraphService:
             ev1_node = f"ev_{row.query_evidence_id}"
             ev2_node = f"ev_{row.candidate_evidence_id}"
             if ev1_node in nodes_dict and ev2_node in nodes_dict:
-                edge_pair = tuple(sorted([ev1_node, ev2_node]))
+                edge_pair = (min(ev1_node, ev2_node), max(ev1_node, ev2_node), "CBIR_VISUAL_RELATIONSHIP")
                 if edge_pair not in seen_edges:
                     seen_edges.add(edge_pair)
                     cbir_matches_count += 1
@@ -368,7 +369,7 @@ class RelationshipGraphService:
                         source=ev1_node,
                         target=ev2_node,
                         label=f"Visual Similarity ({row.classification})",
-                        relationship_type="CBIR_VISUAL_SIMILARITY",
+                        relationship_type="CBIR_VISUAL_RELATIONSHIP",
                         similarity=row.visual_similarity_score,
                         confidence=row.confidence_level,
                         investigative_status=row.recommendation,
@@ -734,3 +735,74 @@ class RelationshipGraphService:
                 "Investigator verification is required."
             )
         )
+
+    @classmethod
+    def find_relationship_path(
+        cls,
+        db: Session,
+        case_id: str,
+        source_id: str,
+        target_id: str,
+        current_user: User
+    ) -> Dict[str, Any]:
+        """
+        Find shortest forensic relationship path between two nodes in the case graph.
+        """
+        graph_resp = cls.get_relationship_graph(db, case_id, current_user)
+        G = nx.Graph()
+        for n in graph_resp.nodes:
+            G.add_node(n.id, label=n.label, node_type=n.node_type)
+        for e in graph_resp.edges:
+            G.add_edge(e.source, e.target, relationship_type=e.relationship_type, label=e.label, confidence=e.confidence)
+
+        s_node = None
+        t_node = None
+        for n in graph_resp.nodes:
+            props = n.properties or {}
+            if n.id == source_id or str(props.get("numeric_id")) == str(source_id) or str(props.get("evidence_id")) == str(source_id) or n.label == source_id:
+                s_node = n.id
+            if n.id == target_id or str(props.get("numeric_id")) == str(target_id) or str(props.get("evidence_id")) == str(target_id) or n.label == target_id:
+                t_node = n.id
+
+        if not s_node or not t_node:
+            return {
+                "case_id": case_id,
+                "path_found": False,
+                "message": f"Source '{source_id}' or target '{target_id}' not found in case graph.",
+                "path": [],
+                "hop_count": 0,
+                "edges": []
+            }
+
+        if not nx.has_path(G, s_node, t_node):
+            return {
+                "case_id": case_id,
+                "path_found": False,
+                "message": f"No relationship path connects '{source_id}' and '{target_id}'.",
+                "path": [],
+                "hop_count": 0,
+                "edges": []
+            }
+
+        path_nodes = nx.shortest_path(G, s_node, t_node)
+        path_edges = []
+        for i in range(len(path_nodes) - 1):
+            u, v = path_nodes[i], path_nodes[i+1]
+            e_data = G.get_edge_data(u, v)
+            path_edges.append({
+                "source": u,
+                "target": v,
+                "relationship_type": e_data.get("relationship_type"),
+                "label": e_data.get("label"),
+                "confidence": e_data.get("confidence")
+            })
+
+        return {
+            "case_id": case_id,
+            "path_found": True,
+            "message": f"Relationship path identified ({len(path_nodes) - 1} hops).",
+            "path": path_nodes,
+            "hop_count": len(path_nodes) - 1,
+            "edges": path_edges
+        }
+

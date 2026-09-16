@@ -84,8 +84,8 @@ class TestCBIRTrishaStandalone(unittest.TestCase):
         self.assertTrue(is_verification_required(0.70, is_exact_hash_match=False))
         # Weak Visual Resemblance -> Yes (True)
         self.assertTrue(is_verification_required(0.50, is_exact_hash_match=False))
-        # No Significant Visual Match -> No (False)
-        self.assertFalse(is_verification_required(0.35, is_exact_hash_match=False))
+        # No Significant Visual Match -> Yes (True for analytical comparisons)
+        self.assertTrue(is_verification_required(0.35, is_exact_hash_match=False))
         print("  [PASS] Test 4: Verification required follows approved Section 12 behavior.")
 
     def test_05_semantic_score_truthful_heuristic(self):

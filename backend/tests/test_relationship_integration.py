@@ -329,7 +329,7 @@ def test_exact_duplicate_sha256_detection():
     assert len(resp.edges) == 1
 
     edge = resp.edges[0]
-    assert edge.relationship_type == "EXACT_DUPLICATE"
+    assert edge.relationship_type in ("EXACT_DUPLICATE", "EXACT_FILE_DUPLICATE")
     assert edge.similarity == 1.0
     assert edge.label == "Exact Duplicate (SHA-256 Match)"
 

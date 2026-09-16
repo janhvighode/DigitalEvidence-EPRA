@@ -20,16 +20,28 @@ class CBIRImagesListResponse(BaseModel):
 
 
 class CBIRCompareRequest(BaseModel):
-    """CBIR Comparison Request."""
-    query_evidence_id: int = Field(..., description="Numeric primary key (id) of the query evidence in evidences table")
-    classification: Optional[str] = Field(default=None, description="Optional classification filter (e.g. All, Exact Duplicate, Very Strong Visual Match, Strong Visual Match, Possible Visual Resemblance, Weak Visual Resemblance, No Significant Visual Match)")
+    """
+    Robust CBIR Comparison Request Schema.
+    Accepts case_id and query_evidence_id, while also accepting common
+    aliases such as evidence_id or image_id to prevent HTTP 422 errors.
+    """
+    case_id: Optional[Any] = Field(None, description="Case identifier")
+    query_evidence_id: Optional[Any] = Field(None, description="Query evidence ID or numeric ID")
+    evidence_id: Optional[Any] = Field(None, description="Alias for query_evidence_id")
+    image_id: Optional[Any] = Field(None, description="Alias for query_evidence_id")
+    classification: Optional[str] = Field(default=None, description="Optional classification filter")
     min_visual_similarity: Optional[float] = Field(default=0.0, ge=0.0, le=1.0, description="Minimum visual similarity threshold (0.0 to 1.0)")
     top_k: Optional[int] = Field(default=50, ge=1, le=100, description="Maximum number of candidate matches to return")
+
+    @property
+    def resolved_query_evidence_id(self) -> Optional[str]:
+        val = self.query_evidence_id or self.evidence_id or self.image_id
+        return str(val).strip() if val is not None else None
 
 
 class CBIRCandidateResult(BaseModel):
     """Full candidate result item matching approved 18-column/field design."""
-    case_id: int
+    case_id: Any
     query_evidence_id: str
     query_filename: str
     candidate_evidence_id: str
@@ -42,9 +54,11 @@ class CBIRCandidateResult(BaseModel):
     semantic_score: float
     sha256_exact_duplicate: bool
     classification: str
-    confidence: str
+    confidence: Optional[str] = None
+    confidence_level: Optional[str] = None
     verification_required: bool
-    recommendation: str
+    recommendation: Optional[str] = None
+    investigation_recommendation: Optional[str] = None
     reason: str
     rank: int
 
@@ -59,12 +73,19 @@ class CBIRSearchSummary(BaseModel):
 
 class CBIRCompareResponse(BaseModel):
     """Response returned when CBIR comparison finishes."""
-    case_id: int
+    status: Optional[str] = "Success"
+    message: Optional[str] = None
+    case_id: Any
     query_evidence_id: str
     query_filename: str
-    summary: CBIRSearchSummary
+    total_case_evidence: Optional[int] = 0
+    eligible_image_count: Optional[int] = 0
+    candidates_compared: Optional[int] = 0
+    summary: Optional[CBIRSearchSummary] = None
     results: List[CBIRCandidateResult]
-    forensic_disclaimer: str
+    cards: Optional[List[Dict[str, Any]]] = []
+    forensic_disclaimer: Optional[str] = None
+    forensic_notice: Optional[str] = None
 
 
 class CBIRCandidateDetailResponse(BaseModel):
@@ -72,3 +93,33 @@ class CBIRCandidateDetailResponse(BaseModel):
     candidate: CBIRCandidateResult
     signals: Dict[str, Any]
     forensic_notice: str
+
+
+class CBIRCaseEligibleImagesResponse(BaseModel):
+    """List of eligible image evidence items in a case available for CBIR comparison."""
+    case_id: str
+    total_case_evidence: int
+    eligible_image_count: int
+    eligible_images: List[Dict[str, Any]]
+
+
+class CaseSearchRequest(BaseModel):
+    """Case evidence search request."""
+    query_text: str = Field(..., description="Search query string")
+    case_id: Optional[str] = Field(None, description="Case ID if not in path")
+    top_k: Optional[int] = Field(10, description="Max results")
+    search_mode: Optional[str] = Field("text", description="Search mode: 'text', 'context', or 'all'")
+    max_hops: Optional[int] = Field(2, description="Max hops for graph context traversal")
+
+
+class CaseSearchResponse(BaseModel):
+    """Structured case evidence search response."""
+    status: str
+    message: Optional[str] = None
+    case_id: Optional[str] = None
+    search_query: str
+    search_box_label: Optional[str] = "Search evidence in this case..."
+    results_count: int
+    results: List[Dict[str, Any]]
+    ranked_evidence: Optional[List[Dict[str, Any]]] = []
+    forensic_notice: Optional[str] = None
