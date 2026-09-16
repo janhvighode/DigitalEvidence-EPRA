@@ -180,11 +180,18 @@ def search_context_evidence(case_id, query_text, max_hops=2, top_k=10):
             "hops": 0,
             "node_path": [aid],
             "relationship_path": f"{anc['label']} (Anchor)",
+            "matched_field": "direct_entity_match",
+            "matched_value": f"{anc['label']} ({anc['type']})",
+            "snippet": f"{anc['label']} ({anc['type']})",
             "context_relevance_score": 1.0,
+            "relevance_score": 1.0,
+            "relevance_score_display": "100.0%",
             "semantic_score": 1.0,
+            "confidence": "High",
             "confidence_level": "High",
             "investigation_recommendation": "KEEP_FOR_INVESTIGATION",
             "verification_required": True,
+            "relationship_view_available": True,
             "reason": f"Directly matched search query '{query_str}' in actual stored {anc['type']} metadata."
         }
 
@@ -263,10 +270,17 @@ def search_context_evidence(case_id, query_text, max_hops=2, top_k=10):
                         "hops": hop_count,
                         "node_path": node_path,
                         "relationship_path": rel_path_str,
+                        "matched_field": f"context: {match_type.lower()}",
+                        "matched_value": rel_path_str,
+                        "snippet": rel_path_str,
                         "context_relevance_score": rel_score,
+                        "relevance_score": rel_score,
+                        "relevance_score_display": f"{rel_score * 100:.1f}%",
                         "semantic_score": round(rel_score, 2),
+                        "confidence": conf_level,
                         "confidence_level": conf_level,
                         "investigation_recommendation": inv_rec,
+                        "relationship_view_available": True,
                         "reason": reason
                     })
             else:
@@ -286,11 +300,18 @@ def search_context_evidence(case_id, query_text, max_hops=2, top_k=10):
                     "hops": hop_count,
                     "node_path": node_path,
                     "relationship_path": rel_path_str,
+                    "matched_field": f"context: {match_type.lower()}",
+                    "matched_value": rel_path_str,
+                    "snippet": rel_path_str,
                     "context_relevance_score": rel_score,
+                    "relevance_score": rel_score,
+                    "relevance_score_display": f"{rel_score * 100:.1f}%",
                     "semantic_score": round(rel_score, 2),
+                    "confidence": conf_level,
                     "confidence_level": conf_level,
                     "investigation_recommendation": inv_rec,
                     "verification_required": True,
+                    "relationship_view_available": True,
                     "reason": reason
                 }
 

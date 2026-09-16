@@ -72,7 +72,42 @@ def classify_evidence_type(category):
     return f"Evidence: {category.capitalize()}"
 
 
-def build_case_relationship_graph(case_id, cbir_relationships=None):
+def add_qualified_edge(graph, u, v, edge_data):
+    """
+    Safely add a relationship edge between u and v:
+    - Deduplicates identical relationships (same u, v, relationship_type).
+    - Preserves legitimately different relationship types between the same nodes
+      in edge['parallel_relationships'].
+    """
+    u_str = str(u)
+    v_str = str(v)
+    if u_str == v_str:
+        return
+
+    rel_type = edge_data.get("relationship_type", edge_data.get("relationship", "ASSOCIATED_WITH"))
+    edge_dict = dict(edge_data)
+
+    if graph.has_edge(u_str, v_str):
+        existing = graph.get_edge_data(u_str, v_str)
+        existing_type = existing.get("relationship_type", existing.get("relationship"))
+        if existing_type == rel_type:
+            # Identical relationship type: update if higher confidence
+            if float(edge_dict.get("confidence", 0.0)) > float(existing.get("confidence", 0.0)):
+                existing.update(edge_dict)
+            return
+
+        # Parallel relationship between same nodes
+        if "parallel_relationships" not in existing:
+            first_rel = dict(existing)
+            existing["parallel_relationships"] = [first_rel]
+
+        if not any(pr.get("relationship_type") == rel_type for pr in existing["parallel_relationships"]):
+            existing["parallel_relationships"].append(edge_dict)
+    else:
+        graph.add_edge(u_str, v_str, **edge_dict)
+
+
+def build_case_relationship_graph(case_id, cbir_relationships=None, duplicate_relationships=None, **kwargs):
     """
     Construct a complete NetworkX relationship graph for the selected case.
 
@@ -153,17 +188,20 @@ def build_case_relationship_graph(case_id, cbir_relationships=None):
         )
 
         # Connect Evidence -> Case
-        graph.add_edge(
+        add_qualified_edge(
+            graph,
             ev_id,
             case_id_str,
-            relationship="BELONGS_TO_CASE",
-            relationship_type="BELONGS_TO_CASE",
-            confidence=1.0,
-            source="Case Registry",
-            status="Confirmed Case Evidence",
-            verification_required=False,
-            investigative_status="Confirmed Case Evidence",
-            case_id=case_id_str
+            {
+                "relationship": "BELONGS_TO_CASE",
+                "relationship_type": "BELONGS_TO_CASE",
+                "confidence": 1.0,
+                "source": "Case Registry",
+                "status": "Confirmed Case Evidence",
+                "verification_required": False,
+                "investigative_status": "Confirmed Case Evidence",
+                "case_id": case_id_str
+            }
         )
 
     # 3. Fetch evidence links from relationship database
@@ -209,17 +247,20 @@ def build_case_relationship_graph(case_id, cbir_relationships=None):
                 metadata=meta,
                 node_details=node_details
             )
-            graph.add_edge(
+            add_qualified_edge(
+                graph,
                 ev_id,
                 case_id_str,
-                relationship="BELONGS_TO_CASE",
-                relationship_type="BELONGS_TO_CASE",
-                confidence=1.0,
-                source="Case Registry",
-                status="Confirmed Case Evidence",
-                verification_required=False,
-                investigative_status="Confirmed Case Evidence",
-                case_id=case_id_str
+                {
+                    "relationship": "BELONGS_TO_CASE",
+                    "relationship_type": "BELONGS_TO_CASE",
+                    "confidence": 1.0,
+                    "source": "Case Registry",
+                    "status": "Confirmed Case Evidence",
+                    "verification_required": False,
+                    "investigative_status": "Confirmed Case Evidence",
+                    "case_id": case_id_str
+                }
             )
 
         if has_device and graph.has_node(ev_id):
@@ -251,17 +292,20 @@ def build_case_relationship_graph(case_id, cbir_relationships=None):
                 )
 
             dev_rel_type = rel_type if rel_type in ["STORED_ON_DEVICE", "EXTRACTED_FROM", "RECOVERED_FROM_DEVICE"] else "STORED_ON_DEVICE"
-            graph.add_edge(
+            add_qualified_edge(
+                graph,
                 ev_id,
                 device_str,
-                relationship=dev_rel_type,
-                relationship_type=dev_rel_type,
-                confidence=conf,
-                source="Case Database Link",
-                status="Candidate Hardware Link" if ver_req else "Verified Hardware Link",
-                verification_required=ver_req,
-                investigative_status="Candidate Hardware Link" if ver_req else "Verified Hardware Link",
-                case_id=case_id_str
+                {
+                    "relationship": dev_rel_type,
+                    "relationship_type": dev_rel_type,
+                    "confidence": conf,
+                    "source": "Case Database Link",
+                    "status": "Candidate Hardware Link" if ver_req else "Verified Hardware Link",
+                    "verification_required": ver_req,
+                    "investigative_status": "Candidate Hardware Link" if ver_req else "Verified Hardware Link",
+                    "case_id": case_id_str
+                }
             )
 
         # Connect Device -> Suspect (Device Ownership / Usage)
@@ -285,17 +329,20 @@ def build_case_relationship_graph(case_id, cbir_relationships=None):
                     node_details=person_details
                 )
             if not graph.has_edge(device_str, suspect_str):
-                graph.add_edge(
+                add_qualified_edge(
+                    graph,
                     device_str,
                     suspect_str,
-                    relationship="OWNED_OR_USED_BY",
-                    relationship_type="OWNED_OR_USED_BY",
-                    confidence=conf,
-                    source="Case Database Link",
-                    status="Candidate Device User (Verification Required)",
-                    verification_required=True,
-                    investigative_status="Candidate Device User",
-                    case_id=case_id_str
+                    {
+                        "relationship": "OWNED_OR_USED_BY",
+                        "relationship_type": "OWNED_OR_USED_BY",
+                        "confidence": conf,
+                        "source": "Case Database Link",
+                        "status": "Candidate Device User (Verification Required)",
+                        "verification_required": True,
+                        "investigative_status": "Candidate Device User",
+                        "case_id": case_id_str
+                    }
                 )
 
         # Connect Evidence -> Suspect (Direct link if explicitly requested or depiction/association)
@@ -320,38 +367,50 @@ def build_case_relationship_graph(case_id, cbir_relationships=None):
 
             # Support explicit DEPICTS_PERSON only when backed by actual link/record data
             if rel_type == "DEPICTS_PERSON":
-                graph.add_edge(
+                add_qualified_edge(
+                    graph,
                     ev_id,
                     suspect_str,
-                    relationship="DEPICTS_PERSON",
-                    relationship_type="DEPICTS_PERSON",
-                    confidence=conf,
-                    source="Case Database Link",
-                    status="Depiction Record (Verification Required)" if ver_req else "Verified Depiction Record",
-                    verification_required=ver_req,
-                    investigative_status="Depiction Record",
-                    case_id=case_id_str
+                    {
+                        "relationship": "DEPICTS_PERSON",
+                        "relationship_type": "DEPICTS_PERSON",
+                        "confidence": conf,
+                        "source": "Case Database Link",
+                        "status": "Depiction Record (Verification Required)" if ver_req else "Verified Depiction Record",
+                        "verification_required": ver_req,
+                        "investigative_status": "Depiction Record",
+                        "case_id": case_id_str
+                    }
                 )
             else:
                 is_device_rel = rel_type in ["STORED_ON_DEVICE", "EXTRACTED_FROM", "RECOVERED_FROM_DEVICE"]
                 if not has_device or not is_device_rel:
-                    person_rel = "ASSOCIATED_WITH" if is_device_rel else rel_type
-                    graph.add_edge(
+                    person_rel = "ASSOCIATED_WITH" if (is_device_rel or rel_type == "BELONGS_TO_CASE") else rel_type
+                    add_qualified_edge(
+                        graph,
                         ev_id,
                         suspect_str,
-                        relationship=person_rel,
-                        relationship_type=person_rel,
-                        confidence=conf,
-                        source="Case Database Link",
-                        status="Candidate Association (Verification Required)" if ver_req else "Verified Association",
-                        verification_required=ver_req,
-                        investigative_status="Candidate Association" if ver_req else "Verified Association",
-                        case_id=case_id_str
+                        {
+                            "relationship": person_rel,
+                            "relationship_type": person_rel,
+                            "confidence": conf,
+                            "source": "Case Database Link",
+                            "status": "Candidate Association (Verification Required)" if ver_req else "Verified Association",
+                            "verification_required": ver_req,
+                            "investigative_status": "Candidate Association" if ver_req else "Verified Association",
+                            "case_id": case_id_str
+                        }
                     )
 
     # 4. Integrate CBIR visual similarity / duplicate relationships
+    all_extra_rels = []
     if cbir_relationships and isinstance(cbir_relationships, list):
-        for rel in cbir_relationships:
+        all_extra_rels.extend(cbir_relationships)
+    if duplicate_relationships and isinstance(duplicate_relationships, list):
+        all_extra_rels.extend(duplicate_relationships)
+
+    if all_extra_rels:
+        for rel in all_extra_rels:
             if not isinstance(rel, dict):
                 continue
             src = rel.get("source_evidence")
@@ -400,7 +459,12 @@ def build_case_relationship_graph(case_id, cbir_relationships=None):
                 else:
                     graph.add_node(tgt_str, type="Evidence", label=tgt_str)
 
-            is_exact = bool(rel.get("sha256_exact_duplicate") or rel.get("is_exact_hash_match"))
+            is_exact = bool(
+                rel.get("sha256_exact_duplicate")
+                or rel.get("is_exact_hash_match")
+                or rel.get("relationship_type") == "EXACT_FILE_DUPLICATE"
+                or rel.get("relationship") == "Exact Duplicate File"
+            )
             cbir_rel_type = "EXACT_FILE_DUPLICATE" if is_exact else "CBIR_VISUAL_RELATIONSHIP"
             edge_source = "CBIR File Hash Match" if is_exact else "CBIR Visual Analysis"
             edge_status = "Exact Duplicate File" if is_exact else rel.get("investigation_status", "Candidate")
@@ -416,19 +480,22 @@ def build_case_relationship_graph(case_id, cbir_relationships=None):
                 if graph.has_node(tgt_str) and "node_details" in graph.nodes[tgt_str]:
                     graph.nodes[tgt_str]["node_details"]["duplicate_status"] = "EXACT DUPLICATE — VERIFIED"
 
-            graph.add_edge(
+            add_qualified_edge(
+                graph,
                 src_str,
                 tgt_str,
-                relationship=rel.get("relationship", rel.get("classification", "Visual Comparison")),
-                relationship_type=cbir_rel_type,
-                confidence=float(rel.get("confidence", rel.get("similarity", 0.0))),
-                similarity=float(rel.get("similarity", 0.0)),
-                source=edge_source,
-                status=edge_status,
-                verification_required=not is_exact,
-                investigative_status="Exact Duplicate" if is_exact else rel.get("investigation_status", "Candidate"),
-                reason=edge_reason,
-                case_id=case_id_str
+                {
+                    "relationship": rel.get("relationship", rel.get("classification", "Visual Comparison")),
+                    "relationship_type": cbir_rel_type,
+                    "confidence": float(rel.get("confidence", rel.get("similarity", 0.0))),
+                    "similarity": float(rel.get("similarity", 0.0)),
+                    "source": edge_source,
+                    "status": edge_status,
+                    "verification_required": not is_exact,
+                    "investigative_status": "Exact Duplicate" if is_exact else rel.get("investigation_status", "Candidate"),
+                    "reason": edge_reason,
+                    "case_id": case_id_str
+                }
             )
 
     return graph
@@ -547,27 +614,36 @@ def serialize_graph(graph, case_id=None):
 
         nodes.append(node_entry)
 
+    seen_edge_identities = set()
     for u, v, data in graph.edges(data=True):
-        rel_disp = data.get("relationship", "ASSOCIATED_WITH")
-        conf_val = float(data.get("confidence", 1.0))
-        edges.append({
-            "source_id": str(u),
-            "target_id": str(v),
-            "source": str(u),
-            "target": str(v),
-            "relationship": rel_disp,
-            "relationship_type": data.get("relationship_type", "ASSOCIATION"),
-            "confidence": conf_val,
-            "similarity": data.get("similarity"),
-            "source_type": data.get("source", "Case Database Link"),
-            "source": data.get("source", "Case Database Link"),
-            "status": data.get("status", "Candidate"),
-            "verification_required": bool(data.get("verification_required", True)),
-            "investigation_status": data.get("investigative_status", "Candidate"),
-            "reason": data.get("reason", f"Relationship {data.get('relationship_type')} between {u} and {v}"),
-            "case_id": data.get("case_id", str(case_id) if case_id else ""),
-            "tooltip": f"{rel_disp} (Confidence: {conf_val:.2f})"
-        })
+        all_rels = data.get("parallel_relationships", [data])
+        for rel_dict in all_rels:
+            rel_type = rel_dict.get("relationship_type", rel_dict.get("relationship", "ASSOCIATION"))
+            stable_key = tuple(sorted([str(u), str(v)])) + (rel_type,)
+            if stable_key in seen_edge_identities:
+                continue
+            seen_edge_identities.add(stable_key)
+
+            rel_disp = rel_dict.get("relationship", "ASSOCIATED_WITH")
+            conf_val = float(rel_dict.get("confidence", 1.0))
+            edges.append({
+                "source_id": str(u),
+                "target_id": str(v),
+                "source": str(u),
+                "target": str(v),
+                "relationship": rel_disp,
+                "relationship_type": rel_type,
+                "confidence": conf_val,
+                "similarity": rel_dict.get("similarity"),
+                "source_type": rel_dict.get("source", "Case Database Link"),
+                "source": rel_dict.get("source", "Case Database Link"),
+                "status": rel_dict.get("status", "Candidate"),
+                "verification_required": bool(rel_dict.get("verification_required", True)),
+                "investigation_status": rel_dict.get("investigative_status", "Candidate"),
+                "reason": rel_dict.get("reason", f"Relationship {rel_type} between {u} and {v}"),
+                "case_id": rel_dict.get("case_id", str(case_id) if case_id else ""),
+                "tooltip": f"{rel_disp} (Confidence: {conf_val:.2f})"
+            })
 
     # Standard Graph Legend: Case, Evidence (File), Possible Suspect, Device
     legend = [

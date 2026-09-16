@@ -22,7 +22,7 @@ for path in [PROJECT_ROOT, CURRENT_DIR, REL_GRAPH_DIR]:
 
 from feature_database import get_case_evidence, get_evidence
 from image_search import search_similar_images, format_search_results
-from text_retrieval import search_evidence_by_text
+from text_retrieval import search_evidence_by_text, search_case_evidence
 from context_retrieval import search_context_evidence
 from case_graph_engine import build_case_relationship_graph, serialize_graph, find_relationship_path
 from relationship_engine import generate_relationships
@@ -239,6 +239,47 @@ def retrieve_evidence(
 
         ranked_evidence = ctx_res.get("results", [])
 
+    elif query_type in ["case_search", "search"]:
+        if not query_text or not str(query_text).strip():
+            return {
+                "status": "Error",
+                "message": "query_text is required for case evidence search.",
+                "case_id": case_id_str,
+                "query_type": query_type,
+                "timestamp": timestamp,
+                "results": [],
+                "ranked_evidence": [],
+                "forensic_notice": FORENSIC_DISCLAIMER
+            }
+
+        search_res = search_case_evidence(
+            case_id=case_id_str,
+            query_text=str(query_text).strip(),
+            top_k=top_k,
+            search_mode="all"
+        )
+
+        if search_res.get("status") == "no_data_found" or not search_res.get("results"):
+            return {
+                "status": "no_data_found",
+                "message": search_res.get("message", f"No relevant evidence found for '{query_text}' in {case_id_str}."),
+                "case_id": case_id_str,
+                "query_type": query_type,
+                "query": str(query_text).strip(),
+                "search_query": str(query_text).strip(),
+                "search_box_label": "Search evidence in this case...",
+                "timestamp": timestamp,
+                "results": [],
+                "ranked_evidence": [],
+                "results_count": 0,
+                "verified_duplicates": [],
+                "relationships": [],
+                "graph": {"nodes": [], "edges": [], "total_nodes": 0, "total_edges": 0},
+                "forensic_notice": FORENSIC_DISCLAIMER
+            }
+
+        ranked_evidence = search_res.get("results", [])
+
     elif query_type == "hybrid":
         # Combine image visual search + contextual text search
         img_results = []
@@ -323,7 +364,7 @@ def retrieve_evidence(
     else:
         return {
             "status": "Error",
-            "message": f"Unsupported query_type '{query_type}'. Use 'image', 'text', 'context', or 'hybrid'.",
+            "message": f"Unsupported query_type '{query_type}'. Use 'image', 'text', 'context', 'case_search', or 'hybrid'.",
             "case_id": case_id_str,
             "query_type": query_type,
             "timestamp": timestamp,
@@ -360,8 +401,8 @@ def retrieve_evidence(
         "status": "Success",
         "case_id": case_id_str,
         "query_type": query_type,
-        "query": query_text if query_type in ["text", "context"] else query_image_path,
-        "search_query": query_text if query_type in ["text", "context"] else query_fn,
+        "query": query_text if query_type in ["text", "context", "case_search", "search"] else query_image_path,
+        "search_query": query_text if query_type in ["text", "context", "case_search", "search"] else query_fn,
         "query_evidence_id": query_evidence_id,
         "query_filename": query_fn,
         "total_case_evidence": len(case_evidence),

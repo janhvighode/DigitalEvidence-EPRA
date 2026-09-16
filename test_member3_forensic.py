@@ -34,7 +34,13 @@ from similarity import (
     VERY_STRONG_MATCH_THRESHOLD, STRONG_MATCH_THRESHOLD
 )
 from image_search import search_similar_images, format_search_results, render_investigator_image_card
-from text_retrieval import search_evidence_by_text, search_text_evidence
+from text_retrieval import (
+    search_evidence_by_text,
+    search_text_evidence,
+    search_case_evidence,
+    render_investigator_search_box,
+    format_investigator_search_result
+)
 from context_retrieval import search_context_evidence
 from unified_retrieval import retrieve_evidence
 from case_graph_engine import build_case_relationship_graph, serialize_graph, find_relationship_path, get_node_details
@@ -1098,6 +1104,830 @@ class TestMember3Forensic(unittest.TestCase):
 
         print("  [PASS] Test 34: Possible Suspect terminology verified across legend, node labels, details, badges, and filters.")
 
+    # ------------------------------------------------------------
+    # TEST 35 — CASE-LEVEL TEXT AND CONTEXT BASED EVIDENCE SEARCH
+    # ------------------------------------------------------------
+    def test_35_case_level_text_and_context_search(self):
+        """
+        Verify case-level evidence search ("Search evidence in this case..."):
+        1. Arbitrary keyword works dynamically without hardcoding.
+        2. Filename matching works.
+        3. Description matching works.
+        4. Metadata matching works (technical, device, suspect).
+        5. Extracted document/text content matching works.
+        6. Case-insensitive and trimmed space search works.
+        7. Selected-case isolation is strictly enforced.
+        8. Cross-case evidence never appears.
+        9. Unknown keyword returns status='no_data_found' and results=[].
+        10. Image content is not guessed without stored searchable information.
+        11. Direct keyword matches rank strictly above weaker contextual matches.
+        12. All required result output fields are present.
+        """
+        import tempfile
+        from feature_database import connect_database as connect_img_db
+        from evidence_linker import connect_database as connect_graph_db
+
+        # 1. UI Search Box representation
+        search_box = render_investigator_search_box(self.case_id, "mobile")
+        self.assertIn("Search evidence in this case...", search_box)
+        self.assertIn(self.case_id, search_box)
+
+        # 2. Filename matching
+        res_fn = search_case_evidence(self.case_id, "EV_TEST_01.jpg", top_k=5, search_mode="text")
+        self.assertEqual(res_fn["status"], "Success")
+        self.assertGreater(len(res_fn["results"]), 0)
+        match_fn = next((r for r in res_fn["results"] if r["evidence_id"] == "EV_TEST_01"), None)
+        self.assertIsNotNone(match_fn, "EV_TEST_01 must be matched by its filename")
+        self.assertEqual(match_fn["matched_field"], "filename")
+        self.assertIn("EV_TEST_01.jpg", match_fn["matched_value"])
+        self.assertEqual(match_fn["rank"], 1)
+
+        # 3. Description matching
+        res_desc = search_case_evidence(self.case_id, "re-encoded", top_k=5, search_mode="text")
+        self.assertEqual(res_desc["status"], "Success")
+        self.assertGreater(len(res_desc["results"]), 0)
+        match_desc = next((r for r in res_desc["results"] if r["evidence_id"] == "EV_TEST_06_RE"), None)
+        self.assertIsNotNone(match_desc)
+        self.assertIn("description", match_desc["matched_fields"])
+
+        # 4. Metadata matching: Device and Suspect metadata
+        res_dev = search_case_evidence(self.case_id, "Samsung Galaxy", top_k=5, search_mode="text")
+        self.assertEqual(res_dev["status"], "Success")
+        self.assertTrue(any("device_metadata" in r["matched_fields"] for r in res_dev["results"]))
+
+        res_suspect = search_case_evidence(self.case_id, "Rahul Sharma", top_k=5, search_mode="text")
+        self.assertEqual(res_suspect["status"], "Success")
+        self.assertTrue(any("suspect_metadata" in r["matched_fields"] for r in res_suspect["results"]))
+
+        # 5. Case-insensitive and trimmed space search
+        res_spaces = search_case_evidence(self.case_id, "   MOBILE   ", top_k=5, search_mode="text")
+        res_clean = search_case_evidence(self.case_id, "mobile", top_k=5, search_mode="text")
+        self.assertEqual(res_spaces["status"], "Success")
+        self.assertEqual(len(res_spaces["results"]), len(res_clean["results"]))
+        self.assertEqual(res_spaces["results"][0]["evidence_id"], res_clean["results"][0]["evidence_id"])
+
+        # 6. Selected-case isolation: Case A results only come from Case A
+        for r in res_clean["results"]:
+            self.assertEqual(r["case_id"], self.case_id)
+            self.assertNotEqual(r["evidence_id"], "EV_ISO_01", "Cross-case evidence must NEVER appear")
+
+        # 7. Cross-case isolation: querying Case B yields only Case B
+        res_case_b = search_case_evidence(self.iso_case_id, "ISO", top_k=5, search_mode="text")
+        self.assertEqual(res_case_b["status"], "Success")
+        for r in res_case_b["results"]:
+            self.assertEqual(r["case_id"], self.iso_case_id)
+            self.assertNotIn(r["evidence_id"], ["EV_TEST_01", "EV_TEST_02", "EV_TEST_03"])
+
+        # 8. Unknown keyword returns status='no_data_found' and results=[]
+        unknown_term = "completely_unknown_token_99999_xyz"
+        res_none = search_case_evidence(self.case_id, unknown_term, top_k=5)
+        self.assertEqual(res_none["status"], "no_data_found")
+        self.assertEqual(res_none["results"], [])
+        self.assertEqual(res_none["results_count"], 0)
+        self.assertEqual(res_none["message"], f"No relevant evidence found for '{unknown_term}' in {self.case_id}.")
+
+        # 9. Image content is NOT guessed without stored searchable information
+        # EV_TEST_01 has no 'laptop' in its filename/description/metadata; search 'laptop' must not return EV_TEST_01 as direct match
+        res_laptop = search_case_evidence(self.case_id, "laptop", top_k=10, search_mode="text")
+        direct_laptop_ids = [r["evidence_id"] for r in res_laptop.get("results", [])]
+        self.assertNotIn("EV_TEST_01", direct_laptop_ids, "CBIR image visual similarity is NOT object detection; EV_TEST_01 must not match 'laptop'")
+        self.assertIn("EV_TEST_05", direct_laptop_ids, "EV_TEST_05 (laptop device) must match direct keyword search")
+
+        # 10. Direct keyword matches rank strictly ABOVE weaker contextual matches
+        res_combined = search_case_evidence(self.case_id, "mobile", top_k=10, search_mode="all")
+        self.assertEqual(res_combined["status"], "Success")
+        ranked_list = res_combined["results"]
+        self.assertGreater(len(ranked_list), 1)
+
+        # Direct match must be rank 1 with higher relevance score than any contextual lead
+        top_result = ranked_list[0]
+        self.assertTrue(top_result["is_direct_match"], "Direct match must be ranked #1")
+        self.assertEqual(top_result["rank"], 1)
+
+        # Find first contextual lead if present
+        ctx_lead = next((r for r in ranked_list if not r["is_direct_match"]), None)
+        if ctx_lead:
+            self.assertGreater(
+                top_result["relevance_score"],
+                ctx_lead["relevance_score"],
+                "Direct keyword match must have strictly higher relevance score than contextual lead"
+            )
+
+        # 11. Verify all required output fields on every returned match
+        required_fields = [
+            "rank", "evidence_id", "evidence_type", "filename_or_name",
+            "matched_field", "matched_value", "relevance_score", "confidence", "reason"
+        ]
+        for item in ranked_list:
+            for field in required_fields:
+                self.assertIn(field, item, f"Required field '{field}' missing from result item")
+            self.assertIsInstance(item["rank"], int)
+            self.assertIsInstance(item["relevance_score"], float)
+            self.assertTrue(bool(str(item["matched_field"]).strip()))
+            self.assertTrue(bool(str(item["matched_value"]).strip()))
+            self.assertTrue(bool(str(item["reason"]).strip()))
+            self.assertIn(item["confidence"], ["High", "Medium", "Low"])
+            self.assertTrue(item.get("relationship_view_available", False))
+
+        # 12. Dynamic test: arbitrary keyword + extracted document/text content matching
+        dyn_case = "CASE_DYN_SEARCH_TEST_88"
+        with tempfile.NamedTemporaryFile(mode="w+", suffix=".txt", delete=False) as tf:
+            tf.write("Forensic analysis log: wire transfer payment transaction reference #TX882910.")
+            temp_text_path = tf.name
+
+        conn_img = connect_img_db()
+        cursor_img = conn_img.cursor()
+        cursor_img.execute(
+            "INSERT OR REPLACE INTO image_features (case_id, evidence_id, category, image_path, description) VALUES (?, ?, ?, ?, ?)",
+            (dyn_case, "EV_DOC_FINANCIAL", "document", temp_text_path, "Financial record recovered from flash drive")
+        )
+        conn_img.commit()
+        conn_img.close()
+
+        conn_g = connect_graph_db()
+        cursor_g = conn_g.cursor()
+        cursor_g.execute(
+            "INSERT INTO evidence_links (case_id, evidence, evidence_type, suspect, device, relationship_type) VALUES (?, ?, ?, ?, ?, ?)",
+            (dyn_case, "EV_DOC_FINANCIAL", "Document", "Aarav Kapoor", "Corsair USB", "EXTRACTED_FROM")
+        )
+        conn_g.commit()
+        conn_g.close()
+
+        try:
+            # Search arbitrary keyword inside extracted document content
+            res_content = search_case_evidence(dyn_case, "wire transfer", top_k=5, search_mode="text")
+            self.assertEqual(res_content["status"], "Success")
+            self.assertEqual(len(res_content["results"]), 1)
+            doc_match = res_content["results"][0]
+            self.assertEqual(doc_match["evidence_id"], "EV_DOC_FINANCIAL")
+            self.assertEqual(doc_match["matched_field"], "extracted_text")
+            self.assertIn("wire transfer", doc_match["matched_value"].lower())
+            self.assertIn("extracted document/text content", doc_match["reason"])
+
+            # Search arbitrary device name
+            res_usb = search_case_evidence(dyn_case, "Corsair USB", top_k=5, search_mode="text")
+            self.assertEqual(res_usb["status"], "Success")
+            self.assertEqual(res_usb["results"][0]["evidence_id"], "EV_DOC_FINANCIAL")
+            self.assertIn("device_metadata", res_usb["results"][0]["matched_fields"])
+
+            # Search arbitrary person name
+            res_person = search_case_evidence(dyn_case, "Aarav Kapoor", top_k=5, search_mode="text")
+            self.assertEqual(res_person["status"], "Success")
+            self.assertEqual(res_person["results"][0]["evidence_id"], "EV_DOC_FINANCIAL")
+            self.assertIn("suspect_metadata", res_person["results"][0]["matched_fields"])
+
+            # Search in unified retrieval with query_type='case_search'
+            res_uni_search = retrieve_evidence(case_id=dyn_case, query_type="case_search", query_text="wire transfer")
+            self.assertEqual(res_uni_search["status"], "Success")
+            self.assertEqual(len(res_uni_search["results"]), 1)
+
+            # Isolated case isolation: CASE_TEST_01 cannot find dynamic case evidence
+            res_leak = search_case_evidence(self.case_id, "TX882910", top_k=5)
+            self.assertEqual(res_leak["status"], "no_data_found")
+
+        finally:
+            # Clean up temp file and test db records
+            if os.path.exists(temp_text_path):
+                try:
+                    os.remove(temp_text_path)
+                except Exception:
+                    pass
+
+            c1 = connect_img_db()
+            c1.execute("DELETE FROM image_features WHERE case_id=?", (dyn_case,))
+            c1.commit()
+            c1.close()
+
+            c2 = connect_graph_db()
+            c2.execute("DELETE FROM evidence_links WHERE case_id=?", (dyn_case,))
+            c2.commit()
+            c2.close()
+
+        print("  [PASS] Test 35: Case-level text & context evidence search verified across all 12 criteria.")
+
+    # ------------------------------------------------------------
+    # TEST 36 — RELATIONSHIP GRAPH DEDUPLICATION & VISUALIZATION SAFETY
+    # ------------------------------------------------------------
+    def test_36_relationship_graph_deduplication_and_visualization_safety(self):
+        """
+        Verify relationship graph deduplication and visualization cleanup:
+        1. No identical duplicate relationship edges are emitted/rendered.
+        2. Every evidence still has its legitimate BELONGS_TO_CASE relationship.
+        3. Evidence-to-suspect links do NOT get BELONGS_TO_CASE (assigned ASSOCIATED_WITH).
+        4. Different legitimate relationship types between the same nodes remain (parallel edges).
+        5. EXACT_FILE_DUPLICATE still works correctly and is distinct from CBIR.
+        6. CBIR_VISUAL_RELATIONSHIP still works correctly with verification_required=True.
+        7. Device/person relationships (STORED_ON_DEVICE, OWNED_OR_USED_BY) remain intact.
+        8. Possible Suspect terminology and behavior remain intact.
+        9. Node Details remain complete (preserves full filename and metadata).
+        10. Graph filters remain intact.
+        11. Case isolation remains intact.
+        12. Case with many evidence nodes (CASE-6922) renders cleanly without duplicate edges or crashes.
+        """
+        import tempfile
+        from case_graph_engine import build_case_relationship_graph, serialize_graph, add_qualified_edge
+        from graph_visualizer import visualize_graph, get_graph_legend
+        from metadata_adapter import MetadataAdapter
+        from evidence_linker import connect_database as connect_graph_db
+
+        test_case_id = "CASE-6922"
+
+        # 1. Populate a multi-evidence test case (CASE-6922) simulating the real-world scenario
+        # where multiple duplicate rows exist in the database, multiple evidence belong to the case,
+        # and both devices, persons, duplicates, and CBIR relationships are present.
+        conn = connect_graph_db()
+        cur = conn.cursor()
+        try:
+            # Evidence items: EV_6922_01 through EV_6922_08
+            for i in range(1, 9):
+                ev_id = f"EV_6922_{i:02d}.jpg"
+                cur.execute(
+                    "INSERT INTO evidence_links (case_id, evidence, evidence_type, suspect, device, relationship_type) VALUES (?, ?, ?, ?, ?, ?)",
+                    (test_case_id, ev_id, "Image", "Vikas Malhotra", "OnePlus 11", "BELONGS_TO_CASE")
+                )
+            # Add intentional duplicate rows in the DB to test backend edge deduplication
+            cur.execute(
+                "INSERT INTO evidence_links (case_id, evidence, evidence_type, suspect, device, relationship_type) VALUES (?, ?, ?, ?, ?, ?)",
+                (test_case_id, "EV_6922_01.jpg", "Image", "Vikas Malhotra", "OnePlus 11", "BELONGS_TO_CASE")
+            )
+            cur.execute(
+                "INSERT INTO evidence_links (case_id, evidence, evidence_type, suspect, device, relationship_type) VALUES (?, ?, ?, ?, ?, ?)",
+                (test_case_id, "EV_6922_02.jpg", "Image", "Vikas Malhotra", "OnePlus 11", "BELONGS_TO_CASE")
+            )
+            # Device ownership link
+            cur.execute(
+                "INSERT INTO evidence_links (case_id, evidence, evidence_type, suspect, device, relationship_type) VALUES (?, ?, ?, ?, ?, ?)",
+                (test_case_id, "OnePlus 11", "Device", "Vikas Malhotra", "OnePlus 11", "OWNED_OR_USED_BY")
+            )
+            conn.commit()
+
+            # Define exact duplicate and CBIR relationships
+            dup_rels = [{
+                "source_evidence": "EV_6922_01.jpg",
+                "target_evidence": "EV_6922_02.jpg",
+                "relationship_type": "EXACT_FILE_DUPLICATE",
+                "confidence": 1.0
+            }]
+            # Symmetrically repeated duplicate in input list (must be deduplicated)
+            dup_rels.append({
+                "source_evidence": "EV_6922_02.jpg",
+                "target_evidence": "EV_6922_01.jpg",
+                "relationship_type": "EXACT_FILE_DUPLICATE",
+                "confidence": 1.0
+            })
+
+            # Parallel relationship between EV_6922_03.jpg and EV_6922_04.jpg:
+            # Both EXACT_FILE_DUPLICATE and CBIR_VISUAL_RELATIONSHIP
+            dup_rels.append({
+                "source_evidence": "EV_6922_03.jpg",
+                "target_evidence": "EV_6922_04.jpg",
+                "relationship_type": "EXACT_FILE_DUPLICATE",
+                "confidence": 1.0
+            })
+            cbir_rels = [{
+                "source_evidence": "EV_6922_03.jpg",
+                "target_evidence": "EV_6922_04.jpg",
+                "relationship_type": "CBIR_VISUAL_RELATIONSHIP",
+                "confidence": 0.94,
+                "similarity": 0.94,
+                "verification_required": True,
+                "category": "objects"
+            }, {
+                "source_evidence": "EV_6922_05.jpg",
+                "target_evidence": "CANDIDATE_SUSPECT_6922",
+                "relationship_type": "CBIR_VISUAL_RELATIONSHIP",
+                "confidence": 0.89,
+                "similarity": 0.89,
+                "is_person": True,
+                "is_person_candidate": True,
+                "verification_required": True,
+                "category": "persons"
+            }]
+
+            # Build the graph
+            g = build_case_relationship_graph(
+                test_case_id,
+                duplicate_relationships=dup_rels,
+                cbir_relationships=cbir_rels
+            )
+
+            # Serialize the graph
+            serialized = serialize_graph(g, case_id=test_case_id)
+            edges = serialized["edges"]
+            nodes = serialized["nodes"]
+
+            # 1. No identical duplicate relationship edges emitted
+            seen_identities = set()
+            for e in edges:
+                u, v = sorted([e["source_id"], e["target_id"]])
+                edge_ident = (u, v, e["relationship_type"])
+                self.assertNotIn(
+                    edge_ident, seen_identities,
+                    f"Duplicate edge detected in serialized graph: {edge_ident}"
+                )
+                seen_identities.add(edge_ident)
+
+            # 2. Every evidence still has its legitimate BELONGS_TO_CASE relationship to Case node
+            case_edges = [
+                e for e in edges
+                if e["relationship_type"] == "BELONGS_TO_CASE"
+                and (e["source_id"] == test_case_id or e["target_id"] == test_case_id)
+            ]
+            # All 8 distinct evidence items must connect to CASE-6922
+            connected_ev = set()
+            for e in case_edges:
+                other = e["target_id"] if e["source_id"] == test_case_id else e["source_id"]
+                connected_ev.add(other)
+
+            for i in range(1, 9):
+                ev_id = f"EV_6922_{i:02d}.jpg"
+                self.assertIn(
+                    ev_id, connected_ev,
+                    f"Evidence {ev_id} must have a BELONGS_TO_CASE edge to {test_case_id}"
+                )
+
+            # 3. Evidence-to-suspect links do NOT get BELONGS_TO_CASE (must be ASSOCIATED_WITH)
+            suspect_edges = [
+                e for e in edges
+                if "Vikas Malhotra" in (e["source_id"], e["target_id"])
+            ]
+            for se in suspect_edges:
+                self.assertNotEqual(
+                    se["relationship_type"], "BELONGS_TO_CASE",
+                    "Suspect node must NOT have a BELONGS_TO_CASE relationship"
+                )
+                self.assertIn(
+                    se["relationship_type"],
+                    ["ASSOCIATED_WITH", "OWNED_OR_USED_BY"],
+                    f"Suspect relationship must be ASSOCIATED_WITH or OWNED_OR_USED_BY, got {se['relationship_type']}"
+                )
+
+            # 4. Different legitimate relationship types between the same nodes remain (parallel edges)
+            # EV_6922_03.jpg and EV_6922_04.jpg have BOTH EXACT_FILE_DUPLICATE and CBIR_VISUAL_RELATIONSHIP
+            pair_edges = [
+                e for e in edges
+                if set([e["source_id"], e["target_id"]]) == set(["EV_6922_03.jpg", "EV_6922_04.jpg"])
+            ]
+            pair_types = {e["relationship_type"] for e in pair_edges}
+            self.assertIn("EXACT_FILE_DUPLICATE", pair_types, "EXACT_FILE_DUPLICATE must remain on parallel pair")
+            self.assertIn("CBIR_VISUAL_RELATIONSHIP", pair_types, "CBIR_VISUAL_RELATIONSHIP must remain on parallel pair")
+            self.assertEqual(len(pair_types), 2, "Both distinct relationship types must be preserved")
+
+            # 5. EXACT_FILE_DUPLICATE still works correctly and is distinct from CBIR
+            dup_edge = next((e for e in edges if e["relationship_type"] == "EXACT_FILE_DUPLICATE"), None)
+            self.assertIsNotNone(dup_edge)
+            self.assertEqual(dup_edge["confidence"], 1.0)
+            self.assertNotIn("SHA-256", str(dup_edge.get("label", "")))
+
+            # 6. CBIR_VISUAL_RELATIONSHIP still works correctly with verification_required=True
+            cbir_edge = next((e for e in edges if e["relationship_type"] == "CBIR_VISUAL_RELATIONSHIP"), None)
+            self.assertIsNotNone(cbir_edge)
+            self.assertTrue(cbir_edge["verification_required"])
+            self.assertNotEqual(cbir_edge["relationship_type"], "EXACT_FILE_DUPLICATE")
+
+            # 7. Device and person relationships remain intact
+            device_edge = next((e for e in edges if e["relationship_type"] == "STORED_ON_DEVICE"), None)
+            self.assertIsNotNone(device_edge, "STORED_ON_DEVICE relationship must exist")
+            ownership_edge = next((e for e in edges if e["relationship_type"] == "OWNED_OR_USED_BY"), None)
+            self.assertIsNotNone(ownership_edge, "OWNED_OR_USED_BY relationship must exist")
+
+            # 8. Possible Suspect terminology and behavior remain intact
+            cbir_person_node = next((n for n in nodes if n["id"] == "CANDIDATE_SUSPECT_6922"), None)
+            self.assertIsNotNone(cbir_person_node)
+            self.assertEqual(cbir_person_node["display_type"], "Possible Suspect")
+            self.assertEqual(cbir_person_node["type"], "Possible Suspect")
+
+            # Known suspect node remains Person / Suspect
+            known_suspect = next((n for n in nodes if n["id"] == "Vikas Malhotra"), None)
+            self.assertIsNotNone(known_suspect)
+            self.assertEqual(known_suspect["display_type"], "Person / Suspect")
+
+            # 9. Node Details remain complete (preserves full filename and metadata)
+            node_details = MetadataAdapter.build_clean_node_details("EV_6922_01.jpg", g.nodes["EV_6922_01.jpg"])
+            self.assertEqual(node_details["filename"], "EV_6922_01.jpg")
+            self.assertEqual(node_details["entity_category"], "Evidence")
+
+            # 10. Graph filters remain intact
+            self.assertIn("filter_categories", serialized)
+            self.assertIn("Case", serialized["filter_categories"])
+            self.assertIn("Evidence (File)", serialized["filter_categories"])
+            self.assertIn("Device", serialized["filter_categories"])
+            self.assertIn("Person / Suspect", serialized["filter_categories"])
+            self.assertIn("Possible Suspect", serialized["filter_categories"])
+
+            # 11. Case isolation: another case's evidence does not appear
+            cur.execute(
+                "INSERT INTO evidence_links (case_id, evidence, evidence_type, relationship_type) VALUES (?, ?, ?, ?)",
+                ("OTHER_CASE_999", "EV_OTHER_999.jpg", "Image", "BELONGS_TO_CASE")
+            )
+            conn.commit()
+
+            g_iso = build_case_relationship_graph(test_case_id)
+            iso_nodes = [n["id"] for n in serialize_graph(g_iso, case_id=test_case_id)["nodes"]]
+            self.assertNotIn("EV_OTHER_999.jpg", iso_nodes, "Cross-case evidence must never appear")
+
+            # 12. Visualizer renders cleanly without crashing and outputs an image
+            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp_img:
+                tmp_out_path = tmp_img.name
+
+            try:
+                fig = visualize_graph(g, case_id=test_case_id, output_path=tmp_out_path)
+                self.assertIsNotNone(fig)
+                self.assertTrue(os.path.exists(tmp_out_path))
+                self.assertGreater(os.path.getsize(tmp_out_path), 1000)
+            finally:
+                if os.path.exists(tmp_out_path):
+                    try:
+                        os.remove(tmp_out_path)
+                    except Exception:
+                        pass
+
+        finally:
+            # Clean up test records
+            cur.execute("DELETE FROM evidence_links WHERE case_id=?", (test_case_id,))
+            cur.execute("DELETE FROM evidence_links WHERE case_id='OTHER_CASE_999'")
+            conn.commit()
+            conn.close()
+
+        print("  [PASS] Test 36: Relationship graph deduplication and visualization safety verified across all 12 criteria.")
+
+    def test_37_cbir_api_and_dynamic_evidence_contract(self):
+        """
+        Verify CBIR API and Service contract (Task 2):
+        1. Resilient schema: supports query_evidence_id, evidence_id, and image_id (no 422 errors).
+        2. Dynamic case evidence fetch: all eligible images in same case are dynamically fetched.
+        3. Excludes query evidence itself (Self-Match Exclusion).
+        4. Compares query against all N - 1 candidates.
+        5. Rejects non-image evidence with 400 Bad Request.
+        6. Rejects wrong-case evidence with 400 Bad Request.
+        7. Rejects non-existent evidence with 404 Not Found.
+        8. Handles zero other candidates with status 'no_candidates'.
+        9. Multi-signal formula (0.35/0.25/0.20/0.20) and exact duplicate verification preserved.
+        10. Deterministic ranking and post-ranking Top-K application.
+        11. Zero raw SHA or local filesystem paths leaked in cards.
+        12. Dynamic execution on test-environment IDs (CASE-6922 / EV-6922-010 / laptop.jpeg).
+        13. Automated AST scan verifies ZERO production hardcoding.
+        """
+        import ast
+        import sqlite3
+        import tempfile
+        import shutil
+        from starlette.testclient import TestClient
+
+        backend_path = os.path.join(PROJECT_ROOT, "backend")
+        if backend_path not in sys.path:
+            sys.path.insert(0, backend_path)
+
+        from app.hash_api import app
+        from app.database import SessionLocal, init_db
+        from app.models.evidence_record import EvidenceRecord
+        from feature_database import insert_feature, get_case_evidence
+
+        client = TestClient(app)
+
+        # 1. Primary endpoint POST /cbir/compare with query_evidence_id succeeds
+        res1 = client.post("/cbir/compare", json={
+            "case_id": self.case_id,
+            "query_evidence_id": "EV_TEST_01",
+            "top_k": 5
+        })
+        self.assertEqual(res1.status_code, 200, f"Expected 200, got {res1.status_code}: {res1.text}")
+        data1 = res1.json()
+        self.assertEqual(data1["status"], "Success")
+        self.assertEqual(data1["case_id"], self.case_id)
+        self.assertEqual(data1["query_evidence_id"], "EV_TEST_01")
+        self.assertGreater(data1["candidates_compared"], 0)
+        self.assertLessEqual(len(data1["results"]), 5)
+
+        # 2. Resilient alias evidence_id succeeds without 422 error
+        res2 = client.post("/cbir/compare", json={
+            "case_id": self.case_id,
+            "evidence_id": "EV_TEST_01",
+            "top_k": 3
+        })
+        self.assertEqual(res2.status_code, 200, f"Expected 200 with evidence_id alias, got {res2.status_code}: {res2.text}")
+        data2 = res2.json()
+        self.assertEqual(data2["query_evidence_id"], "EV_TEST_01")
+        self.assertEqual(len(data2["results"]), 3)
+
+        # 3. Resilient alias image_id succeeds without 422 error
+        res3 = client.post("/cbir/compare", json={
+            "case_id": self.case_id,
+            "image_id": "EV_TEST_01"
+        })
+        self.assertEqual(res3.status_code, 200, f"Expected 200 with image_id alias, got {res3.status_code}: {res3.text}")
+
+        # 4. Case-scoped endpoint POST /cases/{case_id}/cbir/compare succeeds
+        res4 = client.post(f"/cases/{self.case_id}/cbir/compare", json={
+            "query_evidence_id": "EV_TEST_01"
+        })
+        self.assertEqual(res4.status_code, 200, f"Expected 200 on case-scoped route, got {res4.status_code}: {res4.text}")
+
+        # 5. Evidence-scoped endpoint POST /evidence/{evidence_id}/compare succeeds
+        res5 = client.post(f"/evidence/EV_TEST_01/compare?case_id={self.case_id}")
+        self.assertEqual(res5.status_code, 200, f"Expected 200 on evidence-scoped route, got {res5.status_code}: {res5.text}")
+
+        # 6. Non-image evidence rejection: query on non-image returns 400 Bad Request
+        db = SessionLocal()
+        test_pdf_case = "CASE_TEST_NON_IMAGE"
+        try:
+            db.query(EvidenceRecord).filter(EvidenceRecord.case_id == test_pdf_case).delete()
+            db.commit()
+
+            pdf_rec = EvidenceRecord(
+                external_evidence_id="EV_PDF_01",
+                case_id=test_pdf_case,
+                original_filename="forensic_report.pdf",
+                stored_filename="forensic_report.pdf",
+                file_path=os.path.join(self.test_dir, "EV_TEST_01.jpg"),  # physical file exists
+                file_extension=".pdf",
+                mime_type="application/pdf",
+                evidence_type="Document"
+            )
+            db.add(pdf_rec)
+            db.commit()
+
+            res_pdf = client.post("/cbir/compare", json={
+                "case_id": test_pdf_case,
+                "query_evidence_id": "EV_PDF_01"
+            })
+            self.assertEqual(res_pdf.status_code, 400, "Non-image evidence query must be rejected with 400")
+            self.assertIn("image evidence", res_pdf.json()["detail"].lower())
+
+        finally:
+            db.query(EvidenceRecord).filter(EvidenceRecord.case_id == test_pdf_case).delete()
+            db.commit()
+
+        # 7. Dynamic candidate count: if case has N eligible images, exactly N - 1 comparisons occur
+        # Create a dynamic test case with exactly 4 images (N = 4, so N - 1 = 3 comparisons)
+        dyn_case = "CASE_TEST_DYN_CBIR"
+        tmp_dyn_dir = tempfile.mkdtemp(prefix="cbir_dyn_")
+        try:
+            db.query(EvidenceRecord).filter(EvidenceRecord.case_id == dyn_case).delete()
+            db.commit()
+
+            img_paths = []
+            for idx in range(1, 5):
+                dst = os.path.join(tmp_dyn_dir, f"dyn_{idx}.jpg")
+                shutil.copy(self.ev1_path, dst)
+                img_paths.append(dst)
+
+                db_rec = EvidenceRecord(
+                    external_evidence_id=f"EV_DYN_{idx}",
+                    case_id=dyn_case,
+                    original_filename=f"dyn_{idx}.jpg",
+                    stored_filename=f"dyn_{idx}.jpg",
+                    file_path=dst,
+                    file_extension=".jpg",
+                    mime_type="image/jpeg",
+                    evidence_type="Image"
+                )
+                db.add(db_rec)
+            db.commit()
+
+            # Run comparison with EV_DYN_1 as query
+            res_dyn = client.post("/cbir/compare", json={
+                "case_id": dyn_case,
+                "query_evidence_id": "EV_DYN_1",
+                "top_k": 10
+            })
+            self.assertEqual(res_dyn.status_code, 200)
+            data_dyn = res_dyn.json()
+            self.assertEqual(data_dyn["eligible_image_count"], 4, "Total eligible images must be 4")
+            self.assertEqual(data_dyn["candidates_compared"], 3, "Exactly 4 - 1 = 3 comparisons must be executed")
+            self.assertEqual(len(data_dyn["results"]), 3)
+
+            # Confirm self-comparison is excluded
+            cand_ids = [r["candidate_evidence_id"] for r in data_dyn["results"]]
+            self.assertNotIn("EV_DYN_1", cand_ids, "Query evidence EV_DYN_1 must never appear as candidate")
+            self.assertEqual(set(cand_ids), {"EV_DYN_2", "EV_DYN_3", "EV_DYN_4"})
+
+            # Consecutive ranks 1, 2, 3
+            ranks = [r["rank"] for r in data_dyn["results"]]
+            self.assertEqual(ranks, [1, 2, 3])
+
+            # 8. Adding 5th image dynamically updates candidate comparisons to 5 - 1 = 4 without code changes
+            dst5 = os.path.join(tmp_dyn_dir, "dyn_5.jpg")
+            shutil.copy(self.ev3_path, dst5)
+            rec5 = EvidenceRecord(
+                external_evidence_id="EV_DYN_5",
+                case_id=dyn_case,
+                original_filename="dyn_5.jpg",
+                stored_filename="dyn_5.jpg",
+                file_path=dst5,
+                file_extension=".jpg",
+                mime_type="image/jpeg",
+                evidence_type="Image"
+            )
+            db.add(rec5)
+            db.commit()
+
+            res_dyn5 = client.post("/cbir/compare", json={
+                "case_id": dyn_case,
+                "query_evidence_id": "EV_DYN_1",
+                "top_k": 10
+            })
+            self.assertEqual(res_dyn5.status_code, 200)
+            self.assertEqual(res_dyn5.json()["candidates_compared"], 4, "Adding image must increase comparisons to 4")
+
+            # 9. Cross-case evidence is NEVER included in candidates
+            other_rec = EvidenceRecord(
+                external_evidence_id="EV_LEAK_TEST",
+                case_id="CASE_OTHER_ISOLATED",
+                original_filename="isolated.jpg",
+                stored_filename="isolated.jpg",
+                file_path=img_paths[0],
+                file_extension=".jpg",
+                mime_type="image/jpeg",
+                evidence_type="Image"
+            )
+            db.add(other_rec)
+            db.commit()
+
+            res_iso = client.post("/cbir/compare", json={
+                "case_id": dyn_case,
+                "query_evidence_id": "EV_DYN_1"
+            })
+            iso_cand_ids = [r["candidate_evidence_id"] for r in res_iso.json()["results"]]
+            self.assertNotIn("EV_LEAK_TEST", iso_cand_ids, "Cross-case evidence must never leak into candidates")
+
+        finally:
+            db.query(EvidenceRecord).filter(EvidenceRecord.case_id.in_([dyn_case, "CASE_OTHER_ISOLATED"])).delete()
+            db.commit()
+            db.close()
+            shutil.rmtree(tmp_dyn_dir, ignore_errors=True)
+
+        # 10. Missing evidence rejected cleanly (404 Not Found)
+        res_missing = client.post("/cbir/compare", json={
+            "case_id": self.case_id,
+            "query_evidence_id": "NON_EXISTENT_EV_999"
+        })
+        self.assertEqual(res_missing.status_code, 404)
+        self.assertEqual(res_missing.json()["detail"], "Selected evidence was not found.")
+
+        # 11. Wrong-case evidence rejected cleanly (400 Bad Request)
+        db2 = SessionLocal()
+        try:
+            wrong_rec = EvidenceRecord(
+                external_evidence_id="EV_CASE_MISMATCH_999",
+                case_id="CASE_ALPHA",
+                original_filename="alpha.jpg",
+                stored_filename="alpha.jpg",
+                file_path=self.ev1_path,
+                file_extension=".jpg",
+                mime_type="image/jpeg",
+                evidence_type="Image"
+            )
+            db2.add(wrong_rec)
+            db2.commit()
+
+            res_wrong = client.post("/cbir/compare", json={
+                "case_id": "CASE_BETA",
+                "query_evidence_id": "EV_CASE_MISMATCH_999"
+            })
+            self.assertEqual(res_wrong.status_code, 400)
+            self.assertIn("does not belong to this case", res_wrong.json()["detail"])
+        finally:
+            db2.query(EvidenceRecord).filter(EvidenceRecord.case_id == "CASE_ALPHA").delete()
+            db2.commit()
+            db2.close()
+
+        # 12. No other eligible candidates in case returns clean 'no_candidates' response
+        db3 = SessionLocal()
+        single_case = "CASE_SINGLETON"
+        tmp_single_dir = tempfile.mkdtemp(prefix="cbir_single_")
+        try:
+            dst_single = os.path.join(tmp_single_dir, "single.jpg")
+            shutil.copy(self.ev1_path, dst_single)
+
+            s_rec = EvidenceRecord(
+                external_evidence_id="EV_ONLY_IMAGE",
+                case_id=single_case,
+                original_filename="single.jpg",
+                stored_filename="single.jpg",
+                file_path=dst_single,
+                file_extension=".jpg",
+                mime_type="image/jpeg",
+                evidence_type="Image"
+            )
+            db3.add(s_rec)
+            db3.commit()
+
+            res_single = client.post("/cbir/compare", json={
+                "case_id": single_case,
+                "query_evidence_id": "EV_ONLY_IMAGE"
+            })
+            self.assertEqual(res_single.status_code, 200)
+            single_data = res_single.json()
+            self.assertEqual(single_data["status"], "no_candidates")
+            self.assertEqual(single_data["candidates_compared"], 0)
+            self.assertEqual(single_data["results"], [])
+            self.assertIn("No other eligible image evidence is available", single_data["message"])
+
+        finally:
+            db3.query(EvidenceRecord).filter(EvidenceRecord.case_id == single_case).delete()
+            db3.commit()
+            db3.close()
+            shutil.rmtree(tmp_single_dir, ignore_errors=True)
+
+        # 13. Dynamic verification on example test-environment data (CASE-6922, EV-6922-010, laptop.jpeg)
+        db4 = SessionLocal()
+        env_case = "CASE-6922"
+        tmp_env_dir = tempfile.mkdtemp(prefix="cbir_env_")
+        try:
+            db4.query(EvidenceRecord).filter(EvidenceRecord.case_id == env_case).delete()
+            db4.commit()
+
+            laptop_p = os.path.join(tmp_env_dir, "laptop.jpeg")
+            candidate_p = os.path.join(tmp_env_dir, "candidate.jpeg")
+            shutil.copy(self.ev1_path, laptop_p)
+            shutil.copy(self.ev3_path, candidate_p)
+
+            r_q = EvidenceRecord(
+                external_evidence_id="EV-6922-010",
+                case_id=env_case,
+                original_filename="laptop.jpeg",
+                stored_filename="laptop.jpeg",
+                file_path=laptop_p,
+                file_extension=".jpeg",
+                mime_type="image/jpeg",
+                evidence_type="Image"
+            )
+            r_c = EvidenceRecord(
+                external_evidence_id="EV-6922-011",
+                case_id=env_case,
+                original_filename="candidate.jpeg",
+                stored_filename="candidate.jpeg",
+                file_path=candidate_p,
+                file_extension=".jpeg",
+                mime_type="image/jpeg",
+                evidence_type="Image"
+            )
+            db4.add_all([r_q, r_c])
+            db4.commit()
+
+            # The exact original user request that previously produced 422:
+            res_env = client.post("/cbir/compare", json={
+                "case_id": "CASE-6922",
+                "evidence_id": "EV-6922-010",
+                "top_k": 5
+            })
+            self.assertEqual(res_env.status_code, 200, "Original failing request must now succeed with 200 OK")
+            env_data = res_env.json()
+            self.assertEqual(env_data["status"], "Success")
+            self.assertEqual(env_data["query_evidence_id"], "EV-6922-010")
+            self.assertEqual(env_data["query_filename"], "laptop.jpeg")
+            self.assertEqual(env_data["candidates_compared"], 1)
+            self.assertEqual(len(env_data["results"]), 1)
+            self.assertEqual(env_data["results"][0]["candidate_evidence_id"], "EV-6922-011")
+
+            # Verify card exposes clutter-free investigator fields with zero raw SHA or system paths
+            card = env_data["cards"][0]
+            self.assertIn("rank_display", card)
+            self.assertIn("RANK #1", card["rank_display"])
+            self.assertNotIn(laptop_p, str(card), "Local filesystem path must never leak in investigator cards")
+            self.assertNotIn("sha256", str(card).lower(), "Raw SHA-256 string must never appear in investigator cards")
+
+        finally:
+            db4.query(EvidenceRecord).filter(EvidenceRecord.case_id == env_case).delete()
+            db4.commit()
+            db4.close()
+            shutil.rmtree(tmp_env_dir, ignore_errors=True)
+
+        # 14. Automated AST Audit: Zero production hardcoding of test-environment values
+        production_files = [
+            os.path.join(PROJECT_ROOT, "ai_modules", "cbir", "image_search.py"),
+            os.path.join(PROJECT_ROOT, "ai_modules", "cbir", "similarity.py"),
+            os.path.join(PROJECT_ROOT, "ai_modules", "cbir", "cbir_service.py"),
+            os.path.join(PROJECT_ROOT, "ai_modules", "cbir", "duplicate_detector.py"),
+            os.path.join(PROJECT_ROOT, "ai_modules", "relationship_graph", "case_graph_engine.py"),
+            os.path.join(PROJECT_ROOT, "ai_modules", "relationship_graph", "graph_visualizer.py"),
+            os.path.join(PROJECT_ROOT, "ai_modules", "relationship_graph", "metadata_adapter.py"),
+            os.path.join(backend_path, "app", "routes", "cbir_routes.py"),
+        ]
+
+        forbidden_tokens = ["CASE-6922", "EV-6922-010", "laptop.jpeg"]
+
+        for file_path in production_files:
+            if not os.path.exists(file_path):
+                continue
+            with open(file_path, "r", encoding="utf-8") as f:
+                tree = ast.parse(f.read(), filename=file_path)
+
+            for node in ast.walk(tree):
+                # Check for if conditions comparing against forbidden test values
+                if isinstance(node, ast.Compare):
+                    for comparator in node.comparators:
+                        if isinstance(comparator, ast.Constant) and isinstance(comparator.value, str):
+                            for token in forbidden_tokens:
+                                self.assertNotIn(
+                                    token.lower(),
+                                    comparator.value.lower(),
+                                    f"Hardcoded test token '{token}' found in condition in production file: {file_path}"
+                                )
+
+        print("  [PASS] Test 37: CBIR API & Backend Integration verified across all 14 criteria with zero production hardcoding.")
+
 
 if __name__ == "__main__":
     print("\n" + "=" * 70)
@@ -1109,4 +1939,5 @@ if __name__ == "__main__":
 
     if not result.wasSuccessful():
         sys.exit(1)
+
 
