@@ -47,33 +47,57 @@ CANONICAL_EPRA_TYPES = {
 }
 
 
-def normalize_epra_evidence_type(
-    filename: Optional[str] = None,
-    mime_type: Optional[str] = None,
-    raw_type: Optional[str] = None
-) -> str:
+def normalize_epra_evidence_type(*args: Any, **kwargs: Any) -> str:
     """
     Central Canonical EPRA evidence type normalizer.
     Maps raw MIME types, categories, or filenames strictly to one of the 12 canonical types:
     IMAGE, VIDEO, AUDIO, EMAIL, PDF, DOCUMENT, SPREADSHEET, EXECUTABLE, DATABASE, LOG, ARCHIVE, UNKNOWN.
-    Accepts arguments positionally or via keywords.
+    Accepts arguments positionally or via keywords (filename, mime_type, raw_type, etc.).
     """
-    candidates = [str(c).strip() for c in (filename, mime_type, raw_type) if c is not None and str(c).strip()]
+    fname_cands = []
+    other_cands = []
 
-    if not candidates:
+    for k in ("filename", "file_name"):
+        if k in kwargs and kwargs[k] is not None:
+            v = str(kwargs[k]).strip()
+            if v:
+                fname_cands.append(v)
+
+    for a in args:
+        if a is not None:
+            v = str(a).strip()
+            if v:
+                if "." in v and "/" not in v:
+                    fname_cands.append(v)
+                else:
+                    other_cands.append(v)
+
+    for k, val in kwargs.items():
+        if k not in ("filename", "file_name") and val is not None:
+            v = str(val).strip()
+            if v:
+                if "." in v and "/" not in v:
+                    fname_cands.append(v)
+                else:
+                    other_cands.append(v)
+
+    all_cands = fname_cands + other_cands
+    if not all_cands:
         return "UNKNOWN"
 
     # Step 1: Filename extension classification via Janhvi's EvidenceClassifier
     # Priority: If any candidate contains a dot/extension, classify by extension first.
-    # This ensures "transaction_history.xlsx" becomes SPREADSHEET even if raw_type was "Document".
-    for cand in candidates:
+    # Checks fname_cands first, ensuring transaction_history.xlsx -> SPREADSHEET
+    # even if raw_type was "DOCUMENT" or "UNKNOWN".
+    for cand in all_cands:
         if "." in cand:
-            classified = EvidenceClassifier.classify(cand)
+            cand_eval = f"file{cand}" if cand.startswith(".") else cand
+            classified = EvidenceClassifier.classify(cand_eval)
             if classified in CANONICAL_EPRA_TYPES and classified != "UNKNOWN":
                 return classified
 
     # Step 2: Exact MIME types or strings containing '/'
-    for cand in candidates:
+    for cand in all_cands:
         m = cand.lower()
         if "/" in m:
             if m.startswith("image/"):
@@ -86,7 +110,7 @@ def normalize_epra_evidence_type(
                 return "PDF"
             if m in ("message/rfc822", "application/vnd.ms-outlook", "application/eml"):
                 return "EMAIL"
-            if m in ("application/x-msdos-program", "application/x-executable", "application/x-msdownload", "application/x-bat"):
+            if m in ("application/x-msdos-program", "application/x-executable", "application/x-msdownload", "application/x-bat", "application/x-dosexec"):
                 return "EXECUTABLE"
             if m in ("text/csv", "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"):
                 return "SPREADSHEET"
@@ -100,26 +124,26 @@ def normalize_epra_evidence_type(
                 return "LOG"
 
     # Step 3: Check extension classification without leading dot (e.g. cand="xlsx" -> "file.xlsx")
-    for cand in candidates:
+    for cand in all_cands:
         cand_clean = cand.lstrip(".")
         classified = EvidenceClassifier.classify(f"file.{cand_clean}")
         if classified in CANONICAL_EPRA_TYPES and classified != "UNKNOWN":
             return classified
 
-    # Step 4: Substring heuristics for common descriptive types (e.g. "PDF Document", "Spreadsheet", etc.)
-    for cand in candidates:
+    # Step 4: Substring heuristics for descriptive types (e.g. "PDF Document", "Spreadsheet", "supported database files", etc.)
+    for cand in all_cands:
         r_low = cand.lower()
         if "pdf" in r_low:
             return "PDF"
-        if any(w in r_low for w in ("sheet", "excel", "csv", "xls")):
+        if any(w in r_low for w in ("spreadsheet", "excel", "csv", "xls")):
             return "SPREADSHEET"
         if any(w in r_low for w in ("email", "mail", "eml", "outlook", "rfc822")):
             return "EMAIL"
-        if any(w in r_low for w in ("executable", "exec", "exe", "binary", "dll", "msdos")):
+        if any(w in r_low for w in ("executable", "exe", "dll", "msdos")):
             return "EXECUTABLE"
         if any(w in r_low for w in ("database", "sqlite", "sql", "mdb", "accdb")):
             return "DATABASE"
-        if any(w in r_low for w in ("archive", "zip", "tar", "rar", "7z", "gz")):
+        if any(w in r_low for w in ("archive", "zip", "tar", "rar", "7z", "gzip")):
             return "ARCHIVE"
         if any(w in r_low for w in ("log", "audit", "pcap", "syslog")):
             return "LOG"
@@ -131,13 +155,13 @@ def normalize_epra_evidence_type(
             return "AUDIO"
 
     # Step 5: Direct match with specific canonical types (excluding UNKNOWN and DOCUMENT which might be overly broad)
-    for cand in candidates:
+    for cand in all_cands:
         cand_str = cand.upper()
         if cand_str in CANONICAL_EPRA_TYPES and cand_str not in ("UNKNOWN", "DOCUMENT"):
             return cand_str
 
     # Step 6: Fallback for generic document match
-    for cand in candidates:
+    for cand in all_cands:
         if any(w in cand.lower() for w in ("doc", "text", "word", "rtf", "odt")):
             return "DOCUMENT"
         if cand.upper() == "DOCUMENT":
@@ -494,8 +518,17 @@ def process_case_epra(
                 "time": c.timestamp.isoformat() if c.timestamp else datetime.now().isoformat()
             })
 
+        canon_exts = {
+            "IMAGE": ".jpg", "VIDEO": ".mp4", "AUDIO": ".mp3", "EMAIL": ".eml",
+            "PDF": ".pdf", "DOCUMENT": ".docx", "SPREADSHEET": ".xlsx",
+            "EXECUTABLE": ".exe", "DATABASE": ".db", "LOG": ".log", "ARCHIVE": ".zip"
+        }
+        meta_fname = ev.file_name
+        if "." not in meta_fname and canon_type in canon_exts:
+            meta_fname = f"{meta_fname}{canon_exts[canon_type]}"
+
         meta = JanhviMetadata(
-            file_name=ev.file_name,
+            file_name=meta_fname,
             extension=ext,
             mime_type=mime_val or "application/octet-stream",
             size=ev.file_size or (er.file_size_bytes if er else 0) or 0,
@@ -613,8 +646,20 @@ def process_case_epra(
             j_ev.deletion_factor = float(ev_inputs["deletion_factor"])
         if "privilege_factor" in ev_inputs:
             j_ev.privilege_factor = float(ev_inputs["privilege_factor"])
-        if "related_entities" in ev_inputs:
+        if "related_entities" in ev_inputs and ev_inputs["related_entities"] is not None:
             j_ev.related_entities = ev_inputs["related_entities"]
+        else:
+            try:
+                from models.possible_entity import PossibleEntity, PossibleEntityEvidenceLink
+                db_entities = (
+                    db.query(PossibleEntity.suspect_name)
+                    .join(PossibleEntityEvidenceLink, PossibleEntityEvidenceLink.entity_id == PossibleEntity.id)
+                    .filter(PossibleEntityEvidenceLink.evidence_id == ev.id)
+                    .all()
+                )
+                j_ev.related_entities = [e[0] for e in db_entities if e[0]]
+            except Exception:
+                j_ev.related_entities = []
 
         # Run Janhvi's EPRA engine
         effective_demo_mode = demo_mode
@@ -669,25 +714,31 @@ def process_case_epra(
         analysis_status = "COMPLETE"
 
         if is_image:
-            if not image_semantic_supplied:
+            if not image_semantic_supplied or (hasattr(j_ev, "pending_external_inputs") and "SI" in j_ev.pending_external_inputs):
                 si_val = None
                 semantic_status = "PENDING"
-                pending_inputs.append("Awaiting IMAGE CBIR/Semantic score")
+                reason = "Awaiting IMAGE CBIR/Semantic score"
+                if reason not in pending_inputs:
+                    pending_inputs.append(reason)
                 analysis_status = "PARTIAL / PENDING INPUTS"
             else:
-                si_val = round(float(image_semantic_score), 4)
+                si_val = round(float(j_ev.semantic_intelligence), 4)
                 semantic_status = "MEASURED"
         else:
             # Non-image evidence
-            if not meta_info["has_genuine_text"] or not meta_info["has_context"]:
+            if hasattr(j_ev, "pending_external_inputs") and "SI" in j_ev.pending_external_inputs:
                 si_val = None
                 semantic_status = "PENDING"
-                pending_inputs.append("Awaiting document text content and context for semantic analysis")
+                reason = "Awaiting document text content and context for semantic analysis"
+                if reason not in pending_inputs:
+                    pending_inputs.append(reason)
                 analysis_status = "PARTIAL / PENDING INPUTS"
-            elif hasattr(j_ev, "pending_external_inputs") and "SI" in j_ev.pending_external_inputs:
+            elif not meta_info["has_genuine_text"] or not meta_info["has_context"]:
                 si_val = None
                 semantic_status = "PENDING"
-                pending_inputs.append("Awaiting document text content and context for semantic analysis")
+                reason = "Awaiting document text content and context for semantic analysis"
+                if reason not in pending_inputs:
+                    pending_inputs.append(reason)
                 analysis_status = "PARTIAL / PENDING INPUTS"
             else:
                 si_val = round(float(j_ev.semantic_intelligence), 4)
@@ -699,8 +750,12 @@ def process_case_epra(
         if meta_info["has_bi_input"]:
             bi_val = round(float(meta_info["bi_explicit_val"]), 4)
             j_ev.behaviour_intelligence = bi_val
+            if hasattr(j_ev, "pending_external_inputs"):
+                j_ev.pending_external_inputs.pop("BI", None)
         elif meta_info.get("has_backend_bi"):
             bi_val = round(float(j_ev.behaviour_intelligence), 4)
+            if hasattr(j_ev, "pending_external_inputs"):
+                j_ev.pending_external_inputs.pop("BI", None)
         else:
             is_bi_pending = bool(hasattr(j_ev, "pending_external_inputs") and "BI" in j_ev.pending_external_inputs)
             if is_bi_pending or not demo_mode:
@@ -708,7 +763,7 @@ def process_case_epra(
                 msg = (
                     j_ev.pending_external_inputs.get("BI")
                     if hasattr(j_ev, "pending_external_inputs") and "BI" in j_ev.pending_external_inputs
-                    else "Awaiting behavioural audit logs"
+                    else "MISSING EXTERNAL INPUT / INTEGRATION PENDING (Member 2 — Behavioural Backend)"
                 )
                 if msg not in pending_inputs:
                     pending_inputs.append(msg)
