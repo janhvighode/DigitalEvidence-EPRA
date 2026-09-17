@@ -34,6 +34,7 @@ from models.report_record import ReportRecord
 from models.evidence_link import EvidenceLink
 from models.cbir_result import CBIRResult
 from models.case_status_history import CaseStatusHistory
+from models.case_note import CaseNote
 
 # Import routes
 from routes.auth import router as auth_router
@@ -74,6 +75,7 @@ from routes.investigator_dashboard_routes import router as investigator_router
 from routes.investigator_analysis_updates_routes import router as investigator_analysis_updates_router
 from routes.admin_system_statistics_routes import router as admin_system_statistics_router
 from routes.case_status_routes import router as case_status_router
+from routes.case_details_routes import router as case_details_router
 
 
 app = FastAPI(
@@ -129,6 +131,7 @@ app.include_router(investigator_router)
 app.include_router(investigator_analysis_updates_router)
 app.include_router(admin_system_statistics_router)
 app.include_router(case_status_router)
+app.include_router(case_details_router)
 
 @app.get("/")
 def home():
