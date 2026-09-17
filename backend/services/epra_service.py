@@ -146,7 +146,7 @@ def normalize_epra_evidence_type(
     return "UNKNOWN"
 
 
-def extract_readable_text_from_file(file_path: Optional[str], ext: str) -> Optional[str]:
+def extract_readable_text_from_file(file_path: Optional[str], ext: Optional[str] = None) -> Optional[str]:
     """
     Safely extracts readable text content from supported non-image evidence files on disk.
     Never invents content; returns None if file is missing, empty, or unreadable binary.
@@ -165,7 +165,8 @@ def extract_readable_text_from_file(file_path: Optional[str], ext: str) -> Optio
         if p.stat().st_size == 0:
             return None
 
-        ext_low = ext.lower()
+        ext_val = ext if ext else p.suffix
+        ext_low = ext_val.lower() if ext_val else ""
         if ext_low in (".txt", ".log", ".csv", ".json", ".xml", ".tsv"):
             with open(p, "r", encoding="utf-8", errors="ignore") as f:
                 content = f.read().strip()
@@ -816,6 +817,19 @@ def process_case_epra(
                 user_id=rec_id,
                 cyber_cell_id=None
             )
+
+    # Automatically execute Janhvi's Suspect / Entity Ranking for this case
+    try:
+        from services.suspect_ranking_service import process_case_suspect_ranking
+        process_case_suspect_ranking(
+            db=db,
+            case=case,
+            current_user=current_user,
+            external_inputs=external_inputs
+        )
+    except Exception as e:
+        # Non-blocking if auxiliary setup deferred
+        pass
 
     summary = calculate_summary_metrics(
         case=case,

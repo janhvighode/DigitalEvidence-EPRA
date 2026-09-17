@@ -25,6 +25,7 @@ from services.epra_service import (
     authorize_cyber_expert_case_access,
     process_case_epra,
     normalize_epra_evidence_type,
+    extract_readable_text_from_file,
 )
 from services.timeline_service import create_timeline_event
 from schemas.possible_entity import (
@@ -40,6 +41,7 @@ from ai_modules.epra_v2.models.evidence import Evidence as JanhviEvidence
 from ai_modules.epra_v2.models.metadata import Metadata as JanhviMetadata
 from ai_modules.epra_v2.intelligence.relationship_analyzer import RelationshipAnalyzer
 from ai_modules.epra_v2.ranking.suspect_ranker import SuspectRanker
+from ai_modules.epra_v2.services.epra_service import EPRAService as JanhviEPRAService
 
 
 def map_entity_type(identifier: str) -> str:
@@ -90,6 +92,7 @@ def resolve_evidence_file_path(file_path: Optional[str]) -> str:
 def build_ranked_entity_response(entity: PossibleEntity) -> RankedEntityResponse:
     """
     Derives linked_evidence_ids from the relational link table and builds RankedEntityResponse.
+    Exposes both internal_entity_id (suspect_id) and genuine entity_identifier (suspect_name).
     """
     linked_ids = []
     if entity.evidence_links:
@@ -97,10 +100,14 @@ def build_ranked_entity_response(entity: PossibleEntity) -> RankedEntityResponse
             if link.evidence and link.evidence.evidence_id:
                 linked_ids.append(link.evidence.evidence_id)
 
+    ident = entity.suspect_name if (entity.suspect_name and entity.suspect_name != "-") else None
+
     return RankedEntityResponse(
         id=entity.id,
         suspect_id=entity.suspect_id,
-        suspect_name=entity.suspect_name,
+        internal_entity_id=entity.suspect_id,
+        suspect_name=ident or entity.suspect_id,
+        entity_identifier=ident,
         entity_type=entity.entity_type,
         rank=entity.rank,
         total_epra_score=entity.total_epra_score,
@@ -115,7 +122,8 @@ def build_ranked_entity_response(entity: PossibleEntity) -> RankedEntityResponse
 def process_case_suspect_ranking(
     db: Session,
     case: Case,
-    current_user: User
+    current_user: User,
+    external_inputs: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
     """
     Executes transaction-safe, idempotent Suspect / Entity Ranking for a case:
@@ -213,10 +221,22 @@ def process_case_suspect_ranking(
         j_ev.db_evidence_id = ev.id
         j_ev.db_evidence_uid = ev.evidence_id
 
-        # Safely extract text content (supports .eml, .txt, .log, .csv, .json, .xml)
-        # Binary files without pre-supplied text are skipped safely without fabricating identifiers
+        # Safely extract readable text content (supports .docx, .xlsx, .pdf, .eml, .txt, .log, .csv, .json, .xml)
+        extracted_text = extract_readable_text_from_file(resolved_path, ext)
+        if extracted_text:
+            meta.extracted_text = extracted_text
+
+        # Ingest external inputs if provided (e.g. per-evidence text or entities)
+        if external_inputs:
+            ev_in = external_inputs.get(ev.evidence_id) or external_inputs.get(str(ev.id)) or {}
+            if isinstance(ev_in, dict):
+                if ev_in.get("extracted_text"):
+                    meta.extracted_text = ev_in["extracted_text"]
+                if ev_in.get("entities") or ev_in.get("related_entities"):
+                    j_ev.related_entities = ev_in.get("entities") or ev_in.get("related_entities")
+
         text_content = RelationshipAnalyzer.extract_text_content(j_ev)
-        if not text_content:
+        if not text_content and not getattr(j_ev, "related_entities", None):
             skipped_unreadable_count += 1
 
         # Process actor identifiers and isolate transactions (never fabricating human names)
@@ -224,11 +244,10 @@ def process_case_suspect_ranking(
         janhvi_evidence_list.append(j_ev)
 
     # Correlate and rank suspect entities via Janhvi's EPRA V2 engine
-    suspect_candidates = RelationshipAnalyzer.generate_suspect_candidates(
+    ranked_suspects = JanhviEPRAService.correlate_and_rank_suspects(
         janhvi_evidence_list,
         demo_mode=False
     )
-    ranked_suspects = SuspectRanker.rank(suspect_candidates)
 
     # Database synchronization inside transaction
     ev_by_uid = {ev.evidence_id: ev for ev in evidence_records}
@@ -360,16 +379,44 @@ def process_case_suspect_ranking(
     }
 
 
+def ensure_suspect_ranking_current(
+    db: Session,
+    case: Case,
+    current_user: Optional[User] = None
+) -> None:
+    """
+    Ensures that suspect ranking for a case is available:
+    - If no entities exist and evidence exists, automatically triggers suspect ranking.
+    """
+    if not current_user:
+        return
+
+    ev_count = db.query(Evidence).filter(Evidence.case_id == case.id).count()
+    if ev_count == 0:
+        return
+
+    entity_count = db.query(PossibleEntity).filter(PossibleEntity.case_id == case.id).count()
+    if entity_count == 0:
+        try:
+            process_case_suspect_ranking(db, case, current_user)
+        except Exception:
+            pass
+
+
 def get_case_ranked_possible_entities(
     db: Session,
     case: Case,
     limit: Optional[int] = None,
-    entity_type: Optional[str] = None
+    entity_type: Optional[str] = None,
+    current_user: Optional[User] = None
 ) -> List[RankedEntityResponse]:
     """
-    Returns ranked possible entities for a case ordered by rank ascending.
-    Optionally filters by entity_type and applies a limit.
+    Returns ranked possible entities for a case ordered strictly by Janhvi's ranking rule:
+    PRIMARY: total_epra_score DESC, TIE: suspect_name (identifier) ASC.
+    Automatically executes suspect ranking if not yet processed for this case.
     """
+    ensure_suspect_ranking_current(db, case, current_user)
+
     query = (
         db.query(PossibleEntity)
         .options(
@@ -383,7 +430,11 @@ def get_case_ranked_possible_entities(
     if entity_type:
         query = query.filter(PossibleEntity.entity_type == entity_type.upper())
 
-    query = query.order_by(PossibleEntity.rank.asc())
+    query = query.order_by(
+        PossibleEntity.rank.asc(),
+        PossibleEntity.total_epra_score.desc(),
+        func.lower(PossibleEntity.suspect_name).asc()
+    )
 
     if limit and limit > 0:
         query = query.limit(limit)
@@ -394,11 +445,15 @@ def get_case_ranked_possible_entities(
 
 def get_case_possible_entities_summary(
     db: Session,
-    case: Case
+    case: Case,
+    current_user: Optional[User] = None
 ) -> EntitySummaryOverview:
     """
     Computes dynamic overview and distribution of possible entities for a case.
+    Automatically executes suspect ranking if not yet processed for this case.
     """
+    ensure_suspect_ranking_current(db, case, current_user)
+
     entities = (
         db.query(PossibleEntity)
         .options(
@@ -407,7 +462,11 @@ def get_case_possible_entities_summary(
             )
         )
         .filter(PossibleEntity.case_id == case.id)
-        .order_by(PossibleEntity.rank.asc())
+        .order_by(
+            PossibleEntity.rank.asc(),
+            PossibleEntity.total_epra_score.desc(),
+            func.lower(PossibleEntity.suspect_name).asc()
+        )
         .all()
     )
 
@@ -477,12 +536,17 @@ def get_case_possible_entities_summary(
 def get_possible_entity_detail(
     db: Session,
     case: Case,
-    entity_identifier: str | int
+    entity_identifier: str | int,
+    current_user: Optional[User] = None
 ) -> EntityDetailResponse:
     """
     Retrieves full detail of a specific entity including linked evidence items,
-    their EPRA scores, and priorities.
+    their canonical EPRA types, and individual final EPRA scores.
+    Guarantees mathematical integrity: total_epra_score = SUM(linked final EPRA scores).
     """
+    if current_user:
+        ensure_suspect_ranking_current(db, case, current_user)
+
     ident_str = str(entity_identifier).strip()
 
     query = (
@@ -516,7 +580,7 @@ def get_possible_entity_detail(
             detail=f"Possible entity '{entity_identifier}' not found in case '{case.case_id}'"
         )
 
-    # Collect linked evidence items with EPRA scores
+    # Collect linked evidence items with EPRA scores and canonical types
     linked_evidence_items: List[LinkedEvidenceSummary] = []
     linked_ids: List[str] = []
 
@@ -528,24 +592,48 @@ def get_possible_entity_detail(
         linked_ids.append(ev.evidence_id)
         epra_rec = (
             db.query(EPRAResult)
-            .filter(EPRAResult.evidence_id == ev.id)
+            .filter(
+                EPRAResult.case_id == case.id,
+                EPRAResult.evidence_id == ev.id
+            )
             .first()
         )
+
+        canon_type = normalize_epra_evidence_type(
+            filename=ev.file_name,
+            raw_type=ev.file_type
+        )
+
+        score_val = epra_rec.epra_score if epra_rec else None
 
         linked_evidence_items.append(
             LinkedEvidenceSummary(
                 evidence_id=ev.evidence_id,
                 file_name=ev.file_name,
-                file_type=normalize_epra_evidence_type(ev.file_type or ev.file_name),
-                epra_score=epra_rec.epra_score if epra_rec else None,
+                file_type=canon_type,
+                evidence_type=canon_type,
+                epra_score=score_val,
                 priority=epra_rec.priority if epra_rec else None,
             )
         )
 
+    # Ensure total_epra_score matches exact sum of final EPRA scores of all linked evidence
+    if linked_evidence_items:
+        valid_scores = [item.epra_score for item in linked_evidence_items if item.epra_score is not None]
+        if valid_scores:
+            score_sum = round(sum(valid_scores), 2)
+            if abs(entity.total_epra_score - score_sum) > 0.001:
+                entity.total_epra_score = score_sum
+                db.commit()
+
+    ident = entity.suspect_name if (entity.suspect_name and entity.suspect_name != "-") else None
+
     return EntityDetailResponse(
         id=entity.id,
         suspect_id=entity.suspect_id,
-        suspect_name=entity.suspect_name,
+        internal_entity_id=entity.suspect_id,
+        suspect_name=ident or entity.suspect_id,
+        entity_identifier=ident,
         entity_type=entity.entity_type,
         rank=entity.rank,
         total_epra_score=entity.total_epra_score,

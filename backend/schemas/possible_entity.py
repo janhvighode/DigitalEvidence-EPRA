@@ -7,6 +7,7 @@ class LinkedEvidenceSummary(BaseModel):
     evidence_id: str
     file_name: str
     file_type: str
+    evidence_type: Optional[str] = None
     epra_score: Optional[float] = None
     priority: Optional[str] = None
 
@@ -16,7 +17,9 @@ class LinkedEvidenceSummary(BaseModel):
 class RankedEntityResponse(BaseModel):
     id: int
     suspect_id: str
+    internal_entity_id: Optional[str] = None
     suspect_name: str
+    entity_identifier: Optional[str] = None
     entity_type: str
     rank: int
     total_epra_score: float
@@ -32,7 +35,9 @@ class RankedEntityResponse(BaseModel):
 class EntityDetailResponse(BaseModel):
     id: int
     suspect_id: str
+    internal_entity_id: Optional[str] = None
     suspect_name: str
+    entity_identifier: Optional[str] = None
     entity_type: str
     rank: int
     total_epra_score: float

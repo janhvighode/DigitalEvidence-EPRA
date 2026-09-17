@@ -66,7 +66,7 @@ def get_ranked_possible_entities(
     Rank 1 corresponds to the entity with the highest total EPRA score.
     """
     case = authorize_cyber_expert_case_access(db, case_id, current_user)
-    return get_case_ranked_possible_entities(db, case, limit=limit, entity_type=entity_type)
+    return get_case_ranked_possible_entities(db, case, limit=limit, entity_type=entity_type, current_user=current_user)
 
 
 @router.get(
@@ -85,7 +85,7 @@ def get_possible_entities_summary(
     including type distributions, score range, and top ranked entities.
     """
     case = authorize_cyber_expert_case_access(db, case_id, current_user)
-    return get_case_possible_entities_summary(db, case)
+    return get_case_possible_entities_summary(db, case, current_user=current_user)
 
 
 @router.get(
@@ -106,4 +106,4 @@ def get_possible_entity(
     Accepts entity DB id, suspect_id (e.g., SUSPECT-8E3A4B5C), or display name.
     """
     case = authorize_cyber_expert_case_access(db, case_id, current_user)
-    return get_possible_entity_detail(db, case, entity_id)
+    return get_possible_entity_detail(db, case, entity_id, current_user=current_user)
