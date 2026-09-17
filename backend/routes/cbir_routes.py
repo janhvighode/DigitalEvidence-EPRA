@@ -316,7 +316,7 @@ def get_candidate_details(
 
 
 # ============================================================
-# TEXT SEARCH ENDPOINTS
+# TEXT SEARCH ENDPOINTS (POST + GET)
 # ============================================================
 
 @cbir_router.post(
@@ -347,14 +347,54 @@ def search_case_text(
     return search_case_text_service(
         db=db,
         case_id=target_case_id,
-        query_text=payload.query_text,
+        query_text=payload.query_text or "",
         top_k=payload.top_k or 10,
+        search_mode=payload.search_mode or "text",
+        max_hops=payload.max_hops or 2,
+        current_user=current_user
+    )
+
+
+@cbir_router.get(
+    "/cases/{case_id}/cbir/search/text",
+    response_model=CaseSearchResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Execute case-level text evidence search (GET query)"
+)
+@cbir_router.get(
+    "/cbir/search/text",
+    response_model=CaseSearchResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Execute text search across case evidence (GET query)"
+)
+def search_case_text_get(
+    case_id: Optional[str] = None,
+    query_text: str = Query(default="", description="Search query string"),
+    top_k: int = Query(default=10, description="Max results"),
+    search_mode: str = Query(default="text", description="Search mode: 'text', 'context', or 'all'"),
+    max_hops: int = Query(default=2, description="Max hops for graph context traversal"),
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_optional_current_user)
+):
+    if not case_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="case_id is required for case-isolated text search."
+        )
+
+    return search_case_text_service(
+        db=db,
+        case_id=case_id,
+        query_text=query_text,
+        top_k=top_k,
+        search_mode=search_mode,
+        max_hops=max_hops,
         current_user=current_user
     )
 
 
 # ============================================================
-# CONTEXT SEARCH ENDPOINTS
+# CONTEXT SEARCH ENDPOINTS (POST + GET)
 # ============================================================
 
 @cbir_router.post(
@@ -385,15 +425,51 @@ def search_case_context(
     return search_case_context_service(
         db=db,
         case_id=target_case_id,
-        query_text=payload.query_text,
+        query_text=payload.query_text or "",
         max_hops=payload.max_hops or 2,
         top_k=payload.top_k or 10,
         current_user=current_user
     )
 
 
+@cbir_router.get(
+    "/cases/{case_id}/cbir/search/context",
+    response_model=CaseSearchResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Execute case-level graph context evidence search (GET query)"
+)
+@cbir_router.get(
+    "/cbir/search/context",
+    response_model=CaseSearchResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Execute context search across case relationship graph (GET query)"
+)
+def search_case_context_get(
+    case_id: Optional[str] = None,
+    query_text: str = Query(default="", description="Search query string"),
+    max_hops: int = Query(default=2, description="Max hops for graph context traversal"),
+    top_k: int = Query(default=10, description="Max results"),
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_optional_current_user)
+):
+    if not case_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="case_id is required for case-isolated context search."
+        )
+
+    return search_case_context_service(
+        db=db,
+        case_id=case_id,
+        query_text=query_text,
+        max_hops=max_hops,
+        top_k=top_k,
+        current_user=current_user
+    )
+
+
 # ============================================================
-# UNIFIED RETRIEVAL ENDPOINTS
+# UNIFIED RETRIEVAL ENDPOINTS (POST + GET)
 # ============================================================
 
 @cbir_router.post(
@@ -424,6 +500,46 @@ def search_case_unified(
         case_id=target_case_id,
         query_type=payload.search_mode or "text",
         query_text=payload.query_text,
+        query_evidence_id=payload.query_evidence_id,
+        query_image_path=payload.query_image_path,
         top_k=payload.top_k or 10,
+        current_user=current_user
+    )
+
+
+@cbir_router.get(
+    "/cases/{case_id}/cbir/search/unified",
+    status_code=status.HTTP_200_OK,
+    summary="Execute unified hybrid retrieval (GET query)"
+)
+@cbir_router.get(
+    "/cbir/search/unified",
+    status_code=status.HTTP_200_OK,
+    summary="Execute unified hybrid forensic search (GET query)"
+)
+def search_case_unified_get(
+    case_id: Optional[str] = None,
+    query_text: Optional[str] = Query(default="", description="Search query string"),
+    search_mode: str = Query(default="text", description="Search mode: 'text', 'context', 'hybrid', 'image', 'case_search'"),
+    top_k: int = Query(default=10, description="Max results"),
+    query_evidence_id: Optional[str] = Query(default=None, description="Query evidence ID"),
+    query_image_path: Optional[str] = Query(default=None, description="Query image path"),
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_optional_current_user)
+):
+    if not case_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="case_id is required for unified retrieval."
+        )
+
+    return search_case_unified_service(
+        db=db,
+        case_id=case_id,
+        query_type=search_mode or "text",
+        query_text=query_text,
+        query_evidence_id=query_evidence_id,
+        query_image_path=query_image_path,
+        top_k=top_k,
         current_user=current_user
     )

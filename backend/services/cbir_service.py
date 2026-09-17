@@ -22,6 +22,8 @@ from models.evidence_record import EvidenceRecord
 from models.evidence_hash import EvidenceHash
 from models.cbir_result import CBIRResult
 from models.user import User
+from models.possible_entity import PossibleEntity, PossibleEntityEvidenceLink
+from models.evidence_link import EvidenceLink
 from services.notification_service import create_notification
 from services.hash_service import HashService
 
@@ -39,7 +41,8 @@ from schemas.cbir import (
 
 # Import Trisha's verified CBIR and retrieval algorithms
 from feature_extractor import load_image, extract_features
-from feature_database import get_case_evidence, get_evidence as get_cbir_evidence
+from feature_database import get_case_evidence, get_evidence as get_cbir_evidence, insert_feature
+from evidence_linker import insert_link, get_case_links
 from image_search import (
     search_similar_images,
     format_investigator_image_result,
@@ -288,35 +291,36 @@ def fetch_case_evidence_dynamically(db: Session, case_id: str) -> List[Dict[str,
             pass
 
     # 3. Fetch from CBIR feature_database (SQLite images.db)
-    try:
-        cbir_records = get_case_evidence(clean_case_id)
-        for c in cbir_records:
-            ev_id = str(c.get("evidence_id"))
-            if not ev_id:
-                continue
-            img_p = c.get("image_path", "")
-            fn = Path(img_p).name if img_p else ev_id
+    if not evidence_by_id:
+        try:
+            cbir_records = get_case_evidence(clean_case_id)
+            for c in cbir_records:
+                ev_id = str(c.get("evidence_id"))
+                if not ev_id:
+                    continue
+                img_p = c.get("image_path", "")
+                fn = Path(img_p).name if img_p else ev_id
 
-            if ev_id not in evidence_by_id:
-                evidence_by_id[ev_id] = {
-                    "evidence_id": ev_id,
-                    "numeric_id": None,
-                    "case_id": clean_case_id,
-                    "original_filename": fn,
-                    "filename": fn,
-                    "file_name": fn,
-                    "file_path": img_p,
-                    "image_path": img_p,
-                    "file_extension": Path(fn).suffix,
-                    "mime_type": "image/jpeg",
-                    "evidence_type": c.get("category", "Image"),
-                    "category": c.get("category", "Image"),
-                    "sha256_hash": c.get("sha256_hash") or c.get("image_hash"),
-                    "created_at": c.get("created_at"),
-                    "description": c.get("description", "")
-                }
-    except Exception:
-        pass
+                if ev_id not in evidence_by_id:
+                    evidence_by_id[ev_id] = {
+                        "evidence_id": ev_id,
+                        "numeric_id": None,
+                        "case_id": clean_case_id,
+                        "original_filename": fn,
+                        "filename": fn,
+                        "file_name": fn,
+                        "file_path": img_p,
+                        "image_path": img_p,
+                        "file_extension": Path(fn).suffix,
+                        "mime_type": "image/jpeg",
+                        "evidence_type": c.get("category", "Image"),
+                        "category": c.get("category", "Image"),
+                        "sha256_hash": c.get("sha256_hash") or c.get("image_hash"),
+                        "created_at": c.get("created_at"),
+                        "description": c.get("description", "")
+                    }
+        except Exception:
+            pass
 
     return list(evidence_by_id.values())
 
@@ -704,11 +708,119 @@ def run_cbir_comparison(
     )
 
 
+def ensure_case_evidence_synchronized(db: Session, clean_case_id: str) -> None:
+    """
+    Dynamically synchronize real DEPS evidence and relationship links from the
+    database into Member-3's feature_database and evidence_linker.
+    Ensures text, context, and unified search operate on real DEPS evidence,
+    supporting newly registered cases and evidences without any hardcoding.
+    """
+    case_row = None
+    if str(clean_case_id).isdigit():
+        case_row = db.query(Case).filter(Case.id == int(clean_case_id)).first()
+    if not case_row:
+        case_row = db.query(Case).filter(Case.case_id == str(clean_case_id)).first()
+
+    # 1. Sync from Evidence table (active cases)
+    if case_row:
+        ev_rows = db.query(Evidence).filter(
+            Evidence.case_id == case_row.id,
+            Evidence.status == "Active"
+        ).all()
+        for ev in ev_rows:
+            ev_id = str(ev.evidence_id)
+            img_p = ev.file_path or f"uploads/{ev.file_name}"
+            insert_feature(
+                case_id=str(clean_case_id),
+                evidence_id=ev_id,
+                image_path=img_p,
+                feature_path=img_p,
+                category=ev.file_type or "Evidence",
+                description=f"{ev.file_name} in {clean_case_id}"
+            )
+
+        # 2. Sync from PossibleEntity & PossibleEntityEvidenceLink
+        try:
+            entities = db.query(PossibleEntity).filter(PossibleEntity.case_id == case_row.id).all()
+            if entities:
+                existing_links = get_case_links(str(clean_case_id))
+                existing_tuples = {(str(l.get("evidence")), str(l.get("suspect")), str(l.get("device"))) for l in existing_links}
+                for ent in entities:
+                    s_name = ent.suspect_name or ent.suspect_id
+                    pel_links = db.query(PossibleEntityEvidenceLink).filter(PossibleEntityEvidenceLink.entity_id == ent.id).all()
+                    for pel in pel_links:
+                        linked_ev = db.query(Evidence).filter(Evidence.id == pel.evidence_id).first()
+                        if linked_ev:
+                            ev_str = str(linked_ev.evidence_id)
+                            tup = (ev_str, s_name, "None")
+                            if tup not in existing_tuples:
+                                insert_link(
+                                    evidence=ev_str,
+                                    suspect=s_name,
+                                    device="None",
+                                    case_id=str(clean_case_id),
+                                    evidence_type=linked_ev.file_type or "Evidence",
+                                    confidence=float(ent.confidence_score or 0.85),
+                                    relationship_type="ASSOCIATED_WITH"
+                                )
+                                existing_tuples.add(tup)
+        except Exception:
+            pass
+
+        # 3. Sync from EvidenceLink table
+        try:
+            db_links = db.query(EvidenceLink).filter(EvidenceLink.case_id == case_row.id).all()
+            if db_links:
+                existing_links = get_case_links(str(clean_case_id))
+                existing_tuples = {(str(l.get("evidence")), str(l.get("suspect")), str(l.get("device"))) for l in existing_links}
+                for l in db_links:
+                    ev_item = db.query(Evidence).filter(Evidence.id == l.evidence_id).first()
+                    ev_str = str(ev_item.evidence_id) if ev_item else str(l.evidence_id)
+                    s_name = str(l.suspect_name or "None")
+                    d_name = str(l.device_name or "None")
+                    tup = (ev_str, s_name, d_name)
+                    if tup not in existing_tuples:
+                        insert_link(
+                            evidence=ev_str,
+                            suspect=s_name,
+                            device=d_name,
+                            case_id=str(clean_case_id),
+                            evidence_type=ev_item.file_type if ev_item else "Evidence",
+                            confidence=1.0,
+                            relationship_type=l.relationship_type or "ASSOCIATED_WITH"
+                        )
+                        existing_tuples.add(tup)
+        except Exception:
+            pass
+
+    # 4. Sync from EvidenceRecord table (vault records)
+    try:
+        rec_rows = db.query(EvidenceRecord).filter(
+            EvidenceRecord.case_id == str(clean_case_id)
+        ).all()
+        for r in rec_rows:
+            ev_id = str(r.external_evidence_id or r.id)
+            img_p = r.file_path or f"uploads/{r.stored_filename or r.original_filename}"
+            insert_feature(
+                case_id=str(clean_case_id),
+                evidence_id=ev_id,
+                image_path=img_p,
+                feature_path=img_p,
+                category=r.evidence_type or "Evidence",
+                sha256_hash=r.original_sha256 or r.current_sha256,
+                description=r.notes or f"{r.original_filename} in {clean_case_id}"
+            )
+    except Exception:
+        pass
+
+
 def search_case_text_service(
     db: Session,
     case_id: str,
-    query_text: str,
+    query_text: Optional[str] = "",
     top_k: int = 10,
+    search_mode: str = "text",
+    max_hops: int = 2,
     current_user: Optional[User] = None
 ) -> CaseSearchResponse:
     """
@@ -716,23 +828,46 @@ def search_case_text_service(
     """
     clean_case_id = str(case_id).strip()
     authorize_case_access(db, clean_case_id, current_user)
+    ensure_case_evidence_synchronized(db, clean_case_id)
 
-    results = search_evidence_by_text(
-        case_id=clean_case_id,
-        query_text=query_text,
-        top_k=top_k,
-        return_dict=True
-    )
+    q_str = str(query_text or "").strip()
 
-    res_list = results if isinstance(results, list) else []
-    status_str = "Success" if res_list else "no_data_found"
-    msg = f"Found {len(res_list)} matching evidence items in case '{clean_case_id}'." if res_list else "No evidence matching query found."
+    if search_mode in ["all", "case_search"]:
+        results = search_case_evidence(
+            case_id=clean_case_id,
+            query_text=q_str,
+            top_k=top_k,
+            search_mode=search_mode,
+            max_hops=max_hops
+        )
+    else:
+        results = search_evidence_by_text(
+            case_id=clean_case_id,
+            query_text=q_str,
+            top_k=top_k,
+            return_dict=True
+        )
+
+    if isinstance(results, dict):
+        res_list = results.get("results", []) or results.get("ranked_evidence", [])
+        status_str = results.get("status", "Success" if res_list else "no_data_found")
+        msg = results.get("message") or (
+            f"Found {len(res_list)} matching evidence items in case '{clean_case_id}'."
+            if res_list else f"No relevant evidence found for '{q_str}' in {clean_case_id}."
+        )
+    else:
+        res_list = results if isinstance(results, list) else []
+        status_str = "Success" if res_list else "no_data_found"
+        msg = (
+            f"Found {len(res_list)} matching evidence items in case '{clean_case_id}'."
+            if res_list else f"No relevant evidence found for '{q_str}' in {clean_case_id}."
+        )
 
     return CaseSearchResponse(
         status=status_str,
         message=msg,
         case_id=clean_case_id,
-        search_query=query_text,
+        search_query=q_str,
         search_box_label="Search evidence in this case...",
         results_count=len(res_list),
         results=res_list,
@@ -744,7 +879,7 @@ def search_case_text_service(
 def search_case_context_service(
     db: Session,
     case_id: str,
-    query_text: str,
+    query_text: Optional[str] = "",
     max_hops: int = 2,
     top_k: int = 10,
     current_user: Optional[User] = None
@@ -754,23 +889,37 @@ def search_case_context_service(
     """
     clean_case_id = str(case_id).strip()
     authorize_case_access(db, clean_case_id, current_user)
+    ensure_case_evidence_synchronized(db, clean_case_id)
+
+    q_str = str(query_text or "").strip()
 
     results = search_context_evidence(
         case_id=clean_case_id,
-        query_text=query_text,
+        query_text=q_str,
         max_hops=max_hops,
         top_k=top_k
     )
 
-    res_list = results if isinstance(results, list) else []
-    status_str = "Success" if res_list else "no_relationship_found"
-    msg = f"Found {len(res_list)} contextually related items in case '{clean_case_id}'." if res_list else "No contextual relationships found."
+    if isinstance(results, dict):
+        res_list = results.get("results", []) or results.get("ranked_evidence", [])
+        status_str = results.get("status", "Success" if res_list else "no_data_found")
+        msg = results.get("message") or (
+            f"Found {len(res_list)} contextually related items in case '{clean_case_id}'."
+            if res_list else f"No related contextual evidence found for '{q_str}' in {clean_case_id}."
+        )
+    else:
+        res_list = results if isinstance(results, list) else []
+        status_str = "Success" if res_list else "no_data_found"
+        msg = (
+            f"Found {len(res_list)} contextually related items in case '{clean_case_id}'."
+            if res_list else f"No related contextual evidence found for '{q_str}' in {clean_case_id}."
+        )
 
     return CaseSearchResponse(
         status=status_str,
         message=msg,
         case_id=clean_case_id,
-        search_query=query_text,
+        search_query=q_str,
         search_box_label="Search evidence in this case...",
         results_count=len(res_list),
         results=res_list,
@@ -794,6 +943,7 @@ def search_case_unified_service(
     """
     clean_case_id = str(case_id).strip()
     authorize_case_access(db, clean_case_id, current_user)
+    ensure_case_evidence_synchronized(db, clean_case_id)
 
     return retrieve_evidence(
         case_id=clean_case_id,

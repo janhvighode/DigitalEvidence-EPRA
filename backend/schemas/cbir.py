@@ -105,11 +105,13 @@ class CBIRCaseEligibleImagesResponse(BaseModel):
 
 class CaseSearchRequest(BaseModel):
     """Case evidence search request."""
-    query_text: str = Field(..., description="Search query string")
+    query_text: Optional[str] = Field(default="", description="Search query string")
     case_id: Optional[str] = Field(None, description="Case ID if not in path")
     top_k: Optional[int] = Field(10, description="Max results")
     search_mode: Optional[str] = Field("text", description="Search mode: 'text', 'context', or 'all'")
     max_hops: Optional[int] = Field(2, description="Max hops for graph context traversal")
+    query_evidence_id: Optional[str] = Field(default=None, description="Query evidence ID for image or hybrid search")
+    query_image_path: Optional[str] = Field(default=None, description="Query image path for image or hybrid search")
 
 
 class CaseSearchResponse(BaseModel):
