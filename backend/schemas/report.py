@@ -99,6 +99,7 @@ class ReportStructuredViewResponse(BaseModel):
     conclusion: Dict[str, Any] = {}
 
     download_url: Optional[str] = None
+    preview_url: Optional[str] = None
     file_name: Optional[str] = None
     can_download: bool = False
 

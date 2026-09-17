@@ -546,10 +546,10 @@ def get_report_view_data(db: Session, case_or_report_id: str, current_user: User
     cbir_data = []
     for cb in cbir_items:
         cbir_data.append({
-            "evidence_id": cb.evidence_id,
-            "similarity_score": cb.similarity_score,
-            "matched_category": cb.matched_category,
-            "status": cb.status
+            "evidence_id": getattr(cb, "query_evidence_id", getattr(cb, "evidence_id", None)),
+            "similarity_score": getattr(cb, "visual_similarity_score", getattr(cb, "similarity_score", 0.0)),
+            "matched_category": getattr(cb, "classification", getattr(cb, "matched_category", "N/A")),
+            "status": getattr(cb, "confidence_level", getattr(cb, "status", "Completed"))
         })
 
     # 9. Fetch Genuine Suspect / Entity Data
@@ -559,11 +559,11 @@ def get_report_view_data(db: Session, case_or_report_id: str, current_user: User
     suspect_data = []
     for en in entities:
         suspect_data.append({
-            "entity_name": en.name,
-            "entity_type": en.entity_type,
-            "confidence_score": en.confidence_score,
-            "priority": en.priority,
-            "status": en.status
+            "entity_name": getattr(en, "suspect_name", getattr(en, "name", "Unknown")),
+            "entity_type": getattr(en, "entity_type", "Entity"),
+            "confidence_score": getattr(en, "confidence_score", getattr(en, "total_epra_score", 0.0)),
+            "priority": getattr(en, "priority", f"Rank #{getattr(en, 'rank', 1)}"),
+            "status": getattr(en, "status", "Identified")
         })
 
     # 10. Fetch Case Timeline Events
@@ -581,6 +581,7 @@ def get_report_view_data(db: Session, case_or_report_id: str, current_user: User
 
     can_download = (r_status in ("GENERATED", "FINAL") and rep_rec is not None)
     download_url = f"/reports/{rep_rec.id}/download" if can_download and rep_rec else None
+    preview_url = f"/reports/{rep_rec.id}/preview" if can_download and rep_rec else None
 
     gen_time = rep_rec.generated_at if rep_rec else None
     gen_time_disp = gen_time.strftime("%d %b %Y %H:%M") if gen_time else None
@@ -715,6 +716,7 @@ def get_report_view_data(db: Session, case_or_report_id: str, current_user: User
         },
 
         "download_url": download_url,
+        "preview_url": preview_url,
         "file_name": rep_rec.file_name if rep_rec else f"{case_obj.case_id}_Forensic_Report.pdf",
         "can_download": can_download
     }
@@ -777,30 +779,46 @@ def get_report_pdf_file_path(db: Session, report_or_case_id: str, current_user: 
             detail="Report has not been generated for this case. Download is unavailable."
         )
 
-    # 4. Check if file exists on disk
-    target_path = Path(rep_rec.file_path).resolve() if rep_rec.file_path else None
+    # 4. Check if file exists on disk and is within safe storage
     resolved_root = DEFAULT_REPORTS_DIR.parent.resolve()
+    target_path = None
 
-    if target_path and target_path.exists() and target_path.is_file() and target_path.stat().st_size > 0:
-        download_filename = f"{case_obj.case_id}_Forensic_Report.pdf"
-        return target_path, download_filename
+    if rep_rec.file_path:
+        try:
+            direct_path = Path(rep_rec.file_path).resolve()
+            # If the direct path exists on disk but is outside safe root -> Security violation!
+            if direct_path.exists() and not direct_path.is_relative_to(resolved_root):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Access denied: Report file outside safe storage directory."
+                )
+            if direct_path.is_relative_to(resolved_root) and direct_path.is_file():
+                target_path = direct_path
+        except HTTPException:
+            raise
+        except (ValueError, Exception):
+            pass
 
-    # If file was missing on disk, regenerate persistent PDF safely
-    from schemas.technical_report import ReportRequest
-    req = ReportRequest(case_id=str(case_obj.case_id))
-    gen_result = TechnicalReportService.assemble_report_data(
-        report=req,
-        db=db,
-        current_user=current_user,
-        is_draft=rep_rec.is_draft
-    )
-    new_pdf_path = Path(gen_result["pdf_path"]).resolve()
-    rep_rec.file_path = str(new_pdf_path)
-    rep_rec.file_size_bytes = new_pdf_path.stat().st_size
-    db.commit()
+    # Fallback to standard storage directory using rep_rec.file_name or basename of file_path
+    if not target_path:
+        candidate_name = rep_rec.file_name or (Path(rep_rec.file_path).name if rep_rec.file_path else None)
+        if candidate_name:
+            local_report = (DEFAULT_REPORTS_DIR / candidate_name).resolve()
+            local_manifest = (DEFAULT_REPORTS_DIR.parent / "hash_manifests" / candidate_name).resolve()
+            if local_report.is_relative_to(resolved_root) and local_report.is_file():
+                target_path = local_report
+            elif local_manifest.is_relative_to(resolved_root) and local_manifest.is_file():
+                target_path = local_manifest
 
-    download_filename = f"{case_obj.case_id}_Forensic_Report.pdf"
-    return new_pdf_path, download_filename
+    if not target_path or not target_path.exists() or not target_path.is_file() or target_path.stat().st_size == 0:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Persisted report file not found on disk."
+        )
+
+    ext = ".json" if getattr(rep_rec, "file_format", "PDF") == "JSON" else ".pdf"
+    download_filename = f"{case_obj.case_id}_Forensic_Report{ext}"
+    return target_path, download_filename
 
 
 # ==============================================================================

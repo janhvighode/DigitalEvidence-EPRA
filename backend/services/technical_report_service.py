@@ -615,18 +615,21 @@ class TechnicalReportService:
             db.commit()
 
             # Event-driven notification for assigned Investigator and Cyber Expert
-            case_obj = db.query(Case).filter((Case.id == case_id) | (Case.case_id == str(case_id))).first()
-            if case_obj:
-                rep_recipients = [uid for uid in [case_obj.investigator_id, case_obj.cyber_expert_id] if uid]
-                for rec_id in rep_recipients:
-                    create_notification(
-                        db=db,
-                        title="Technical Report Generated",
-                        message=f"Forensic report '{report_data['report_type']}' finalized for case {case_obj.case_id} (Ref: #{report_id}).",
-                        notification_type="REPORT_GENERATED",
-                        user_id=rec_id,
-                        cyber_cell_id=None
-                    )
+            try:
+                case_obj = db.query(Case).filter((Case.id == case_id) | (Case.case_id == str(case_id))).first()
+                if case_obj:
+                    rep_recipients = [uid for uid in [case_obj.investigator_id, case_obj.cyber_expert_id] if uid]
+                    for rec_id in rep_recipients:
+                        create_notification(
+                            db=db,
+                            title="Technical Report Generated",
+                            message=f"Forensic report '{report_data['report_type']}' finalized for case {case_obj.case_id} (Ref: #{report_id}).",
+                            notification_type="REPORT_GENERATED",
+                            user_id=rec_id,
+                            cyber_cell_id=None
+                        )
+            except Exception:
+                pass
 
         return {
             "status": "success",

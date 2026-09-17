@@ -134,6 +134,42 @@ def download_report_alias(
     )
 
 
+@router.get(
+    "/{report_or_case_id}/preview",
+    summary="Preview Forensic Report PDF (Inline)",
+    description="Serves the persistent report file inline with application/pdf Content-Type for in-browser viewing."
+)
+def preview_report_inline(
+    report_or_case_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    pdf_path, download_filename = get_report_pdf_file_path(db, report_or_case_id, current_user)
+    media_type = "application/json" if str(pdf_path).endswith(".json") else "application/pdf"
+    return FileResponse(
+        path=str(pdf_path),
+        filename=download_filename,
+        media_type=media_type,
+        headers={
+            "Content-Disposition": f'inline; filename="{download_filename}"',
+            "Content-Type": media_type
+        }
+    )
+
+
+@router.get(
+    "/preview/{report_or_case_id}",
+    summary="Preview Forensic Report PDF (Inline Alias)",
+    description="Alternative route matching /reports/preview/{id}."
+)
+def preview_report_inline_alias(
+    report_or_case_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    return preview_report_inline(report_or_case_id, current_user, db)
+
+
 # ==============================================================================
 # 5. VIEW REPORT (STRUCTURED DETAILS)
 # ==============================================================================

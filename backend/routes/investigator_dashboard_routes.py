@@ -781,3 +781,27 @@ def download_investigator_report_pdf(
             "Content-Type": "application/pdf"
         }
     )
+
+
+@router.get(
+    "/reports/{report_or_case_id}/preview",
+    summary="Preview Investigator Report PDF (Inline)",
+    description="Serves the persistent forensic report PDF inline with application/pdf Content-Type for in-browser viewing."
+)
+def preview_investigator_report_pdf(
+    report_or_case_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    verify_investigator(current_user)
+    pdf_path, download_filename = get_report_pdf_file_path(db, report_or_case_id, current_user)
+    media_type = "application/json" if str(pdf_path).endswith(".json") else "application/pdf"
+    return FileResponse(
+        path=str(pdf_path),
+        filename=download_filename,
+        media_type=media_type,
+        headers={
+            "Content-Disposition": f'inline; filename="{download_filename}"',
+            "Content-Type": media_type
+        }
+    )
