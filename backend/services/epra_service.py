@@ -17,11 +17,19 @@ from sqlalchemy import or_
 
 from models.case import Case
 from models.user import User
+import email
+from email import policy
+import re
+import zipfile
+import xml.etree.ElementTree as ET
+
 from models.evidence import Evidence
 from models.evidence_hash import EvidenceHash
 from models.evidence_record import EvidenceRecord
 from models.epra_result import EPRAResult
 from models.cbir_result import CBIRResult
+from models.custody_log import CustodyLog
+from models.activity_log import ActivityLog
 from services.timeline_service import create_timeline_event
 from services.notification_service import create_notification
 
@@ -50,17 +58,23 @@ def normalize_epra_evidence_type(
     IMAGE, VIDEO, AUDIO, EMAIL, PDF, DOCUMENT, SPREADSHEET, EXECUTABLE, DATABASE, LOG, ARCHIVE, UNKNOWN.
     Accepts arguments positionally or via keywords.
     """
-    candidates = [c for c in (raw_type, mime_type, filename) if c]
+    candidates = [str(c).strip() for c in (filename, mime_type, raw_type) if c is not None and str(c).strip()]
 
-    # 1. Direct match with canonical types
-    for cand in candidates:
-        cand_str = str(cand).strip().upper()
-        if cand_str in CANONICAL_EPRA_TYPES:
-            return cand_str
+    if not candidates:
+        return "UNKNOWN"
 
-    # 2. Match from MIME types or types containing '/'
+    # Step 1: Filename extension classification via Janhvi's EvidenceClassifier
+    # Priority: If any candidate contains a dot/extension, classify by extension first.
+    # This ensures "transaction_history.xlsx" becomes SPREADSHEET even if raw_type was "Document".
     for cand in candidates:
-        m = str(cand).strip().lower()
+        if "." in cand:
+            classified = EvidenceClassifier.classify(cand)
+            if classified in CANONICAL_EPRA_TYPES and classified != "UNKNOWN":
+                return classified
+
+    # Step 2: Exact MIME types or strings containing '/'
+    for cand in candidates:
+        m = cand.lower()
         if "/" in m:
             if m.startswith("image/"):
                 return "IMAGE"
@@ -85,45 +99,116 @@ def normalize_epra_evidence_type(
             if "log" in m or m == "text/x-log":
                 return "LOG"
 
-    # 3. Match from file extension via EvidenceClassifier
-    if filename:
-        classified = EvidenceClassifier.classify(str(filename))
+    # Step 3: Check extension classification without leading dot (e.g. cand="xlsx" -> "file.xlsx")
+    for cand in candidates:
+        cand_clean = cand.lstrip(".")
+        classified = EvidenceClassifier.classify(f"file.{cand_clean}")
         if classified in CANONICAL_EPRA_TYPES and classified != "UNKNOWN":
             return classified
 
+    # Step 4: Substring heuristics for common descriptive types (e.g. "PDF Document", "Spreadsheet", etc.)
     for cand in candidates:
-        if "." in str(cand):
-            classified = EvidenceClassifier.classify(str(cand))
-            if classified in CANONICAL_EPRA_TYPES and classified != "UNKNOWN":
-                return classified
-
-    # 4. Fallback checking substrings across candidates
-    for cand in candidates:
-        r_low = str(cand).strip().lower()
-        if any(w in r_low for w in ("image", "photo", "picture", "jpeg", "jpg", "png", "webp", "bmp")):
-            return "IMAGE"
+        r_low = cand.lower()
         if "pdf" in r_low:
             return "PDF"
-        if "mail" in r_low or "eml" in r_low:
-            return "EMAIL"
-        if any(w in r_low for w in ("sheet", "csv", "excel", "xls")):
+        if any(w in r_low for w in ("sheet", "excel", "csv", "xls")):
             return "SPREADSHEET"
-        if any(w in r_low for w in ("doc", "text", "word", "rtf", "odt")):
-            return "DOCUMENT"
-        if any(w in r_low for w in ("video", "mp4", "mkv", "avi")):
-            return "VIDEO"
-        if any(w in r_low for w in ("audio", "sound", "voice", "mp3", "wav")):
-            return "AUDIO"
-        if any(w in r_low for w in ("exec", "binary", "exe", "dll")):
+        if any(w in r_low for w in ("email", "mail", "eml", "outlook", "rfc822")):
+            return "EMAIL"
+        if any(w in r_low for w in ("executable", "exec", "exe", "binary", "dll", "msdos")):
             return "EXECUTABLE"
-        if any(w in r_low for w in ("database", "db", "sql", "sqlite")):
+        if any(w in r_low for w in ("database", "sqlite", "sql", "mdb", "accdb")):
             return "DATABASE"
-        if any(w in r_low for w in ("archive", "zip", "tar", "rar", "gz", "7z")):
+        if any(w in r_low for w in ("archive", "zip", "tar", "rar", "7z", "gz")):
             return "ARCHIVE"
-        if any(w in r_low for w in ("log", "audit", "pcap")):
+        if any(w in r_low for w in ("log", "audit", "pcap", "syslog")):
             return "LOG"
+        if any(w in r_low for w in ("image", "photo", "picture", "jpeg", "jpg", "png", "webp", "bmp", "gif")):
+            return "IMAGE"
+        if any(w in r_low for w in ("video", "mp4", "mkv", "avi", "mov", "cctv")):
+            return "VIDEO"
+        if any(w in r_low for w in ("audio", "sound", "voice", "mp3", "wav", "aac", "flac")):
+            return "AUDIO"
+
+    # Step 5: Direct match with specific canonical types (excluding UNKNOWN and DOCUMENT which might be overly broad)
+    for cand in candidates:
+        cand_str = cand.upper()
+        if cand_str in CANONICAL_EPRA_TYPES and cand_str not in ("UNKNOWN", "DOCUMENT"):
+            return cand_str
+
+    # Step 6: Fallback for generic document match
+    for cand in candidates:
+        if any(w in cand.lower() for w in ("doc", "text", "word", "rtf", "odt")):
+            return "DOCUMENT"
+        if cand.upper() == "DOCUMENT":
+            return "DOCUMENT"
 
     return "UNKNOWN"
+
+
+def extract_readable_text_from_file(file_path: Optional[str], ext: str) -> Optional[str]:
+    """
+    Safely extracts readable text content from supported non-image evidence files on disk.
+    Never invents content; returns None if file is missing, empty, or unreadable binary.
+    """
+    if not file_path:
+        return None
+    p = Path(file_path)
+    if not p.is_file():
+        p = Path(backend_dir) / file_path
+        if not p.is_file():
+            p = Path(root_dir) / file_path
+            if not p.is_file():
+                return None
+
+    try:
+        if p.stat().st_size == 0:
+            return None
+
+        ext_low = ext.lower()
+        if ext_low in (".txt", ".log", ".csv", ".json", ".xml", ".tsv"):
+            with open(p, "r", encoding="utf-8", errors="ignore") as f:
+                content = f.read().strip()
+                return content if content else None
+        elif ext_low == ".eml":
+            with open(p, "rb") as f:
+                msg = email.message_from_binary_file(f, policy=policy.default)
+                subj = msg.get("subject", "") or ""
+                body = ""
+                if msg.is_multipart():
+                    for part in msg.walk():
+                        if part.get_content_type() == "text/plain":
+                            body += part.get_content() or ""
+                else:
+                    body = msg.get_content() if msg.get_content_type() == "text/plain" else ""
+                full = f"{subj} {body}".strip()
+                return full if full else None
+        elif ext_low == ".docx":
+            with zipfile.ZipFile(p, "r") as z:
+                xml_content = z.read("word/document.xml")
+                tree = ET.fromstring(xml_content)
+                texts = [elem.text for elem in tree.iter() if elem.text]
+                full = " ".join(texts).strip()
+                return full if full else None
+        elif ext_low in (".xlsx", ".xls"):
+            with zipfile.ZipFile(p, "r") as z:
+                strings = []
+                if "xl/sharedStrings.xml" in z.namelist():
+                    xml_content = z.read("xl/sharedStrings.xml")
+                    tree = ET.fromstring(xml_content)
+                    strings.extend([elem.text for elem in tree.iter() if elem.text])
+                full = " ".join(strings).strip()
+                return full if full else None
+        elif ext_low == ".pdf":
+            with open(p, "rb") as f:
+                raw_bytes = f.read()
+                matches = re.findall(rb'\((.*?)\)\s*Tj', raw_bytes)
+                if matches:
+                    full = " ".join(m.decode("latin-1", errors="ignore") for m in matches).strip()
+                    return full if full else None
+    except Exception:
+        pass
+    return None
 
 
 def get_case_or_404(db: Session, case_identifier: str | int) -> Case:
@@ -362,12 +447,51 @@ def process_case_epra(
             else:
                 ev_inputs = external_inputs
 
+        # Query genuine custody logs and activity logs for chain of custody and behavioural facts
+        custody_records = (
+            db.query(CustodyLog)
+            .filter(
+                (CustodyLog.evidence_id == ev.evidence_id) |
+                (CustodyLog.evidence_id == str(ev.id))
+            )
+            .order_by(CustodyLog.timestamp.asc())
+            .all()
+        )
+        activity_records = (
+            db.query(ActivityLog)
+            .filter(
+                (ActivityLog.external_evidence_id == ev.evidence_id) |
+                (ActivityLog.evidence_id == ev.id)
+            )
+            .order_by(ActivityLog.timestamp.asc())
+            .all()
+        )
+
+        # Genuine readable text extraction for non-image evidence
+        file_extracted_text = extract_readable_text_from_file(ev.file_path, ext)
         extracted_text_val = (
             ev_inputs.get("extracted_text")
             or ev_inputs.get("content")
             or ev_inputs.get("text")
+            or file_extracted_text
             or (er.notes if er and er.notes else None)
         )
+
+        # Build genuine chain of custody for AR
+        coc_entries = []
+        for c in custody_records:
+            r_str = str(c.actor_role or "").upper()
+            role_norm = (
+                "CYBER_FORENSIC_EXPERT" if "EXPERT" in r_str else (
+                    "INVESTIGATOR" if "INVESTIGATOR" in r_str else "ADMINISTRATOR"
+                )
+            )
+            coc_entries.append({
+                "officer": c.investigator_name or c.investigator_id or "Investigator",
+                "role": role_norm,
+                "action": c.action or "ACCESSED",
+                "time": c.timestamp.isoformat() if c.timestamp else datetime.now().isoformat()
+            })
 
         meta = JanhviMetadata(
             file_name=ev.file_name,
@@ -381,8 +505,25 @@ def process_case_epra(
             evidence_id=str(ev.evidence_id),
             evidence_type=canon_type,
             notes=(ev_inputs.get("notes") or (er.notes if er else "") or ""),
-            extracted_text=extracted_text_val
+            extracted_text=extracted_text_val,
+            chain_of_custody=coc_entries if coc_entries else None
         )
+
+        # Populate genuine behavioural audit facts on metadata if present
+        total_access = len(custody_records) + len(activity_records)
+        has_backend_bi = False
+        if total_access > 0:
+            meta.access_count = total_access
+            all_times = [c.timestamp.isoformat() for c in custody_records if c.timestamp] + [a.timestamp.isoformat() for a in activity_records if a.timestamp]
+            if all_times:
+                meta.access_timeline = all_times
+            latest_action = custody_records[-1].action if custody_records else (activity_records[-1].action if activity_records else "")
+            if latest_action:
+                meta.access_action = latest_action
+            latest_actor = custody_records[-1].investigator_name if custody_records else (activity_records[-1].investigator_name if activity_records else "")
+            if latest_actor:
+                meta.last_accessed_by = latest_actor
+            has_backend_bi = True
 
         j_ev = JanhviEvidence(metadata=meta)
         j_ev.metadata.evidence_type = canon_type
@@ -500,7 +641,8 @@ def process_case_epra(
             "has_genuine_text": has_genuine_text,
             "has_context": bool(ev_context),
             "has_bi_input": has_bi_input,
-            "bi_explicit_val": bi_explicit_val
+            "bi_explicit_val": bi_explicit_val,
+            "has_backend_bi": has_backend_bi
         }
 
     # Rank all evidence in the case collection using Janhvi's EvidenceRanker
@@ -556,17 +698,19 @@ def process_case_epra(
         if meta_info["has_bi_input"]:
             bi_val = round(float(meta_info["bi_explicit_val"]), 4)
             j_ev.behaviour_intelligence = bi_val
+        elif meta_info.get("has_backend_bi"):
+            bi_val = round(float(j_ev.behaviour_intelligence), 4)
         else:
             is_bi_pending = bool(hasattr(j_ev, "pending_external_inputs") and "BI" in j_ev.pending_external_inputs)
-            if is_bi_pending:
+            if is_bi_pending or not demo_mode:
                 bi_val = None
-                msg = j_ev.pending_external_inputs["BI"]
+                msg = (
+                    j_ev.pending_external_inputs.get("BI")
+                    if hasattr(j_ev, "pending_external_inputs") and "BI" in j_ev.pending_external_inputs
+                    else "Awaiting behavioural audit logs"
+                )
                 if msg not in pending_inputs:
                     pending_inputs.append(msg)
-                analysis_status = "PARTIAL / PENDING INPUTS"
-            elif not demo_mode:
-                bi_val = None
-                pending_inputs.append("Awaiting behavioural audit logs")
                 analysis_status = "PARTIAL / PENDING INPUTS"
             else:
                 bi_val = round(float(j_ev.behaviour_intelligence), 4)
@@ -621,6 +765,7 @@ def process_case_epra(
             "evidence_id": ev.evidence_id,
             "file_name": ev.file_name,
             "evidence_type": canon_type,
+            "file_type": canon_type,
             "file_size": ev.file_size,
             "authenticity_risk": j_ev.authenticity_risk,
             "context_intelligence": j_ev.context_intelligence,
@@ -815,6 +960,7 @@ def get_case_epra_summary(db: Session, case: Case) -> Dict[str, Any]:
             "evidence_id": ev.evidence_id,
             "file_name": ev.file_name,
             "evidence_type": canon_type,
+            "file_type": canon_type,
             "file_size": ev.file_size,
             "authenticity_risk": epra.authenticity_risk,
             "context_intelligence": epra.context_intelligence,
@@ -887,6 +1033,7 @@ def get_case_ranked_evidence(
             "evidence_id": ev.evidence_id,
             "file_name": ev.file_name,
             "evidence_type": canon_type,
+            "file_type": canon_type,
             "file_size": ev.file_size,
             "authenticity_risk": epra.authenticity_risk,
             "context_intelligence": epra.context_intelligence,
@@ -994,6 +1141,7 @@ def get_evidence_epra_detail(
         "evidence_id": evidence.evidence_id,
         "file_name": evidence.file_name,
         "evidence_type": canon_type,
+        "file_type": canon_type,
         "file_size": evidence.file_size,
         "file_path": evidence.file_path,
         "hash_verified": epra.hash_verified,

@@ -20,6 +20,7 @@ class SingleEvidenceHashDetailsResponse(BaseModel):
     evidence_id: str
     file_name: str
     file_type: str
+    evidence_type: Optional[str] = None
     file_size: int
     uploaded_on: datetime
     file_path: Optional[str] = None

@@ -16,6 +16,7 @@ from services.hash_verification_service import HashVerificationService
 from services.timeline_service import create_timeline_event
 from services.notification_service import create_notification
 from services.storage_service import StorageService, BASE_UPLOAD_DIR
+from services.epra_service import normalize_epra_evidence_type
 from utils.zip_security import ZipSecurityValidator, SafeArchiveMember
 
 
@@ -295,10 +296,15 @@ def get_case_evidence_list(db: Session, case: Case) -> list[dict]:
 
     results = []
     for ev, h in records:
+        canon_type = normalize_epra_evidence_type(
+            filename=ev.file_name,
+            raw_type=ev.file_type
+        )
         results.append({
             "evidence_id": ev.evidence_id,
             "file_name": ev.file_name,
-            "file_type": ev.file_type,
+            "file_type": canon_type,
+            "evidence_type": canon_type,
             "file_size": ev.file_size,
             "uploaded_on": ev.created_at,
             "current_hash": h.current_hash,
@@ -355,10 +361,16 @@ def get_evidence_details(
         if verifier:
             verified_by_name = verifier.full_name
 
+    canon_type = normalize_epra_evidence_type(
+        filename=evidence.file_name,
+        raw_type=evidence.file_type
+    )
+
     return {
         "evidence_id": evidence.evidence_id,
         "file_name": evidence.file_name,
-        "file_type": evidence.file_type,
+        "file_type": canon_type,
+        "evidence_type": canon_type,
         "file_size": evidence.file_size,
         "uploaded_on": evidence.created_at,
         "file_path": evidence.file_path,

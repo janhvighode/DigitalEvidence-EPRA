@@ -8,6 +8,7 @@ class RankedEvidenceResponse(BaseModel):
     evidence_id: str
     file_name: str
     evidence_type: str
+    file_type: Optional[str] = None
     file_size: Optional[int] = None
 
     authenticity_risk: Optional[float] = None
@@ -34,6 +35,7 @@ class EvidenceEPRADetailResponse(BaseModel):
     evidence_id: str
     file_name: str
     evidence_type: str
+    file_type: Optional[str] = None
     file_size: Optional[int] = None
     file_path: Optional[str] = None
     hash_verified: bool = False
