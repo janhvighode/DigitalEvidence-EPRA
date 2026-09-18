@@ -26,6 +26,8 @@ def test_deepak_original_metadata_extraction():
     assert metadata["file_name"] == sample_file.name
     assert metadata["file_size_bytes"] == sample_file.stat().st_size
     assert "filesystem_ctime" in metadata
+    
+    
     assert "filesystem_ctime_source" in metadata
     assert "filesystem_mtime" in metadata
     assert "filesystem_mtime_source" in metadata

@@ -23,7 +23,6 @@ except ImportError:
         return np.dot(a, b.T) / denom
 
 
-
 # ============================================================
 # CONFIGURATION & FEATURE MODALITIES
 # ============================================================
@@ -466,16 +465,9 @@ def is_verification_required(score, is_exact_hash_match=False, is_person=False):
     FORENSIC PRINCIPLES:
     - Exact cryptographic duplicates (SHA-256 match bit-for-bit) have verification_required=False
       (file identity verified cryptographically).
-    - Actual visual matches/resemblances (score >= WEAK_MATCH_THRESHOLD) have verification_required=True.
-    - No Significant Visual Match (score < WEAK_MATCH_THRESHOLD) has verification_required=False.
+    - For all analytical visual comparisons (SHA differs), verification_required MUST be True.
     """
     if is_exact_hash_match:
-        return False
-    try:
-        score = float(score)
-    except (TypeError, ValueError):
-        score = 0.0
-    if score < WEAK_MATCH_THRESHOLD:
         return False
     return True
 

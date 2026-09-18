@@ -8,6 +8,12 @@ if str(root_dir) not in sys.path:
 backend_dir = Path(__file__).resolve().parent.parent
 if str(backend_dir) not in sys.path:
     sys.path.insert(0, str(backend_dir))
+cbir_dir = root_dir / "ai_modules" / "cbir"
+if cbir_dir.exists() and str(cbir_dir) not in sys.path:
+    sys.path.insert(0, str(cbir_dir))
+rel_dir = root_dir / "ai_modules" / "relationship_graph"
+if rel_dir.exists() and str(rel_dir) not in sys.path:
+    sys.path.insert(0, str(rel_dir))
 
 from fastapi import FastAPI
 

@@ -104,8 +104,16 @@ def generate_relationships(
         # CBIR classification
         # ----------------------------------------------------
 
+        is_exact_hash_match = bool(
+            result.get(
+                "is_exact_hash_match",
+                False
+            )
+        )
+
         duplicate_result = detect_duplicate(
-            similarity
+            similarity,
+            is_exact_hash_match=is_exact_hash_match
         )
 
         # ----------------------------------------------------
@@ -155,8 +163,8 @@ def generate_relationships(
         )
 
         investigative_status = duplicate_result.get(
-            "investigative_status",
-            "Requires Investigator Review"
+            "investigation_status",
+            duplicate_result.get("investigative_status", "Requires Investigator Review")
         )
 
         action = duplicate_result.get(
@@ -172,6 +180,17 @@ def generate_relationships(
         visual_resemblance = duplicate_result.get(
             "visual_resemblance",
             False
+        )
+
+        verification_required = duplicate_result.get(
+            "verification_required",
+            not is_exact_hash_match
+        )
+
+        rel_type = (
+            "EXACT_FILE_DUPLICATE"
+            if is_exact_hash_match
+            else "CBIR_VISUAL_RELATIONSHIP"
         )
 
         # ----------------------------------------------------
@@ -192,10 +211,18 @@ def generate_relationships(
                 relationship,
 
             "relationship_type":
-                "CBIR_VISUAL_RELATIONSHIP",
+                rel_type,
 
             # Numerical CBIR information
             "similarity":
+                float(
+                    round(
+                        similarity,
+                        4
+                    )
+                ),
+
+            "confidence":
                 float(
                     round(
                         similarity,
@@ -226,6 +253,16 @@ def generate_relationships(
             "action":
                 action,
 
+            "verification_required":
+                bool(
+                    verification_required
+                ),
+
+            "is_exact_hash_match":
+                bool(
+                    is_exact_hash_match
+                ),
+
             # Evidence metadata
             "category":
                 category,
@@ -235,6 +272,8 @@ def generate_relationships(
 
             # Important forensic limitation
             "forensic_claim":
+                "Cryptographic hash verified duplicate."
+                if is_exact_hash_match else
                 "Visual similarity only; "
                 "does not establish identity or "
                 "common source."
@@ -284,13 +323,16 @@ def get_graph_relationships(
 
         status = relationship.get(
             "investigative_status",
-            ""
+            relationship.get("investigation_status", "")
         )
-
         rel_type = relationship.get("relationship", "")
+        sim = float(relationship.get("similarity", 0.0))
+
         if (
             status in (
+                "Verified File Duplicate",
                 "Duplicate Candidate",
+                "Duplicate Candidate (Requires Verification)",
                 "Near-Duplicate Candidate",
                 "Strong Visual Candidate",
                 "Possible Visual Candidate",
@@ -304,7 +346,8 @@ def get_graph_relationships(
                 "Strong Visual Match",
                 "Possible Visual Resemblance"
             )
-            or (relationship.get("visual_resemblance") and relationship.get("similarity", 0.0) >= 0.60)
+            or (relationship.get("visual_resemblance") and sim >= 0.60)
+            or sim >= 0.60
         ):
             graph_relationships.append(
                 relationship
@@ -378,6 +421,14 @@ def create_graph_nodes(
                 evidence_id
             )
 
+            is_person = bool(
+                category in ["persons", "person"]
+                or relationship.get("is_person")
+                or relationship.get("is_person_candidate")
+                or relationship.get("is_possible_suspect")
+            )
+            display_badge = "Possible Suspect" if is_person else "Evidence (File)"
+
             nodes.append({
 
                 "evidence_id":
@@ -387,7 +438,19 @@ def create_graph_nodes(
                     category,
 
                 "image":
-                    image
+                    image,
+
+                "display_type":
+                    display_badge,
+
+                "type_badge":
+                    display_badge,
+
+                "badge":
+                    display_badge,
+
+                "is_possible_suspect":
+                    is_person
             })
 
     return nodes
@@ -436,6 +499,13 @@ def create_graph_edges(
         if not source or not target:
             continue
 
+        similarity_val = float(
+            relationship.get(
+                "similarity",
+                0.0
+            )
+        )
+
         edges.append({
 
             "source":
@@ -451,15 +521,23 @@ def create_graph_edges(
                 ),
 
             "relationship_type":
-                "CBIR_VISUAL_RELATIONSHIP",
-
-            "similarity":
                 relationship.get(
-                    "similarity",
-                    0.0
+                    "relationship_type",
+                    "CBIR_VISUAL_RELATIONSHIP"
                 ),
 
+            "similarity":
+                similarity_val,
+
             "confidence":
+                float(
+                    relationship.get(
+                        "confidence",
+                        similarity_val
+                    )
+                ),
+
+            "confidence_level":
                 relationship.get(
                     "confidence_level",
                     "Unknown"
@@ -469,6 +547,14 @@ def create_graph_edges(
                 relationship.get(
                     "investigative_status",
                     "Requires Investigator Review"
+                ),
+
+            "verification_required":
+                bool(
+                    relationship.get(
+                        "verification_required",
+                        True
+                    )
                 )
         })
 

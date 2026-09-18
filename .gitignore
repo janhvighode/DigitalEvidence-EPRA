@@ -1,0 +1,29 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Testing
+.pytest_cache/
+
+# Virtual Environment
+venv/
+backend/venv/
+
+# Environment Variables
+.env
+backend/.env
+
+# IDE
+.vscode/
+.idea/
+
+# Generated database files
+database/graph.db
+database/images.db
+
+# Generated reports PDF files
+backend/generated_reports/reports/*.pdf
+generated_reports/*.pdf
+generated_reports/*.csv
+generated_reports/*.json

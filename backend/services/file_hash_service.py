@@ -22,3 +22,15 @@ class FileHashService:
                 sha256.update(chunk)
 
         return sha256.hexdigest()
+
+    @staticmethod
+    def is_valid_sha256(hash_str: str) -> bool:
+        """
+        Validate whether a string is a valid 64-character hexadecimal SHA-256 digest.
+        """
+        if not hash_str or not isinstance(hash_str, str):
+            return False
+        clean = hash_str.strip()
+        if len(clean) != 64:
+            return False
+        return all(c in "0123456789abcdefABCDEF" for c in clean)

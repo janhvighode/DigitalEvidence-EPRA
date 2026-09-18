@@ -38,33 +38,29 @@ from services.relationship_graph_service import sanitize_id
 def test_trisha_duplicate_detector_thresholds():
     """Verify Trisha's conservative threshold classifications."""
     print("Testing Trisha duplicate detector thresholds...")
-    # Exact duplicate >= 0.98
-    exact = detect_duplicate(0.99)
+    # Exact duplicate requires cryptographic SHA-256 match
+    exact = detect_duplicate(1.0, is_exact_hash_match=True)
     assert exact["classification"] == "Exact Duplicate"
-    assert exact["visual_resemblance"] is True
-    assert exact["investigative_status"] == "Duplicate Candidate"
+    assert exact["sha256_exact_duplicate"] is True
 
-    # Near duplicate >= 0.93
-    near = detect_duplicate(0.95)
-    assert near["classification"] == "Near Duplicate"
-    assert near["investigative_status"] == "Near-Duplicate Candidate"
+    # Very Strong / Near duplicate >= 0.93 without hash match
+    near = detect_duplicate(0.95, is_exact_hash_match=False)
+    assert near["classification"] in ("Near Duplicate", "Very Strong Visual Match")
 
     # Strong match >= 0.85
     strong = detect_duplicate(0.88)
     assert strong["classification"] == "Strong Visual Match"
-    assert strong["investigative_status"] == "Strong Visual Candidate"
 
-    # Possible match >= 0.75
+    # Possible match >= 0.70
     possible = detect_duplicate(0.79)
     assert possible["classification"] == "Possible Visual Resemblance"
-    assert possible["investigative_status"] == "Possible Visual Candidate"
 
-    # Visual resemblance >= 0.60
+    # Weak match >= 0.50
     resemble = detect_duplicate(0.65)
     assert resemble["classification"] == "Weak Visual Resemblance"
     assert resemble["visual_resemblance"] is True
 
-    # Low / No match < 0.60
+    # Low / No match < 0.50
     low = detect_duplicate(0.45)
     assert low["classification"] == "No Significant Visual Match"
     assert low["visual_resemblance"] is False

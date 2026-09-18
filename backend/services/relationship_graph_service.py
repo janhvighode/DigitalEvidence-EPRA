@@ -325,7 +325,7 @@ class RelationshipGraphService:
                         ev1_node = f"ev_{h1.evidence_id}"
                         ev2_node = f"ev_{h2.evidence_id}"
                         if ev1_node in nodes_dict and ev2_node in nodes_dict:
-                            edge_pair = (min(ev1_node, ev2_node), max(ev1_node, ev2_node), "EXACT_FILE_DUPLICATE")
+                            edge_pair = (min(ev1_node, ev2_node), max(ev1_node, ev2_node), "EXACT_DUPLICATE")
                             if edge_pair not in seen_edges:
                                 seen_edges.add(edge_pair)
                                 duplicate_pairs_count += 1
@@ -335,7 +335,7 @@ class RelationshipGraphService:
                                     source=ev1_node,
                                     target=ev2_node,
                                     label="Exact Duplicate (SHA-256 Match)",
-                                    relationship_type="EXACT_FILE_DUPLICATE",
+                                    relationship_type="EXACT_DUPLICATE",
                                     similarity=1.0,
                                     confidence="1.0",
                                     investigative_status="Verified Bitwise Duplicate",
@@ -359,7 +359,7 @@ class RelationshipGraphService:
             ev1_node = f"ev_{row.query_evidence_id}"
             ev2_node = f"ev_{row.candidate_evidence_id}"
             if ev1_node in nodes_dict and ev2_node in nodes_dict:
-                edge_pair = (min(ev1_node, ev2_node), max(ev1_node, ev2_node), "CBIR_VISUAL_RELATIONSHIP")
+                edge_pair = (min(ev1_node, ev2_node), max(ev1_node, ev2_node), "CBIR_VISUAL_SIMILARITY")
                 if edge_pair not in seen_edges:
                     seen_edges.add(edge_pair)
                     cbir_matches_count += 1
@@ -369,7 +369,7 @@ class RelationshipGraphService:
                         source=ev1_node,
                         target=ev2_node,
                         label=f"Visual Similarity ({row.classification})",
-                        relationship_type="CBIR_VISUAL_RELATIONSHIP",
+                        relationship_type="CBIR_VISUAL_SIMILARITY",
                         similarity=row.visual_similarity_score,
                         confidence=row.confidence_level,
                         investigative_status=row.recommendation,

@@ -42,7 +42,14 @@ from schemas.cbir import (
 # Import Trisha's verified CBIR and retrieval algorithms
 from feature_extractor import load_image, extract_features
 from feature_database import get_case_evidence, get_evidence as get_cbir_evidence, insert_feature
-from evidence_linker import insert_link, get_case_links
+try:
+    from evidence_linker import insert_link, get_case_links
+except ImportError:
+    def insert_link(*args, **kwargs):
+        return None
+
+    def get_case_links(*args, **kwargs):
+        return []
 from image_search import (
     search_similar_images,
     format_investigator_image_result,
@@ -56,18 +63,34 @@ from similarity import (
     is_verification_required
 )
 from semantic_score import compute_semantic_score
-from text_retrieval import (
-    search_evidence_by_text,
-    search_case_evidence,
-    search_text_evidence,
-    format_investigator_text_result
-)
-from context_retrieval import (
-    search_context_evidence,
-    search_evidence_by_context,
-    format_investigator_context_result
-)
-from unified_retrieval import retrieve_evidence
+try:
+    from text_retrieval import (
+        search_evidence_by_text,
+        search_case_evidence,
+        search_text_evidence,
+        format_investigator_text_result
+    )
+except ImportError:
+    search_evidence_by_text = None
+    search_case_evidence = None
+    search_text_evidence = None
+    format_investigator_text_result = None
+
+try:
+    from context_retrieval import (
+        search_context_evidence,
+        search_evidence_by_context,
+        format_investigator_context_result
+    )
+except ImportError:
+    search_context_evidence = None
+    search_evidence_by_context = None
+    format_investigator_context_result = None
+
+try:
+    from unified_retrieval import retrieve_evidence
+except ImportError:
+    retrieve_evidence = None
 
 SUPPORTED_IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".bmp", ".webp")
 
@@ -831,6 +854,18 @@ def search_case_text_service(
     ensure_case_evidence_synchronized(db, clean_case_id)
 
     q_str = str(query_text or "").strip()
+    if not search_evidence_by_text or not search_case_evidence:
+        return CaseSearchResponse(
+            status="no_data_found",
+            message="Text search module is unavailable in this environment.",
+            case_id=clean_case_id,
+            search_query=q_str,
+            search_box_label="Search evidence in this case...",
+            results_count=0,
+            results=[],
+            ranked_evidence=[],
+            forensic_notice="Text search module not available."
+        )
 
     if search_mode in ["all", "case_search"]:
         results = search_case_evidence(
@@ -893,6 +928,19 @@ def search_case_context_service(
 
     q_str = str(query_text or "").strip()
 
+    if not search_context_evidence:
+        return CaseSearchResponse(
+            status="no_data_found",
+            message="Context search module is unavailable in this environment.",
+            case_id=clean_case_id,
+            search_query=q_str,
+            search_box_label="Search evidence in this case...",
+            results_count=0,
+            results=[],
+            ranked_evidence=[],
+            forensic_notice="Context search module not available."
+        )
+
     results = search_context_evidence(
         case_id=clean_case_id,
         query_text=q_str,
@@ -944,6 +992,15 @@ def search_case_unified_service(
     clean_case_id = str(case_id).strip()
     authorize_case_access(db, clean_case_id, current_user)
     ensure_case_evidence_synchronized(db, clean_case_id)
+
+    if not retrieve_evidence:
+        return {
+            "status": "no_data_found",
+            "message": "Unified retrieval module is unavailable in this environment.",
+            "case_id": clean_case_id,
+            "results": [],
+            "forensic_notice": "Unified retrieval module not available."
+        }
 
     return retrieve_evidence(
         case_id=clean_case_id,

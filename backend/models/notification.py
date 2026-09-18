@@ -13,6 +13,7 @@ import models.cyber_cell  # Ensure ForeignKey target table registration
 import models.user        # Ensure ForeignKey target table registration
 
 
+
 class Notification(Base):
     __tablename__ = "notifications"
 
