@@ -30,8 +30,8 @@ def get_case_basic_information(db: Session, case: Case) -> Dict[str, Any]:
     investigator = db.query(User).filter(User.id == case.investigator_id).first() if case.investigator_id else None
     cyber_expert = db.query(User).filter(User.id == case.cyber_expert_id).first() if case.cyber_expert_id else None
 
-    # Crime type is dynamically derived from description or standardized general type
-    crime_type = case.description if (case.description and len(case.description.strip()) > 0) else "General Cyber Crime"
+    # Crime type strictly from genuine DB-backed field (independent of description)
+    crime_type = getattr(case, "crime_type", None)
 
     return {
         "id": case.id,

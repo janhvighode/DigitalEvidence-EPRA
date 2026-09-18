@@ -33,7 +33,7 @@ class CaseBasicInformation(BaseModel):
     id: int
     case_id: str
     case_name: str
-    crime_type: str
+    crime_type: Optional[str] = None
     priority: str
     status: str
     assigned_date: Optional[datetime] = None

@@ -154,7 +154,8 @@ def test_basic_information_db_backed(db):
         id=20,
         case_id="CASE-CUSTOM-99",
         title="Custom Title Here",
-        description="Data breach through phishing",
+        description="Authentic investigation case description",
+        crime_type="Data breach through phishing",
         priority="Medium",
         status="Under Review",
         created_by=admin.id,
@@ -167,6 +168,7 @@ def test_basic_information_db_backed(db):
     info = get_case_basic_information(db, case)
     assert info["case_id"] == "CASE-CUSTOM-99"
     assert info["case_name"] == "Custom Title Here"
+    assert info["description"] == "Authentic investigation case description"
     assert info["crime_type"] == "Data breach through phishing"
     assert info["priority"] == "Medium"
     assert info["status"] == "Under Review"
@@ -617,3 +619,187 @@ def test_fastapi_route_integration(db):
 
     finally:
         app.dependency_overrides.clear()
+
+
+# ============================================================
+# 8. COMPREHENSIVE CASE NOTES REQUIREMENTS TEST SUITE
+# ============================================================
+
+def test_case_notes_contract_and_persistence(db):
+    """
+    Validates Case Notes Contract:
+    - GET /cases/{case_id}/notes registered in app
+    - POST /cases/{case_id}/notes registered in app
+    - Numeric internal ID and formatted CASE-XXXX ID supported
+    - POST persists DB record in case_notes
+    - GET returns persisted record
+    - Author strictly derived from authenticated current_user
+    - Blank note returns 400 Bad Request
+    - Assigned user allowed, unassigned user blocked (403)
+    - Invalid case returns 404
+    - Fresh DB session retrieves the exact persisted note
+    """
+    from fastapi.testclient import TestClient
+    from app.main import app
+    from database.database import get_db, SessionLocal
+    from utils.current_user import get_current_user
+    from models.case_note import CaseNote
+
+    admin = make_user(801, "Admin CaseNotes", 1)
+    assigned_expert = make_user(802, "Assigned Expert", 3)
+    unassigned_expert = make_user(803, "Rogue Expert", 3)
+    db.add_all([admin, assigned_expert, unassigned_expert])
+    db.commit()
+
+    case = Case(
+        id=9901,
+        case_id="CASE-NOTES-9901",
+        title="Notes Verification Case",
+        description="Testing Case Notes persistence",
+        crime_type="Ransomware Extortion",
+        priority="High",
+        status="Open",
+        created_by=admin.id,
+        cyber_expert_id=assigned_expert.id
+    )
+    db.add(case)
+    db.commit()
+
+    # 1. Verify OpenAPI routes registered
+    openapi = app.openapi()
+    paths = openapi.get("paths", {})
+    assert "/cases/{case_id}/notes" in paths, "POST/GET /cases/{case_id}/notes must be registered"
+    assert "get" in paths["/cases/{case_id}/notes"]
+    assert "post" in paths["/cases/{case_id}/notes"]
+
+    app.dependency_overrides[get_db] = lambda: db
+    app.dependency_overrides[get_current_user] = lambda: assigned_expert
+    client = TestClient(app)
+
+    try:
+        # 2. POST via numeric internal case ID
+        resp_num = client.post("/cases/9901/notes", json={"content": "Note via numeric ID"})
+        assert resp_num.status_code == 201
+        num_note_id = resp_num.json()["id"]
+        assert resp_num.json()["content"] == "Note via numeric ID"
+        assert resp_num.json()["created_by"] == assigned_expert.id
+
+        # 3. POST via formatted string case ID
+        resp_fmt = client.post("/cases/CASE-NOTES-9901/notes", json={"content": "Note via formatted ID"})
+        assert resp_fmt.status_code == 201
+        assert resp_fmt.json()["content"] == "Note via formatted ID"
+        assert resp_fmt.json()["created_by"] == assigned_expert.id
+
+        # 4. GET via numeric ID and formatted ID returns both notes
+        get_num = client.get("/cases/9901/notes")
+        assert get_num.status_code == 200
+        notes_num = get_num.json()
+        assert len(notes_num) == 2
+
+        get_fmt = client.get("/cases/CASE-NOTES-9901/notes")
+        assert get_fmt.status_code == 200
+        notes_fmt = get_fmt.json()
+        assert len(notes_fmt) == 2
+
+        # 5. Blank/whitespace note rejected with 400
+        resp_blank = client.post("/cases/9901/notes", json={"content": "   \n\t  "})
+        assert resp_blank.status_code == 400
+
+        # 6. Unassigned expert receives 403
+        app.dependency_overrides[get_current_user] = lambda: unassigned_expert
+        resp_forbidden = client.get("/cases/9901/notes")
+        assert resp_forbidden.status_code == 403
+
+        resp_post_forbidden = client.post("/cases/9901/notes", json={"content": "Illegal note"})
+        assert resp_post_forbidden.status_code == 403
+
+        # 7. Nonexistent case returns 404
+        app.dependency_overrides[get_current_user] = lambda: assigned_expert
+        resp_404 = client.get("/cases/9999999/notes")
+        assert resp_404.status_code == 404
+
+        # 8. Fresh DB session retrieval directly from database
+        FreshSession = sessionmaker(bind=db.bind)
+        with FreshSession() as fresh_session:
+            db_note = fresh_session.query(CaseNote).filter(CaseNote.id == num_note_id).first()
+            assert db_note is not None
+            assert db_note.content == "Note via numeric ID"
+            assert db_note.created_by == assigned_expert.id
+            assert db_note.case_id == 9901
+
+    finally:
+        app.dependency_overrides.clear()
+
+
+# ============================================================
+# 9. COMPREHENSIVE CRIME TYPE FLOW & LIFECYCLE TEST SUITE
+# ============================================================
+
+def test_crime_type_full_flow_and_independence(db):
+    """
+    Validates Crime Type flow:
+    - Case model has persistent crime_type field
+    - create_case persists crime_type
+    - GET /cases/{id} (activity) and GET /cases/{id}/details return genuine crime_type
+    - description is NOT substituted as crime_type
+    - legacy NULL crime_type remains null
+    - dynamic case creation works without hardcoding
+    """
+    from services.case_service import create_case
+    from schemas.case import CaseCreate
+    from services.case_activity_service import get_case_details
+
+    admin = make_user(901, "Admin Creator", 1, cyber_cell_id=55)
+    expert = make_user(902, "Assigned Expert CT", 3, cyber_cell_id=55)
+    db.add_all([admin, expert])
+    db.commit()
+
+    # 1. Dynamic creation with genuine crime_type
+    create_req = CaseCreate(
+        title="Dynamic Cyber Stalking Case",
+        description="Investigating repeated unsolicited emails",
+        crime_type="Cyber Stalking & Harassment",
+        priority="High",
+        cyber_expert_id=expert.id
+    )
+    new_case = create_case(db=db, case=create_req, current_user=admin)
+    assert new_case.id is not None
+    assert new_case.crime_type == "Cyber Stalking & Harassment"
+    assert new_case.description == "Investigating repeated unsolicited emails"
+
+    # 2. Case Details aggregator returns same genuine crime_type and keeps description independent
+    details = get_aggregated_case_details(db, new_case.case_id, expert)
+    basic_info = details["basic_information"]
+    assert basic_info["crime_type"] == "Cyber Stalking & Harassment"
+    assert basic_info["description"] == "Investigating repeated unsolicited emails"
+
+    # 3. GET case details service returns same genuine crime_type
+    case_activity = get_case_details(db, new_case.id, admin)
+    assert case_activity["crime_type"] == "Cyber Stalking & Harassment"
+    assert case_activity["description"] == "Investigating repeated unsolicited emails"
+
+    # 4. Legacy case with NULL crime_type: description is NEVER substituted as crime_type
+    legacy_case = Case(
+        id=9902,
+        case_id="CASE-LEGACY-01",
+        title="Legacy Case",
+        description="Historical incident description without crime type",
+        crime_type=None,
+        priority="Low",
+        status="Open",
+        created_by=admin.id,
+        cyber_expert_id=expert.id
+    )
+    db.add(legacy_case)
+    db.commit()
+
+    legacy_details = get_aggregated_case_details(db, "CASE-LEGACY-01", expert)
+    legacy_info = legacy_details["basic_information"]
+    # Crime type MUST remain None / null, NOT substituted with description
+    assert legacy_info["crime_type"] is None
+    assert legacy_info["description"] == "Historical incident description without crime type"
+
+    legacy_act = get_case_details(db, legacy_case.id, admin)
+    assert legacy_act["crime_type"] is None
+    assert legacy_act["description"] == "Historical incident description without crime type"
+

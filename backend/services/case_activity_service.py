@@ -185,6 +185,7 @@ def get_case_details(
         "case_id": case.case_id,
         "title": case.title,
         "description": case.description,
+        "crime_type": getattr(case, "crime_type", None),
         "priority": case.priority,
         "status": case.status,
         "created_by": case.created_by,

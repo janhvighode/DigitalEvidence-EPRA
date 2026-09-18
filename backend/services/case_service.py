@@ -68,6 +68,7 @@ def create_case(
         case_id=generate_case_id(),
         title=case.title,
         description=case.description,
+        crime_type=case.crime_type,
         investigator_id=case.investigator_id,
         cyber_expert_id=case.cyber_expert_id,
         priority=case.priority,

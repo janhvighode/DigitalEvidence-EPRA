@@ -14,6 +14,8 @@ class Case(Base):
 
     description = Column(Text)
 
+    crime_type = Column(String(100), nullable=True)
+
     investigator_id = Column(Integer, ForeignKey("users.id"))
 
     cyber_expert_id = Column(

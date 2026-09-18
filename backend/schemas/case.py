@@ -7,6 +7,7 @@ from datetime import datetime
 class CaseCreate(BaseModel):
     title: str
     description: Optional[str] = None
+    crime_type: Optional[str] = None
     investigator_id: int | None = None
     cyber_expert_id: int | None = None
     priority: str
@@ -18,6 +19,7 @@ class CaseResponse(BaseModel):
     case_id: str
     title: str
     description: Optional[str]
+    crime_type: Optional[str] = None
     investigator_id: int
     priority: str
     status: str
