@@ -98,11 +98,16 @@ app.add_middleware(
 
 
 
-# Create all database tables
-try:
-    Base.metadata.create_all(bind=engine)
-except Exception as e:
-    print(f"Warning: Database table synchronization deferred or network unreachable: {e}")
+# Create all database tables in background thread so Uvicorn can immediately open its port
+import threading
+
+def _init_db():
+    try:
+        Base.metadata.create_all(bind=engine)
+    except Exception as e:
+        print(f"Warning: Database table synchronization deferred or network unreachable: {e}")
+
+threading.Thread(target=_init_db, daemon=True, name="db-sync-worker").start()
 
 # Register API routes
 app.include_router(auth_router)
