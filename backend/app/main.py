@@ -82,6 +82,7 @@ from routes.investigator_analysis_updates_routes import router as investigator_a
 from routes.admin_system_statistics_routes import router as admin_system_statistics_router
 from routes.case_status_routes import router as case_status_router
 from routes.case_details_routes import router as case_details_router
+from routes.admin_report_routes import router as admin_report_router
 
 
 app = FastAPI(
@@ -143,6 +144,7 @@ app.include_router(investigator_analysis_updates_router)
 app.include_router(admin_system_statistics_router)
 app.include_router(case_status_router)
 app.include_router(case_details_router)
+app.include_router(admin_report_router)
 
 @app.get("/")
 def home():
