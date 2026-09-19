@@ -45,3 +45,31 @@ class Notification(Base):
         DateTime,
         server_default=func.now()
     )
+
+    @property
+    def case_id(self):
+        import re
+        text = f"{self.title or ''} {self.message or ''}"
+        match = re.search(r"\b(CASE-[A-Za-z0-9_-]+)\b", text, re.IGNORECASE)
+        if match:
+            return match.group(1)
+        match2 = re.search(r"\bcase\s+([A-Za-z0-9_-]+)", text, re.IGNORECASE)
+        if match2:
+            return match2.group(1).rstrip(".").strip()
+        return None
+
+    @property
+    def evidence_id(self):
+        import re
+        text = f"{self.title or ''} {self.message or ''}"
+        match = re.search(r"\b(EV-[A-Za-z0-9_-]+)\b", text, re.IGNORECASE)
+        if match:
+            return match.group(1)
+        match2 = re.search(r"evidence\s+#?([A-Za-z0-9_-]+)", text, re.IGNORECASE)
+        if match2:
+            return match2.group(1)
+        return None
+
+    @property
+    def read_at(self):
+        return None

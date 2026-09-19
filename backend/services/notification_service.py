@@ -15,7 +15,9 @@ def create_notification(
     message: str,
     notification_type: str = "GENERAL",
     user_id: Optional[int] = None,
-    cyber_cell_id: Optional[int] = None
+    cyber_cell_id: Optional[int] = None,
+    case_id: Optional[str] = None,
+    evidence_id: Optional[str] = None
 ) -> Optional[Notification]:
     """
     Creates a user-specific notification with practical deduplication.

@@ -771,6 +771,28 @@ def update_case_status_by_investigator(
                             cyber_cell_id=None
                         )
 
+        # 4. Notify assigned Cyber Expert
+        if case.cyber_expert_id and case.cyber_expert_id != current_user.id:
+            create_notification(
+                db=db,
+                title="Case Status Updated",
+                message=f"Case {case.case_id} status changed from {old_db_status} to {target_db}.",
+                notification_type="CASE_STATUS",
+                user_id=case.cyber_expert_id,
+                cyber_cell_id=None
+            )
+
+        # 5. Notify assigned Investigator (if changed by another actor)
+        if case.investigator_id and case.investigator_id != current_user.id:
+            create_notification(
+                db=db,
+                title="Case Status Updated",
+                message=f"Case {case.case_id} status changed from {old_db_status} to {target_db}.",
+                notification_type="CASE_STATUS",
+                user_id=case.investigator_id,
+                cyber_cell_id=None
+            )
+
         db.commit()
         db.refresh(case)
         db.refresh(history_record)

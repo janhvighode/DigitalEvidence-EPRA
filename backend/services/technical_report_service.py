@@ -628,6 +628,25 @@ class TechnicalReportService:
                             user_id=rec_id,
                             cyber_cell_id=None
                         )
+
+                    # Notify Admin in case's cyber-cell scope for finalized reports
+                    creator = db.query(User).filter(User.id == case_obj.created_by).first()
+                    cell_id = creator.cyber_cell_id if creator else None
+                    if cell_id:
+                        admins = db.query(User).filter(
+                            User.role_id == 1,
+                            User.cyber_cell_id == cell_id,
+                            User.is_active == True
+                        ).all()
+                        for admin in admins:
+                            create_notification(
+                                db=db,
+                                title="Final Report Available",
+                                message=f"Final report '{report_data['report_type']}' is available for case {case_obj.case_id} (Ref: #{report_id}).",
+                                notification_type="REPORT_FINAL",
+                                user_id=admin.id,
+                                cyber_cell_id=None
+                            )
             except Exception:
                 pass
 

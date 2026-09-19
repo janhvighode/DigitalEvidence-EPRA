@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 from datetime import datetime
 from pydantic import BaseModel
 
@@ -10,6 +10,9 @@ class NotificationResponse(BaseModel):
     type: str
     is_read: bool
     created_at: datetime
+    case_id: Optional[str] = None
+    evidence_id: Optional[str] = None
+    read_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True

@@ -89,6 +89,12 @@ def unread_notifications(
     response_model=NotificationActionResponse,
     summary="Mark All Current User Notifications Read"
 )
+@router.patch(
+    "/read-all",
+    response_model=NotificationActionResponse,
+    summary="Mark All Current User Notifications Read (PATCH)",
+    include_in_schema=False
+)
 def read_all_notifications(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -114,6 +120,12 @@ def read_all_notifications(
     "/{notification_id}/read",
     response_model=NotificationActionResponse,
     summary="Mark Specific Notification Read"
+)
+@router.patch(
+    "/{notification_id}/read",
+    response_model=NotificationActionResponse,
+    summary="Mark Specific Notification Read (PATCH)",
+    include_in_schema=False
 )
 def read_notification(
     notification_id: int,

@@ -665,6 +665,23 @@ def run_cbir_comparison(
                     )
                     db.add(db_record)
             db.commit()
+
+            # Meaningful match notification (C4)
+            has_meaningful_match = any(
+                item.get("classification") in ["Exact Duplicate", "Very Strong Visual Match", "Strong Visual Match"]
+                for item in raw_results
+            )
+            if has_meaningful_match:
+                case_obj = db.query(Case).filter((Case.id == c_num) | (Case.case_id == str(clean_case_id))).first()
+                if case_obj and case_obj.cyber_expert_id:
+                    create_notification(
+                        db=db,
+                        title="CBIR Match Alert",
+                        message=f"Meaningful visual match identified in case {case_obj.case_id} during CBIR analysis.",
+                        notification_type="CBIR_MATCH_ALERT",
+                        user_id=case_obj.cyber_expert_id,
+                        cyber_cell_id=None
+                    )
     except Exception:
         db.rollback()
 

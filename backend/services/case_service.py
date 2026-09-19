@@ -80,4 +80,43 @@ def create_case(
     db.commit()
     db.refresh(new_case)
 
+    # Notifications for case assignment
+    from services.notification_service import create_notification
+
+    if new_case.investigator_id:
+        create_notification(
+            db=db,
+            title="New Case Assigned",
+            message=f"{new_case.case_id} has been assigned to you.",
+            notification_type="CASE_ASSIGNMENT",
+            user_id=new_case.investigator_id,
+            cyber_cell_id=None
+        )
+
+    if new_case.cyber_expert_id:
+        create_notification(
+            db=db,
+            title="New Case Assigned",
+            message=f"{new_case.case_id} has been assigned to you.",
+            notification_type="CASE_ASSIGNMENT",
+            user_id=new_case.cyber_expert_id,
+            cyber_cell_id=None
+        )
+
+    # Admin: Case Assignment Required if any role is unassigned
+    if new_case.investigator_id is None or new_case.cyber_expert_id is None:
+        missing_roles = []
+        if new_case.investigator_id is None:
+            missing_roles.append("Investigator")
+        if new_case.cyber_expert_id is None:
+            missing_roles.append("Cyber Expert")
+        create_notification(
+            db=db,
+            title="Case Assignment Required",
+            message=f"Case {new_case.case_id} was created and requires {' and '.join(missing_roles)} assignment.",
+            notification_type="CASE_ASSIGNMENT_REQUIRED",
+            user_id=current_user.id,
+            cyber_cell_id=None
+        )
+
     return new_case
