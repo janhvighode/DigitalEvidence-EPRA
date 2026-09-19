@@ -35,6 +35,7 @@ from services.evidence_service import (
 )
 from services.hash_verification_service import HashVerificationService
 from services.storage_service import StorageService
+from services.epra_service import normalize_epra_evidence_type
 
 
 router = APIRouter(
@@ -227,6 +228,53 @@ def download_evidence(
         filename=safe_filename,
         media_type=media_type,
         headers={"Content-Disposition": f'attachment; filename="{safe_filename}"'}
+    )
+
+
+# ============================================================
+# 7. EVIDENCE PREVIEW
+# ============================================================
+
+@router.get(
+    "/{case_id}/evidence/{evidence_id}/preview",
+    summary="Preview Image Evidence File",
+    description="Streams previewable image evidence file inline with role-based case authorization."
+)
+def preview_evidence(
+    case_id: str,
+    evidence_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Authenticated image evidence preview:
+    - Verifies case access for current_user (Cyber Expert, Investigator, Admin)
+    - Validates that evidence is an image format
+    - Retrieves real original binary from durable storage
+    - Returns original binary inline with proper image Content-Type
+    """
+    case = authorize_case_access(db, case_id, current_user)
+    file_path, file_name, media_type = get_case_evidence_download(
+        db=db,
+        case_identifier=case_id,
+        evidence_identifier=evidence_id,
+        current_user=current_user
+    )
+
+    # Validate image format for preview
+    canonical_type = normalize_epra_evidence_type(filename=file_name, file_type=media_type)
+    if canonical_type != "IMAGE" and not (media_type and media_type.lower().startswith("image/")):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Preview is only supported for image evidence. Evidence '{file_name}' is of type '{canonical_type}'."
+        )
+
+    safe_filename = Path(file_name).name
+    return FileResponse(
+        path=str(file_path),
+        filename=safe_filename,
+        media_type=media_type or "image/jpeg",
+        headers={"Content-Disposition": f'inline; filename="{safe_filename}"'}
     )
 
 

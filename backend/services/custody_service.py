@@ -10,11 +10,30 @@ from models.custody_log import CustodyLog
 from models.activity_log import ActivityLog
 from models.transfer_record import TransferRecord
 from models.current_custody import CurrentCustodyInfo
+from models.user import User
+from models.role import Role
+from models.case import Case
 from services.activity_service import ActivityService
 from services.notification_service import create_notification
 
 
 class CustodyService:
+
+    @staticmethod
+    def resolve_user_role_name(db: Session, user: Optional[User]) -> str:
+        """
+        Authoritatively resolves the dynamic role name for a user from the Role table.
+        Never hardcodes roles or assumes 'Cyber Expert'.
+        """
+        if not user:
+            return "System Automated"
+        if user.role_id:
+            role = db.query(Role).filter(Role.id == user.role_id).first()
+            if role and role.role_name:
+                return role.role_name
+            role_map = {1: "Administrator", 2: "Investigator", 3: "Cyber Expert"}
+            return role_map.get(user.role_id, "Investigator")
+        return "Investigator"
 
     @staticmethod
     def _resolve_case_id(db: Session, evidence_id: str, case_id: Optional[str] = None) -> Optional[str]:
@@ -302,8 +321,69 @@ class CustodyService:
 
         logs = query.order_by(CustodyLog.timestamp.asc(), CustodyLog.id.asc()).all()
 
-        timeline_items = []
+        # Deduplicate rapid duplicate access events (< 5 seconds apart) from same actor
+        filtered_logs = []
+        last_access_by_key = {}
         for l in logs:
+            if l.action == "ACCESSED_FOR_ANALYSIS":
+                dedup_key = (str(l.evidence_id), str(l.investigator_id or l.investigator_name), l.action)
+                last_time = last_access_by_key.get(dedup_key)
+                if last_time and l.timestamp:
+                    time_diff = abs((l.timestamp - last_time).total_seconds())
+                    if time_diff < 5:
+                        continue
+                last_access_by_key[dedup_key] = l.timestamp
+            filtered_logs.append(l)
+
+        # Collect distinct actor IDs and names to resolve authoritative roles dynamically
+        user_ids = set()
+        user_names = set()
+        for l in filtered_logs:
+            if l.investigator_id and str(l.investigator_id).isdigit():
+                user_ids.add(int(l.investigator_id))
+            elif l.investigator_name:
+                user_names.add(l.investigator_name.strip())
+
+        users_by_id = {}
+        if user_ids:
+            found_users = db.query(User).filter(User.id.in_(user_ids)).all()
+            for u in found_users:
+                users_by_id[str(u.id)] = u
+
+        users_by_name = {}
+        if user_names:
+            found_by_name = db.query(User).filter(
+                (User.full_name.in_(user_names)) | (User.username.in_(user_names))
+            ).all()
+            for u in found_by_name:
+                if u.full_name:
+                    users_by_name[u.full_name.strip().lower()] = u
+                if u.username:
+                    users_by_name[u.username.strip().lower()] = u
+
+        roles_by_id = {r.id: r.role_name for r in db.query(Role).all()}
+
+        timeline_items = []
+        for l in filtered_logs:
+            actor_user = None
+            if l.investigator_id and str(l.investigator_id) in users_by_id:
+                actor_user = users_by_id[str(l.investigator_id)]
+            elif l.investigator_name and l.investigator_name.strip().lower() in users_by_name:
+                actor_user = users_by_name[l.investigator_name.strip().lower()]
+
+            if actor_user:
+                resolved_actor_name = actor_user.full_name or actor_user.username or l.investigator_name
+                resolved_actor_role = roles_by_id.get(
+                    actor_user.role_id,
+                    "Investigator" if actor_user.role_id == 2 else ("Cyber Expert" if actor_user.role_id == 3 else "Administrator")
+                )
+            elif l.is_system_action:
+                resolved_actor_name = l.investigator_name or "System Automated"
+                resolved_actor_role = "System Automated"
+            else:
+                resolved_actor_name = l.investigator_name
+                resolved_actor_role = l.actor_role or "Investigator"
+
             timeline_items.append({
                 "event_id": l.id,
                 "external_event_id": l.external_event_id,
@@ -316,8 +396,8 @@ class CustodyService:
                 "timestamp_formatted": l.timestamp.strftime("%d %b %Y, %I:%M %p") if l.timestamp else None,
                 "recorded_at": l.recorded_at.isoformat() if l.recorded_at else None,
                 "actor_id": l.investigator_id,
-                "actor_name": l.investigator_name,
-                "actor_role": l.actor_role or ("System Automated" if l.is_system_action else "Investigator"),
+                "actor_name": resolved_actor_name,
+                "actor_role": resolved_actor_role,
                 "is_system_action": l.is_system_action,
                 "outcome": l.result or "SUCCESS",
                 "transfer_reference": l.transfer_reference,
@@ -366,23 +446,58 @@ class CustodyService:
         actor_name: str = "Investigator",
         actor_id: Optional[str] = None,
         actor_role: Optional[str] = "Cyber Expert",
-        new_holder_name: Optional[str] = None  # Rejection guard
+        new_holder_name: Optional[str] = None,
+        current_holder_id: Optional[str] = None,
+        current_holder_name: Optional[str] = None,
+        current_holder_role: Optional[str] = None,
+        custody_status: Optional[str] = None,
+        case_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Audited update of non-holder current custody details (location, department, remarks).
-        Enforces that holder cannot be changed arbitrarily via edit;
-        holder changes MUST follow the transfer workflow.
+        Audited update of current custody details (holder assignment/reaffirmation, location, department, remarks, status).
+        Enforces that once a holder is established, changing holder to a different person
+        MUST follow the transfer workflow.
         """
         clean_ev_id = str(evidence_id).strip()
-        info = CustodyService.get_or_create_current_custody(db, clean_ev_id)
+        info = CustodyService.get_or_create_current_custody(db, clean_ev_id, case_id)
 
-        if new_holder_name and info.current_holder_name and new_holder_name.strip().lower() != info.current_holder_name.strip().lower():
-            raise ValueError(
-                "Holder changes cannot be performed via direct edit. "
-                "You must initiate and confirm a custody transfer to change the evidence holder."
-            )
+        target_holder_name = current_holder_name or new_holder_name
+        target_holder_id = current_holder_id
+        target_holder_role = current_holder_role
+
+        if target_holder_name or target_holder_id:
+            # If evidence already has an official holder and someone attempts to reassign to a DIFFERENT person via edit:
+            if info.current_holder_name and target_holder_name and target_holder_name.strip().lower() != info.current_holder_name.strip().lower():
+                raise ValueError(
+                    "Holder changes cannot be performed via direct edit. "
+                    "You must initiate and confirm a custody transfer to change the evidence holder."
+                )
+
+            # Resolve user from DB if available
+            if target_holder_id and str(target_holder_id).isdigit():
+                h_user = db.query(User).filter(User.id == int(target_holder_id)).first()
+                if h_user:
+                    target_holder_name = h_user.full_name or h_user.username
+                    target_holder_role = CustodyService.resolve_user_role_name(db, h_user)
+            elif target_holder_name:
+                h_user = db.query(User).filter(
+                    (User.full_name == target_holder_name) | (User.username == target_holder_name)
+                ).first()
+                if h_user:
+                    target_holder_id = str(h_user.id)
+                    target_holder_role = CustodyService.resolve_user_role_name(db, h_user)
 
         changes = []
+        now_utc = datetime.now(timezone.utc)
+
+        if (target_holder_name and target_holder_name != info.current_holder_name) or (target_holder_id and target_holder_id != info.current_holder_id):
+            changes.append(f"Current Holder: '{info.current_holder_name}' -> '{target_holder_name}'")
+            info.current_holder_name = target_holder_name
+            info.current_holder_id = target_holder_id
+            info.current_holder_role = target_holder_role or "Investigator"
+            if not info.assigned_on:
+                info.assigned_on = now_utc
+
         if department is not None and department != info.department:
             changes.append(f"Department: '{info.department}' -> '{department}'")
             info.department = department
@@ -392,8 +507,10 @@ class CustodyService:
         if remarks is not None and remarks != info.remarks:
             changes.append(f"Remarks: '{info.remarks}' -> '{remarks}'")
             info.remarks = remarks
+        if custody_status is not None and custody_status != info.custody_status:
+            changes.append(f"Status: '{info.custody_status}' -> '{custody_status}'")
+            info.custody_status = custody_status
 
-        now_utc = datetime.now(timezone.utc)
         info.updated_at = now_utc
 
         if changes:
@@ -453,6 +570,7 @@ class CustodyService:
         Record that evidence was accessed/viewed for forensic analysis.
         Updates last_accessed timestamp and custody status to 'In Analysis'.
         Viewing/accessing evidence must NOT automatically assign or alter its holder.
+        Includes a 60-second debounce check to avoid duplicate audit logs from client re-renders.
         """
         clean_ev_id = str(evidence_id).strip()
         info = CustodyService.get_or_create_current_custody(db, clean_ev_id, case_id)
@@ -464,6 +582,21 @@ class CustodyService:
         final_actor_name = actor_name or investigator_name or "Investigator"
         final_actor_id = actor_id or investigator_id
         final_action = action or "ACCESSED_FOR_ANALYSIS"
+
+        # Cooldown / debounce: if same actor accessed this evidence within 60 seconds, do not create duplicate audit log
+        recent_log = db.query(CustodyLog).filter(
+            CustodyLog.evidence_id == clean_ev_id,
+            CustodyLog.action == final_action,
+            (CustodyLog.investigator_id == final_actor_id if final_actor_id else CustodyLog.investigator_name == final_actor_name)
+        ).order_by(CustodyLog.timestamp.desc()).first()
+
+        if recent_log and recent_log.timestamp:
+            recent_ts = recent_log.timestamp
+            if recent_ts.tzinfo is None:
+                recent_ts = recent_ts.replace(tzinfo=timezone.utc)
+            if (now_utc - recent_ts).total_seconds() < 60:
+                db.commit()
+                return {"status": "success", "evidence_id": clean_ev_id, "last_accessed": now_utc.isoformat(), "debounced": True}
 
         event_ref = str(uuid4())
         remarks = f"Evidence accessed for analysis by {final_actor_name} ({actor_role or 'Cyber Expert'}). Purpose: {purpose}"
@@ -775,7 +908,15 @@ class CustodyService:
         if evidence_id:
             query = query.filter(TransferRecord.evidence_id == str(evidence_id).strip())
         if case_id:
-            query = query.filter(TransferRecord.case_id == str(case_id).strip())
+            clean_cid = str(case_id).strip()
+            case_obj = db.query(Case).filter(
+                (Case.id == int(clean_cid) if clean_cid.isdigit() else False) |
+                (Case.case_id == clean_cid)
+            ).first()
+            if case_obj:
+                query = query.filter(TransferRecord.case_id.in_([str(case_obj.id), str(case_obj.case_id)]))
+            else:
+                query = query.filter(TransferRecord.case_id == clean_cid)
 
         query = query.order_by(TransferRecord.initiated_at.asc())
         total = query.count()

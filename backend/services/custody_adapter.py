@@ -42,9 +42,53 @@ class CustodyAdapter:
             ).first()
 
             if not existing_upload:
-                actor_name = current_user.full_name or current_user.username if current_user else "Investigator"
-                actor_id = str(current_user.id) if current_user else None
-                actor_role = "Cyber Expert" if (current_user and current_user.role_id == 3) else ("Investigator" if (current_user and current_user.role_id == 2) else "Administrator")
+                actor_name = None
+                actor_id = None
+                actor_role = None
+
+                # 1a. Try to resolve authentic uploader from EvidenceRecord
+                ev_rec = db.query(EvidenceRecord).filter(
+                    (EvidenceRecord.external_evidence_id == ev_id_str) |
+                    (EvidenceRecord.id == ev.id)
+                ).first()
+
+                if ev_rec and ev_rec.investigator_id and str(ev_rec.investigator_id).isdigit():
+                    u = db.query(User).filter(User.id == int(ev_rec.investigator_id)).first()
+                    if u:
+                        actor_id = str(u.id)
+                        actor_name = u.full_name or u.username
+                        actor_role = CustodyService.resolve_user_role_name(db, u)
+                elif ev_rec and ev_rec.investigator_name:
+                    u = db.query(User).filter(
+                        (User.full_name == ev_rec.investigator_name) | (User.username == ev_rec.investigator_name)
+                    ).first()
+                    if u:
+                        actor_id = str(u.id)
+                        actor_name = u.full_name or u.username
+                        actor_role = CustodyService.resolve_user_role_name(db, u)
+                    else:
+                        actor_name = ev_rec.investigator_name
+                        actor_role = "Investigator"
+
+                # 1b. Fall back to Case investigator
+                if not actor_name:
+                    case_obj = db.query(Case).filter(Case.id == case_id).first()
+                    if case_obj and case_obj.investigator_id:
+                        inv_u = db.query(User).filter(User.id == case_obj.investigator_id).first()
+                        if inv_u:
+                            actor_id = str(inv_u.id)
+                            actor_name = inv_u.full_name or inv_u.username
+                            actor_role = CustodyService.resolve_user_role_name(db, inv_u)
+
+                # 1c. Fall back to current_user
+                if not actor_name:
+                    if current_user:
+                        actor_name = current_user.full_name or current_user.username
+                        actor_id = str(current_user.id)
+                        actor_role = CustodyService.resolve_user_role_name(db, current_user)
+                    else:
+                        actor_name = "Investigator"
+                        actor_role = "Investigator"
                 
                 upload_time = ev.created_at or datetime.now(timezone.utc)
                 if upload_time.tzinfo is None:
@@ -80,10 +124,15 @@ class CustodyAdapter:
                 if not existing_hash:
                     verifier_name = "Hash Verification Engine"
                     verifier_id = str(h.verified_by) if h.verified_by else None
+                    verifier_role = "System Automated"
+
                     if h.verified_by:
                         v_user = db.query(User).filter(User.id == h.verified_by).first()
                         if v_user:
                             verifier_name = v_user.full_name or v_user.username
+                            verifier_role = CustodyService.resolve_user_role_name(db, v_user)
+                        else:
+                            verifier_role = "Investigator"
 
                     hash_time = h.verified_at or h.created_at or datetime.now(timezone.utc)
                     if hash_time.tzinfo is None:
@@ -99,7 +148,7 @@ class CustodyAdapter:
                         external_event_id=hash_event_id,
                         investigator_id=verifier_id,
                         investigator_name=verifier_name,
-                        actor_role="System Automated" if not h.verified_by else "Cyber Expert",
+                        actor_role=verifier_role,
                         action="HASH_GENERATED",
                         event_type="HASH_GENERATED",
                         title="Hash Generated",

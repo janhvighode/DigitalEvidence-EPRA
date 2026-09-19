@@ -1,14 +1,20 @@
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from database.database import get_db
 from models.user import User
 from models.case import Case
 from models.evidence import Evidence
+from models.evidence_hash import EvidenceHash
+from models.evidence_record import EvidenceRecord
+from models.custody_log import CustodyLog
 from utils.current_user import get_current_user
 from services.custody_service import CustodyService
 from services.custody_adapter import CustodyAdapter
+from services.storage_service import StorageService
+from services.epra_service import normalize_epra_evidence_type
 from schemas.custody import (
     TransferInitiateRequest,
     TransferReceiveRequest,
@@ -16,7 +22,8 @@ from schemas.custody import (
     CustodySummaryResponse,
     CustodyTimelineResponse,
     CurrentCustodyResponse,
-    TransferHistoryResponse
+    TransferHistoryResponse,
+    EvidenceCustodyDetailResponse
 )
 
 router = APIRouter(
@@ -27,21 +34,18 @@ router = APIRouter(
 
 def verify_cyber_expert_case_access(case_id: int, current_user: User, db: Session) -> Case:
     """
-    Enforce Cyber Expert authorization and assigned case boundary.
+    Enforce case authorization and boundary:
     - Missing/invalid JWT -> 401 (handled by get_current_user)
-    - Role != Cyber Expert (role_id != 3) -> 403 Forbidden
+    - Role 1 (Admin): Allowed for cases in their branch
+    - Role 2 (Investigator): Allowed if assigned (case.investigator_id == current_user.id)
+    - Role 3 (Cyber Expert): Allowed if assigned (case.cyber_expert_id == current_user.id)
     - Case not found -> 404 Not Found
-    - Case not assigned to current Cyber Expert -> 403 Forbidden
+    - Unassigned / foreign user -> 403 Forbidden
     """
     if not current_user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authentication required"
-        )
-    if current_user.role_id != 3:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access restricted to Cyber Experts only"
         )
 
     case = db.query(Case).filter(Case.id == case_id).first()
@@ -51,10 +55,29 @@ def verify_cyber_expert_case_access(case_id: int, current_user: User, db: Sessio
             detail=f"Case #{case_id} not found"
         )
 
-    if case.cyber_expert_id != current_user.id:
+    if current_user.role_id == 3:
+        if case.cyber_expert_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"You are not assigned as Cyber Expert to Case #{case_id}"
+            )
+    elif current_user.role_id == 2:
+        if case.investigator_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"You are not assigned as Investigator to Case #{case_id}"
+            )
+    elif current_user.role_id == 1:
+        creator = db.query(User).filter(User.id == case.created_by).first()
+        if creator and creator.cyber_cell_id != current_user.cyber_cell_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied: Case does not belong to your branch"
+            )
+    else:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"You are not assigned to Case #{case_id}"
+            detail="Access restricted to assigned Cyber Experts, Investigators, and Administrators"
         )
 
     return case
@@ -197,8 +220,8 @@ def update_current_custody(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Audited update of non-holder current custody details (location, department, remarks).
-    Holder changes cannot be performed via direct edit; must follow transfer workflow.
+    Audited update of current custody details (holder assignment/reaffirmation, location, department, remarks, status).
+    Holder changes cannot be performed via direct edit once established; must follow transfer workflow.
     """
     verify_cyber_expert_case_access(case_id, current_user, db)
     ev = verify_evidence_in_case(case_id, evidence_id, db)
@@ -206,7 +229,7 @@ def update_current_custody(
 
     actor_name = current_user.full_name or current_user.username
     actor_id = str(current_user.id)
-    actor_role = "Cyber Expert" if (current_user and current_user.role_id == 3) else ("Investigator" if (current_user and current_user.role_id == 2) else "Administrator")
+    actor_role = CustodyService.resolve_user_role_name(db, current_user)
 
     try:
         updated = CustodyService.update_current_custody(
@@ -217,7 +240,12 @@ def update_current_custody(
             remarks=payload.remarks,
             actor_name=actor_name,
             actor_id=actor_id,
-            actor_role=actor_role
+            actor_role=actor_role,
+            current_holder_id=payload.current_holder_id,
+            current_holder_name=payload.current_holder_name,
+            current_holder_role=payload.current_holder_role,
+            custody_status=payload.custody_status,
+            case_id=str(case_id)
         )
         return updated
     except ValueError as e:
@@ -275,7 +303,7 @@ def initiate_transfer(
 
     sender_name = current_user.full_name or current_user.username
     sender_id = str(current_user.id)
-    sender_role = "Cyber Expert" if (current_user and current_user.role_id == 3) else ("Investigator" if (current_user and current_user.role_id == 2) else "Administrator")
+    sender_role = CustodyService.resolve_user_role_name(db, current_user)
 
     try:
         res = CustodyService.initiate_transfer(
@@ -314,7 +342,7 @@ def receive_transfer(
 
     recipient_name = current_user.full_name or current_user.username
     recipient_id = str(current_user.id)
-    recipient_role = "Cyber Expert" if (current_user and current_user.role_id == 3) else ("Investigator" if (current_user and current_user.role_id == 2) else "Administrator")
+    recipient_role = CustodyService.resolve_user_role_name(db, current_user)
 
     # If payload provided recipient_name, check for matching
     if payload.recipient_name and payload.recipient_name.strip().lower() != recipient_name.strip().lower():
@@ -352,6 +380,7 @@ def record_evidence_access(
     Record that evidence was accessed for analysis.
     Updates last_accessed timestamp and custody status to 'In Analysis'.
     Does NOT assign or alter current holder.
+    Includes 60s debounce check to prevent duplicate audit logs from client re-renders.
     Actor derived strictly from JWT.
     """
     verify_cyber_expert_case_access(case_id, current_user, db)
@@ -360,7 +389,7 @@ def record_evidence_access(
 
     actor_name = current_user.full_name or current_user.username
     actor_id = str(current_user.id)
-    actor_role = "Cyber Expert" if (current_user and current_user.role_id == 3) else ("Investigator" if (current_user and current_user.role_id == 2) else "Administrator")
+    actor_role = CustodyService.resolve_user_role_name(db, current_user)
 
     return CustodyService.record_access_event(
         db=db,
@@ -377,7 +406,7 @@ def record_evidence_access(
 # 6. UNIFIED EVIDENCE CUSTODY DETAILS
 # ==============================================================================
 
-@router.get("/evidence/{evidence_id}")
+@router.get("/evidence/{evidence_id}", response_model=EvidenceCustodyDetailResponse)
 def get_evidence_custody_details(
     case_id: int,
     evidence_id: str,
@@ -386,9 +415,10 @@ def get_evidence_custody_details(
 ):
     """
     Comprehensive evidence custody details:
-    Returns evidence metadata, custody summary, current custody state, timeline, and transfer history.
+    Returns complete evidence metadata, canonical type, MIME type, hash & integrity state,
+    custody summary, current custody state, timeline, and transfer history.
     """
-    verify_cyber_expert_case_access(case_id, current_user, db)
+    case = verify_cyber_expert_case_access(case_id, current_user, db)
     ev = verify_evidence_in_case(case_id, evidence_id, db)
     clean_ev_id = ev.evidence_id or str(ev.id)
 
@@ -399,16 +429,105 @@ def get_evidence_custody_details(
     timeline = CustodyService.get_custody_timeline(db, evidence_id=clean_ev_id, case_id=str(case_id))
     transfers = CustodyService.get_transfer_history(db, evidence_id=clean_ev_id, case_id=str(case_id))
 
+    # Canonical type
+    canonical_type = normalize_epra_evidence_type(filename=ev.file_name, file_type=ev.file_type)
+
+    # Hash / integrity
+    ev_hash = db.query(EvidenceHash).filter(EvidenceHash.evidence_id == ev.id).first()
+    original_sha256 = ev_hash.original_hash or ev_hash.sha256_hash if ev_hash else None
+    current_hash = ev_hash.current_hash or ev_hash.sha256_hash if ev_hash else None
+    integrity_status = ev_hash.integrity_status if ev_hash else None
+
+    # Uploader resolution
+    ev_rec = db.query(EvidenceRecord).filter(
+        (EvidenceRecord.external_evidence_id == clean_ev_id) |
+        (EvidenceRecord.id == ev.id)
+    ).first()
+    uploaded_by = ev_rec.investigator_name if (ev_rec and ev_rec.investigator_name) else None
+    if not uploaded_by:
+        upload_log = db.query(CustodyLog).filter(
+            CustodyLog.evidence_id == clean_ev_id,
+            CustodyLog.action == "EVIDENCE_UPLOADED"
+        ).first()
+        if upload_log:
+            uploaded_by = upload_log.investigator_name
+    if not uploaded_by and case.investigator_id:
+        inv_u = db.query(User).filter(User.id == case.investigator_id).first()
+        if inv_u:
+            uploaded_by = inv_u.full_name or inv_u.username
+
+    current_custodian = current.get("current_holder_name")
+    last_accessed = current.get("last_accessed")
+
     return {
         "case_id": case_id,
         "evidence_id": clean_ev_id,
         "file_name": ev.file_name,
+        "original_filename": ev.file_name,
         "file_type": ev.file_type,
+        "canonical_type": canonical_type,
+        "evidence_type": canonical_type,
+        "mime_type": (ev_rec.mime_type if ev_rec and ev_rec.mime_type else ev.file_type),
         "file_size": ev.file_size,
+        "file_size_bytes": ev.file_size,
         "created_at": ev.created_at.isoformat() if ev.created_at else None,
+        "upload_timestamp": ev.created_at.isoformat() if ev.created_at else None,
+        "uploaded_at": ev.created_at.isoformat() if ev.created_at else None,
+        "uploaded_by": uploaded_by,
+        "added_by": uploaded_by,
+        "original_sha256": original_sha256,
+        "original_hash": original_sha256,
+        "current_hash": current_hash,
+        "sha256_hash": current_hash,
+        "integrity_status": integrity_status,
+        "integrity_verification_status": integrity_status,
+        "current_custodian": current_custodian,
+        "last_accessed": last_accessed,
         "status": ev.status,
+        "evidence_status": ev.status,
+        "preview_url": f"/cases/{case_id}/chain-of-custody/evidence/{clean_ev_id}/preview",
+        "download_url": f"/cases/{case_id}/evidence/{clean_ev_id}/download",
         "summary": summary,
         "current_custody": current,
         "timeline": timeline,
         "transfers": transfers
     }
+
+
+# ==============================================================================
+# 7. IMAGE PREVIEW (SECURE AUTHORIZED STREAM)
+# ==============================================================================
+
+@router.get(
+    "/evidence/{evidence_id}/preview",
+    summary="Preview image evidence file for Chain of Custody",
+    description="Streams previewable image evidence file inline with case authorization checks."
+)
+def preview_evidence_image(
+    case_id: int,
+    evidence_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Controlled image preview stream.
+    Validates case access, verifies evidence belongs to case,
+    and returns real image bytes with correct image MIME type.
+    """
+    case = verify_cyber_expert_case_access(case_id, current_user, db)
+    ev = verify_evidence_in_case(case_id, evidence_id, db)
+
+    canonical_type = normalize_epra_evidence_type(filename=ev.file_name, file_type=ev.file_type)
+    if canonical_type != "IMAGE" and not (ev.file_type and ev.file_type.lower().startswith("image/")):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Preview is only supported for image evidence. Evidence '{ev.file_name}' is of type '{canonical_type}'."
+        )
+
+    file_path, file_name, mime_type = StorageService.get_evidence_binary(ev, case)
+
+    return FileResponse(
+        path=str(file_path),
+        media_type=mime_type or "image/jpeg",
+        headers={"Content-Disposition": f'inline; filename="{file_name}"'}
+    )

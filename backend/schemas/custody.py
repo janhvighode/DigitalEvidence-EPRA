@@ -29,6 +29,10 @@ class CurrentCustodyUpdateRequest(BaseModel):
     remarks: Optional[str] = None
     actor_name: Optional[str] = None
     actor_id: Optional[str] = None
+    current_holder_id: Optional[str] = None
+    current_holder_name: Optional[str] = None
+    current_holder_role: Optional[str] = None
+    custody_status: Optional[str] = None
 
 
 class CustodyAccessRequest(BaseModel):
@@ -115,3 +119,37 @@ class TransferHistoryResponse(BaseModel):
     page: int
     page_size: int
     transfers: List[TransferItemResponse]
+
+
+class EvidenceCustodyDetailResponse(BaseModel):
+    case_id: int
+    evidence_id: str
+    file_name: str
+    original_filename: Optional[str] = None
+    file_type: str
+    canonical_type: str
+    evidence_type: str
+    mime_type: Optional[str] = None
+    file_size: int
+    file_size_bytes: int
+    created_at: Optional[str] = None
+    upload_timestamp: Optional[str] = None
+    uploaded_at: Optional[str] = None
+    uploaded_by: Optional[str] = None
+    added_by: Optional[str] = None
+    original_sha256: Optional[str] = None
+    original_hash: Optional[str] = None
+    current_hash: Optional[str] = None
+    sha256_hash: Optional[str] = None
+    integrity_status: Optional[str] = None
+    integrity_verification_status: Optional[str] = None
+    current_custodian: Optional[str] = None
+    last_accessed: Optional[str] = None
+    status: Optional[str] = None
+    evidence_status: Optional[str] = None
+    preview_url: Optional[str] = None
+    download_url: Optional[str] = None
+    summary: Optional[Dict[str, Any]] = None
+    current_custody: Optional[Dict[str, Any]] = None
+    timeline: Optional[List[Dict[str, Any]]] = None
+    transfers: Optional[Dict[str, Any]] = None
