@@ -13,6 +13,7 @@ Key Forensic Rules Enforced:
 """
 from datetime import date, datetime, timedelta
 from typing import Dict, List, Optional, Set, Tuple
+from fastapi import HTTPException, status
 from sqlalchemy import func, or_, and_
 from sqlalchemy.orm import Session, aliased
 
@@ -80,10 +81,20 @@ class AdminSystemStatisticsService:
 
     @staticmethod
     def _parse_date_range(start_date: Optional[date], end_date: Optional[date]) -> Tuple[Optional[datetime], Optional[datetime]]:
-        """Convert optional date bounds to inclusive datetime bounds."""
+        """
+        Convert optional date bounds to [start_dt, end_dt_exclusive) bounds.
+        start_dt: beginning of start_date (00:00:00)
+        end_dt_exclusive: beginning of day after end_date (00:00:00)
+        Semantics: timestamp >= start_dt AND timestamp < end_dt_exclusive.
+        """
+        if start_date and end_date and start_date > end_date:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="start_date must be before or equal to end_date"
+            )
         start_dt = datetime.combine(start_date, datetime.min.time()) if start_date else None
-        end_dt = datetime.combine(end_date, datetime.max.time()) if end_date else None
-        return start_dt, end_dt
+        end_dt_exclusive = datetime.combine(end_date + timedelta(days=1), datetime.min.time()) if end_date else None
+        return start_dt, end_dt_exclusive
 
     # =========================================================================
     # 1. EPRA ANALYTICS
@@ -119,11 +130,10 @@ class AdminSystemStatisticsService:
                 }
             )
 
-        start_dt, end_dt = cls._parse_date_range(start_date, end_date)
+        start_dt, end_dt_exclusive = cls._parse_date_range(start_date, end_date)
 
         # 1. Total unique evidence items applicable in branch cases
         applicable_evidence_query = db.query(Evidence).filter(Evidence.case_id.in_(case_ids))
-        total_evidence = applicable_evidence_query.count()
         branch_evidence_ids = [e.id for e in applicable_evidence_query.all()]
 
         if not branch_evidence_ids:
@@ -154,9 +164,9 @@ class AdminSystemStatisticsService:
             latest_subq = latest_subq.filter(
                 func.coalesce(EPRAResult.processed_at, EPRAResult.created_at) >= start_dt
             )
-        if end_dt:
+        if end_dt_exclusive:
             latest_subq = latest_subq.filter(
-                func.coalesce(EPRAResult.processed_at, EPRAResult.created_at) <= end_dt
+                func.coalesce(EPRAResult.processed_at, EPRAResult.created_at) < end_dt_exclusive
             )
         latest_subq = latest_subq.group_by(EPRAResult.evidence_id).subquery()
 
@@ -170,6 +180,21 @@ class AdminSystemStatisticsService:
         analyzed_count = len(latest_results)
         completed_count = sum(1 for r in latest_results if r.analysis_status == "COMPLETE")
         partial_count = sum(1 for r in latest_results if r.analysis_status == "PARTIAL / PENDING INPUTS")
+
+        # When date range is specified, total_evidence considers evidence in that scope
+        if start_dt or end_dt_exclusive:
+            scoped_ev_query = db.query(Evidence.id).filter(Evidence.case_id.in_(case_ids))
+            if start_dt:
+                scoped_ev_query = scoped_ev_query.filter(Evidence.created_at >= start_dt)
+            if end_dt_exclusive:
+                scoped_ev_query = scoped_ev_query.filter(Evidence.created_at < end_dt_exclusive)
+            created_in_range = set(r[0] for r in scoped_ev_query.all())
+            analyzed_in_range = set(r.evidence_id for r in latest_results)
+            period_evidence_ids = created_in_range | analyzed_in_range
+            total_evidence = len(period_evidence_ids)
+        else:
+            total_evidence = len(branch_evidence_ids)
+
         pending_count = max(0, total_evidence - completed_count)
 
         # Coverage formula: completed / total * 100
@@ -199,7 +224,7 @@ class AdminSystemStatisticsService:
             else:
                 priority_dist["PENDING"] += 1
 
-        # Evidence items without any EPRA run are added to PENDING
+        # Evidence items without any EPRA run in the period are added to PENDING
         unprocessed_evidence = max(0, total_evidence - analyzed_count)
         priority_dist["PENDING"] += unprocessed_evidence
 
@@ -257,13 +282,13 @@ class AdminSystemStatisticsService:
                 latest_analysis_at=None
             )
 
-        start_dt, end_dt = cls._parse_date_range(start_date, end_date)
+        start_dt, end_dt_exclusive = cls._parse_date_range(start_date, end_date)
 
         cbir_query = db.query(CBIRResult).filter(CBIRResult.case_id.in_(case_ids))
         if start_dt:
             cbir_query = cbir_query.filter(CBIRResult.created_at >= start_dt)
-        if end_dt:
-            cbir_query = cbir_query.filter(CBIRResult.created_at <= end_dt)
+        if end_dt_exclusive:
+            cbir_query = cbir_query.filter(CBIRResult.created_at < end_dt_exclusive)
 
         records: List[CBIRResult] = cbir_query.all()
         total_comp = len(records)
@@ -361,33 +386,51 @@ class AdminSystemStatisticsService:
                 investigators=[]
             )
 
+        start_dt, end_dt_exclusive = cls._parse_date_range(start_date, end_date)
+
         items: List[InvestigatorPerformanceItem] = []
 
         for inv in investigators:
-            # Query investigator cases scoped to the branch
+            # Query investigator cases scoped to the branch with date filtering
             inv_cases_query = db.query(Case).filter(
                 Case.investigator_id == inv.id,
                 Case.id.in_(case_ids) if case_ids else False
             )
+            if start_dt:
+                inv_cases_query = inv_cases_query.filter(Case.created_at >= start_dt)
+            if end_dt_exclusive:
+                inv_cases_query = inv_cases_query.filter(Case.created_at < end_dt_exclusive)
+
             assigned_cases = inv_cases_query.count()
             completed_cases = inv_cases_query.filter(Case.status == "Closed").count()
             active_cases = assigned_cases - completed_cases
 
             completion_ratio = round((completed_cases / assigned_cases) * 100, 2) if assigned_cases > 0 else 0.0
 
-            # Associated evidence count
+            # Associated evidence count in date range
             assigned_case_ids = [c.id for c in inv_cases_query.all()]
-            ev_count = db.query(Evidence).filter(Evidence.case_id.in_(assigned_case_ids)).count() if assigned_case_ids else 0
+            if assigned_case_ids:
+                ev_query = db.query(Evidence).filter(Evidence.case_id.in_(assigned_case_ids))
+                if start_dt:
+                    ev_query = ev_query.filter(Evidence.created_at >= start_dt)
+                if end_dt_exclusive:
+                    ev_query = ev_query.filter(Evidence.created_at < end_dt_exclusive)
+                ev_count = ev_query.count()
+            else:
+                ev_count = 0
 
             # Latest case activity from CaseTimeline or Case.updated_at
             latest_activity_ts: Optional[datetime] = None
             if assigned_case_ids:
-                latest_tl = (
+                tl_query = (
                     db.query(CaseTimeline.created_at)
                     .filter(CaseTimeline.case_id.in_(assigned_case_ids))
-                    .order_by(CaseTimeline.created_at.desc())
-                    .first()
                 )
+                if start_dt:
+                    tl_query = tl_query.filter(CaseTimeline.created_at >= start_dt)
+                if end_dt_exclusive:
+                    tl_query = tl_query.filter(CaseTimeline.created_at < end_dt_exclusive)
+                latest_tl = tl_query.order_by(CaseTimeline.created_at.desc()).first()
                 if latest_tl and latest_tl[0]:
                     latest_activity_ts = latest_tl[0]
 
@@ -453,7 +496,7 @@ class AdminSystemStatisticsService:
                 trends=[]
             )
 
-        start_dt, end_dt = cls._parse_date_range(start_date, end_date)
+        start_dt, end_dt_exclusive = cls._parse_date_range(start_date, end_date)
 
         # If no start date given, default to trailing 6 months
         if not start_dt:
@@ -464,8 +507,10 @@ class AdminSystemStatisticsService:
                 month += 12
                 year -= 1
             start_dt = datetime(year, month, 1)
-        if not end_dt:
+        if not end_dt_exclusive:
             end_dt = now
+        else:
+            end_dt = end_dt_exclusive - timedelta(microseconds=1)
 
         # Generate list of month keys (YYYY-MM) in range
         month_keys: List[str] = []
@@ -559,23 +604,27 @@ class AdminSystemStatisticsService:
     ) -> PriorityAnalysisResponse:
         """
         Returns Case Triage Priority and EPRA Evidence Priority strictly separated.
+        Uses database-side SQL filtering for case priorities.
         """
-        cases = cls.get_scoped_cases(db, current_user)
-        start_dt, end_dt = cls._parse_date_range(start_date, end_date)
+        start_dt, end_dt_exclusive = cls._parse_date_range(start_date, end_date)
 
-        # 1. Case priority distribution
+        # 1. Case priority distribution - database-side filtering
+        case_ids, _ = cls.get_scoped_case_ids(db, current_user)
         case_priorities = {"Critical": 0, "High": 0, "Medium": 0, "Low": 0}
-        for c in cases:
-            if start_dt and c.created_at and c.created_at < start_dt:
-                continue
-            if end_dt and c.created_at and c.created_at > end_dt:
-                continue
 
-            p = (c.priority or "").strip().capitalize()
-            if p in case_priorities:
-                case_priorities[p] += 1
-            elif p:
-                case_priorities[p] = case_priorities.get(p, 0) + 1
+        if case_ids:
+            case_query = db.query(Case.priority).filter(Case.id.in_(case_ids))
+            if start_dt:
+                case_query = case_query.filter(Case.created_at >= start_dt)
+            if end_dt_exclusive:
+                case_query = case_query.filter(Case.created_at < end_dt_exclusive)
+
+            for (p,) in case_query.all():
+                norm_p = (p or "").strip().capitalize()
+                if norm_p in case_priorities:
+                    case_priorities[norm_p] += 1
+                elif norm_p:
+                    case_priorities[norm_p] = case_priorities.get(norm_p, 0) + 1
 
         # 2. EPRA evidence priority distribution (from latest EPRA results)
         epra_stats = cls.get_epra_statistics(db, current_user, start_date, end_date)
@@ -601,7 +650,7 @@ class AdminSystemStatisticsService:
         """
         Aggregates operational counts for child forensic modules:
         Integrity, Metadata, Possible Entities, Relationships, and Reports.
-        Strictly scoped through Cyber Cell cases.
+        Strictly scoped through Cyber Cell cases and filtered by date range.
         """
         case_ids, case_str_ids = cls.get_scoped_case_ids(db, current_user)
 
@@ -622,12 +671,19 @@ class AdminSystemStatisticsService:
                 cases_with_reports=0
             )
 
+        start_dt, end_dt_exclusive = cls._parse_date_range(start_date, end_date)
+
         # 1. Evidence Hashes (Integrity)
         branch_evidence_ids = [
             e.id for e in db.query(Evidence.id).filter(Evidence.case_id.in_(case_ids)).all()
         ]
         if branch_evidence_ids:
-            hashes = db.query(EvidenceHash).filter(EvidenceHash.evidence_id.in_(branch_evidence_ids)).all()
+            hash_q = db.query(EvidenceHash).filter(EvidenceHash.evidence_id.in_(branch_evidence_ids))
+            if start_dt:
+                hash_q = hash_q.filter(func.coalesce(EvidenceHash.verified_at, EvidenceHash.created_at) >= start_dt)
+            if end_dt_exclusive:
+                hash_q = hash_q.filter(func.coalesce(EvidenceHash.verified_at, EvidenceHash.created_at) < end_dt_exclusive)
+            hashes = hash_q.all()
             total_hashes = len(hashes)
             verified = sum(1 for h in hashes if h.hash_match is True and not h.tampered)
             tampered = sum(1 for h in hashes if h.tampered is True or h.hash_match is False)
@@ -637,7 +693,12 @@ class AdminSystemStatisticsService:
 
         # 2. Evidence Records (Metadata)
         if case_str_ids:
-            metadata_records = db.query(EvidenceRecord).filter(EvidenceRecord.case_id.in_(case_str_ids)).all()
+            meta_q = db.query(EvidenceRecord).filter(EvidenceRecord.case_id.in_(case_str_ids))
+            if start_dt:
+                meta_q = meta_q.filter(func.coalesce(EvidenceRecord.uploaded_at, EvidenceRecord.created_at) >= start_dt)
+            if end_dt_exclusive:
+                meta_q = meta_q.filter(func.coalesce(EvidenceRecord.uploaded_at, EvidenceRecord.created_at) < end_dt_exclusive)
+            metadata_records = meta_q.all()
             total_meta = len(metadata_records)
             meta_processed = sum(1 for m in metadata_records if m.processing_status == "PROCESSED")
             meta_pending = total_meta - meta_processed
@@ -645,18 +706,33 @@ class AdminSystemStatisticsService:
             total_meta = meta_processed = meta_pending = 0
 
         # 3. Possible Entities (Suspect Ranking)
-        entities = db.query(PossibleEntity).filter(PossibleEntity.case_id.in_(case_ids)).all()
+        entity_q = db.query(PossibleEntity).filter(PossibleEntity.case_id.in_(case_ids))
+        if start_dt:
+            entity_q = entity_q.filter(PossibleEntity.created_at >= start_dt)
+        if end_dt_exclusive:
+            entity_q = entity_q.filter(PossibleEntity.created_at < end_dt_exclusive)
+        entities = entity_q.all()
         total_entities = len(entities)
         cases_with_suspects = len(set(e.case_id for e in entities))
 
         # 4. Evidence Links (Relationships)
-        links = db.query(EvidenceLink).filter(EvidenceLink.case_id.in_(case_ids)).all()
+        link_q = db.query(EvidenceLink).filter(EvidenceLink.case_id.in_(case_ids))
+        if start_dt:
+            link_q = link_q.filter(EvidenceLink.created_at >= start_dt)
+        if end_dt_exclusive:
+            link_q = link_q.filter(EvidenceLink.created_at < end_dt_exclusive)
+        links = link_q.all()
         total_links = len(links)
         cases_with_links = len(set(l.case_id for l in links))
 
         # 5. Technical Reports
         if case_str_ids:
-            reports = db.query(ReportRecord).filter(ReportRecord.case_id.in_(case_str_ids)).all()
+            rep_q = db.query(ReportRecord).filter(ReportRecord.case_id.in_(case_str_ids))
+            if start_dt:
+                rep_q = rep_q.filter(ReportRecord.generated_at >= start_dt)
+            if end_dt_exclusive:
+                rep_q = rep_q.filter(ReportRecord.generated_at < end_dt_exclusive)
+            reports = rep_q.all()
             total_reports = len(reports)
             cases_with_reports = len(set(r.case_id for r in reports))
         else:
@@ -692,6 +768,7 @@ class AdminSystemStatisticsService:
     ) -> AdminSystemStatisticsSummaryResponse:
         """
         Consolidates top-level executive metrics for dashboard summary cards.
+        Properly filters scoped cases and child sections by date range.
         """
         epra = cls.get_epra_statistics(db, current_user, start_date, end_date)
         cbir = cls.get_cbir_statistics(db, current_user, start_date, end_date)
@@ -699,7 +776,14 @@ class AdminSystemStatisticsService:
         trend = cls.get_case_progress_trend(db, current_user, start_date, end_date)
         forensic = cls.get_forensic_summary(db, current_user, start_date, end_date)
 
+        start_dt, end_dt_exclusive = cls._parse_date_range(start_date, end_date)
+
         cases = cls.get_scoped_cases(db, current_user)
+        if start_dt:
+            cases = [c for c in cases if c.created_at and c.created_at >= start_dt]
+        if end_dt_exclusive:
+            cases = [c for c in cases if c.created_at and c.created_at < end_dt_exclusive]
+
         total_cases = len(cases)
         closed_cases = sum(1 for c in cases if c.status == "Closed")
         active_cases = total_cases - closed_cases
