@@ -22,6 +22,7 @@ from models.evidence_link import EvidenceLink
 from models.current_custody import CurrentCustodyInfo
 from services.timeline_service import TimelineService
 from services.epra_service import normalize_epra_evidence_type
+from services.storage_service import StorageService
 
 from schemas.investigator_dashboard import (
     InvestigatorDashboardStats,
@@ -1071,27 +1072,7 @@ def get_investigator_evidence_file(
             detail=f"Evidence '{evidence_identifier}' not found for this case"
         )
 
-    raw_path = Path(evidence.file_path)
-    file_path = raw_path.resolve() if raw_path.is_absolute() else (Path.cwd() / raw_path).resolve()
-    base_upload_dir = (Path.cwd() / "uploads" / "evidence").resolve()
-
-    # Path traversal protection: file must be located inside base_upload_dir
-    try:
-        file_path.relative_to(base_upload_dir)
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied: Invalid file path traversal"
-        )
-
-    if not file_path.is_file():
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Evidence file not found on disk"
-        )
-
-    mime_type, _ = mimetypes.guess_type(evidence.file_name)
-    mime_type = mime_type or "application/octet-stream"
+    file_path, file_name, mime_type = StorageService.get_evidence_binary(evidence, case)
 
     if for_preview:
         is_image = mime_type.startswith("image/")
@@ -1109,7 +1090,7 @@ def get_investigator_evidence_file(
                 detail=f"Preview is not supported for file format '{evidence.file_type}'. Please download the file instead."
             )
 
-    return file_path, evidence.file_name, mime_type
+    return file_path, file_name, mime_type
 
 
 # ==============================================================================

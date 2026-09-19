@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Tuple
 import shutil
 import mimetypes
 from pathlib import Path
@@ -142,7 +142,11 @@ def create_case_evidence(
     verifies integrity against trusted reference if provided, and records timeline.
     """
     # 1. Compute real current SHA-256 via Member 5 HashService
-    current_sha256 = HashService.generate_sha256(file_data["file_path"])
+    hash_target = file_data.get("physical_path")
+    if not hash_target or not Path(hash_target).is_file():
+        resolved = StorageService.resolve_evidence_path(file_data.get("file_path"), case.id)
+        hash_target = str(resolved) if resolved else file_data.get("file_path")
+    current_sha256 = HashService.generate_sha256(str(hash_target))
 
     # 2. Evaluate integrity state (Verified, Tampered, or Unknown)
     verification = HashVerificationService.verify_evidence_integrity(
@@ -384,6 +388,47 @@ def get_evidence_details(
     }
 
 
+def get_case_evidence_download(
+    db: Session,
+    case_identifier: str | int,
+    evidence_identifier: str | int,
+    current_user: User
+) -> Tuple[Path, str, str]:
+    """
+    Safely resolves and returns the physical evidence file from persistent storage for download:
+    - Enforces strict role-based access for the case (Admin, Investigator, Cyber Expert)
+    - Resolves evidence by numeric ID or human-readable evidence_id (e.g. EV-6922-001)
+    - Validates file exists in durable persistent storage
+    - Prevents directory traversal attacks
+    - Distinguishes 404 for missing DB record vs 404 for missing persistent binary
+    Returns (file_path, original_filename, mime_type).
+    """
+    case = authorize_case_access(db, case_identifier, current_user)
+
+    ident_str = str(evidence_identifier).strip()
+    if ident_str.isdigit():
+        evidence = db.query(Evidence).filter(
+            Evidence.case_id == case.id,
+            or_(
+                Evidence.id == int(ident_str),
+                Evidence.evidence_id == ident_str
+            )
+        ).first()
+    else:
+        evidence = db.query(Evidence).filter(
+            Evidence.case_id == case.id,
+            Evidence.evidence_id.ilike(ident_str)
+        ).first()
+
+    if not evidence:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Evidence '{evidence_identifier}' not found for this case"
+        )
+
+    return StorageService.get_evidence_binary(evidence, case)
+
+
 async def ingest_zip_evidence_batch(
     db: Session,
     case: Case,
@@ -467,7 +512,8 @@ async def ingest_zip_evidence_batch(
             except Exception:
                 pass
 
-    case_dir = BASE_UPLOAD_DIR / str(case.id)
+    storage_root = StorageService.get_storage_root()
+    case_dir = storage_root / str(case.id)
     case_dir.mkdir(parents=True, exist_ok=True)
     permanent_files_copied: List[Path] = []
 
@@ -500,7 +546,7 @@ async def ingest_zip_evidence_batch(
                 file_name=member.relative_path,
                 file_type=file_category,
                 file_size=member.file_size,
-                file_path=str(perm_dest).replace("\\", "/"),
+                file_path=f"uploads/evidence/{case.id}/{unique_name}",
                 status="Active"
             )
             db.add(ev_model)

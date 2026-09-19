@@ -11,6 +11,7 @@ from utils.current_user import get_current_user
 from services.epra_service import authorize_cyber_expert_case_access
 from services.timeline_service import create_timeline_event
 from services.metadata_service import MetadataService
+from services.storage_service import StorageService
 from services.backend_adapter import get_backend_adapter
 from schemas.evidence_metadata import (
     MetadataExtractResponse,
@@ -169,17 +170,17 @@ def download_evidence_file(
 
     adapter = get_backend_adapter()
     ev_item = adapter.get_evidence(evidence_id, case_id=str(case.case_id))
-    if not ev_item or not ev_item.file_path:
+    if not ev_item:
         raise HTTPException(status_code=404, detail=f"Evidence #{evidence_id} not found in this case.")
 
-    p = Path(ev_item.file_path)
-    if not p.is_file():
-        raise HTTPException(status_code=404, detail="Evidence file not found on disk.")
+    file_path, file_name, mime_type = StorageService.get_evidence_binary(ev_item, case)
+    safe_filename = Path(file_name).name
 
     return FileResponse(
-        path=str(p),
-        filename=ev_item.original_filename,
-        media_type=ev_item.mime_type or "application/octet-stream"
+        path=str(file_path),
+        filename=safe_filename,
+        media_type=mime_type,
+        headers={"Content-Disposition": f'attachment; filename="{safe_filename}"'}
     )
 
 
@@ -200,14 +201,12 @@ def preview_evidence_file(
 
     adapter = get_backend_adapter()
     ev_item = adapter.get_evidence(evidence_id, case_id=str(case.case_id))
-    if not ev_item or not ev_item.file_path:
+    if not ev_item:
         raise HTTPException(status_code=404, detail=f"Evidence #{evidence_id} not found in this case.")
 
-    p = Path(ev_item.file_path)
-    if not p.is_file():
-        raise HTTPException(status_code=404, detail="Evidence file not found on disk.")
+    file_path, file_name, mime_type = StorageService.get_evidence_binary(ev_item, case)
 
     return FileResponse(
-        path=str(p),
-        media_type=ev_item.mime_type or "image/jpeg"
+        path=str(file_path),
+        media_type=mime_type or "image/jpeg"
     )

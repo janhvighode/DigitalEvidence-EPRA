@@ -1,4 +1,5 @@
 from typing import List, Optional
+from pathlib import Path
 from fastapi import (
     APIRouter,
     Depends,
@@ -8,6 +9,7 @@ from fastapi import (
     HTTPException,
     status
 )
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from database.database import get_db
@@ -28,6 +30,7 @@ from services.evidence_service import (
     create_case_evidence,
     get_case_evidence_list,
     get_evidence_details,
+    get_case_evidence_download,
     ingest_zip_evidence_batch
 )
 from services.hash_verification_service import HashVerificationService
@@ -188,4 +191,42 @@ async def upload_evidence_batch(
         archive=archive,
         current_user=current_user
     )
+
+
+# ============================================================
+# 6. EVIDENCE DOWNLOAD
+# ============================================================
+
+@router.get(
+    "/{case_id}/evidence/{evidence_id}/download",
+    summary="Download Original Evidence File",
+    description="Securely downloads the authentic original evidence file from persistent storage with case scoping and integrity protection."
+)
+def download_evidence(
+    case_id: str,
+    evidence_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Authenticated evidence download:
+    - Verifies case access for current_user
+    - Resolves evidence record by canonical ID or PK
+    - Retrieves real original binary from durable storage
+    - Returns original binary with proper Content-Type and Content-Disposition headers
+    """
+    file_path, file_name, media_type = get_case_evidence_download(
+        db=db,
+        case_identifier=case_id,
+        evidence_identifier=evidence_id,
+        current_user=current_user
+    )
+    safe_filename = Path(file_name).name
+    return FileResponse(
+        path=str(file_path),
+        filename=safe_filename,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{safe_filename}"'}
+    )
+
 
