@@ -232,13 +232,21 @@ def download_evidence(
 
 
 # ============================================================
-# 7. EVIDENCE PREVIEW
+import mimetypes
+
+# ============================================================
+# 7. EVIDENCE PREVIEW & CONTENT SERVING
 # ============================================================
 
 @router.get(
     "/{case_id}/evidence/{evidence_id}/preview",
-    summary="Preview Image Evidence File",
-    description="Streams previewable image evidence file inline with role-based case authorization."
+    summary="Preview Evidence File",
+    description="Streams previewable evidence file inline with role-based case authorization."
+)
+@router.get(
+    "/{case_id}/evidence/{evidence_id}/content",
+    summary="Get Evidence Content",
+    description="Streams evidence file content inline with role-based case authorization."
 )
 def preview_evidence(
     case_id: str,
@@ -247,11 +255,11 @@ def preview_evidence(
     db: Session = Depends(get_db)
 ):
     """
-    Authenticated image evidence preview:
+    Authenticated evidence content/preview:
     - Verifies case access for current_user (Cyber Expert, Investigator, Admin)
-    - Validates that evidence is an image format
     - Retrieves real original binary from durable storage
-    - Returns original binary inline with proper image Content-Type
+    - Returns original binary inline with proper Content-Type (JPEG, PNG, WebP, PDF, Audio, Video, Text, etc.)
+    - Returns clean 404 if DB record or physical binary is missing
     """
     case = authorize_case_access(db, case_id, current_user)
     file_path, file_name, media_type = get_case_evidence_download(
@@ -261,20 +269,16 @@ def preview_evidence(
         current_user=current_user
     )
 
-    # Validate image format for preview
-    canonical_type = normalize_epra_evidence_type(filename=file_name, file_type=media_type)
-    if canonical_type != "IMAGE" and not (media_type and media_type.lower().startswith("image/")):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Preview is only supported for image evidence. Evidence '{file_name}' is of type '{canonical_type}'."
-        )
-
     safe_filename = Path(file_name).name
+    guessed_type, _ = mimetypes.guess_type(safe_filename)
+    content_type = media_type or guessed_type or "application/octet-stream"
+
     return FileResponse(
         path=str(file_path),
         filename=safe_filename,
-        media_type=media_type or "image/jpeg",
+        media_type=content_type,
         headers={"Content-Disposition": f'inline; filename="{safe_filename}"'}
     )
+
 
 

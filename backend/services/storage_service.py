@@ -251,7 +251,7 @@ class StorageService:
         if not resolved_path or not resolved_path.is_file():
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Evidence file is not available in persistent storage (not found on disk)."
+                detail="Evidence file is not available in persistent storage."
             )
 
         file_name = getattr(evidence, "file_name", "evidence.bin")

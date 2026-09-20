@@ -1005,7 +1005,12 @@ def search_case_unified_service(
 ) -> Dict[str, Any]:
     """
     Unified forensic retrieval entry point wrapping Trisha's unified_retrieval module.
+    Normalizes search modes (e.g. 'All Modalities'), enforces case isolation, enriches
+    candidates with genuine database metadata, and deduplicates by canonical evidence_id.
     """
+    import re
+    import mimetypes
+
     clean_case_id = str(case_id).strip()
     authorize_case_access(db, clean_case_id, current_user)
     ensure_case_evidence_synchronized(db, clean_case_id)
@@ -1016,18 +1021,225 @@ def search_case_unified_service(
             "message": "Unified retrieval module is unavailable in this environment.",
             "case_id": clean_case_id,
             "results": [],
+            "ranked_evidence": [],
+            "results_count": 0,
             "forensic_notice": "Unified retrieval module not available."
         }
 
-    return retrieve_evidence(
+    raw_mode = str(query_type or "text").strip().lower().replace("_", " ").replace("-", " ")
+    has_text = bool(query_text and str(query_text).strip())
+    has_image = bool(
+        (query_image_path and str(query_image_path).strip()) or
+        (query_evidence_id and str(query_evidence_id).strip())
+    )
+
+    # 1. Normalize 'All Modalities' and common aliases to canonical engine modes
+    if raw_mode in ["all modalities", "all", "unified", "allmodalities"]:
+        if has_image and has_text:
+            canonical_mode = "hybrid"
+        elif has_image and not has_text:
+            canonical_mode = "image"
+        elif has_text and not has_image:
+            canonical_mode = "case_search"
+        else:
+            return {
+                "status": "no_data_found",
+                "message": f"No search query provided for case '{clean_case_id}'.",
+                "case_id": clean_case_id,
+                "query_type": "all_modalities",
+                "query": "",
+                "search_query": "",
+                "results_count": 0,
+                "results": [],
+                "ranked_evidence": [],
+                "verified_duplicates": [],
+                "relationships": [],
+                "graph": {"nodes": [], "edges": [], "total_nodes": 0, "total_edges": 0},
+                "forensic_notice": FORENSIC_DISCLAIMER
+            }
+    elif raw_mode in ["case search", "casesearch", "search"]:
+        canonical_mode = "case_search"
+    elif raw_mode in ["hybrid"]:
+        # If hybrid requested without image, treat as case_search so valid text score isn't crushed
+        canonical_mode = "hybrid" if has_image else "case_search"
+    elif raw_mode in ["text"]:
+        canonical_mode = "text"
+    elif raw_mode in ["context"]:
+        canonical_mode = "context"
+    elif raw_mode in ["image", "cbir", "visual"]:
+        canonical_mode = "image"
+    else:
+        canonical_mode = "case_search" if has_text else ("image" if has_image else "text")
+
+    # 2. Invoke authoritative Member-3 retrieval engine
+    raw_report = retrieve_evidence(
         case_id=clean_case_id,
-        query_type=query_type,
+        query_type=canonical_mode,
         query_image_path=query_image_path,
         query_evidence_id=query_evidence_id,
         query_text=query_text,
         top_k=top_k,
         include_graph=True
     )
+
+    if not isinstance(raw_report, dict):
+        return {
+            "status": "no_data_found",
+            "message": f"No relevant evidence found in case '{clean_case_id}'.",
+            "case_id": clean_case_id,
+            "results": [],
+            "ranked_evidence": [],
+            "results_count": 0,
+            "forensic_notice": FORENSIC_DISCLAIMER
+        }
+
+    raw_candidates = raw_report.get("ranked_evidence") or raw_report.get("results") or []
+
+    # 3. Build database lookup map for real evidence metadata
+    all_case_evs = fetch_case_evidence_dynamically(db, clean_case_id)
+    ev_meta_map: Dict[str, Dict[str, Any]] = {}
+    for ev in all_case_evs:
+        ev_meta_map[str(ev.get("evidence_id"))] = ev
+        if ev.get("numeric_id"):
+            ev_meta_map[str(ev["numeric_id"])] = ev
+
+    # 4. Result Normalization, Case Isolation, and Deduplication by canonical evidence_id
+    normalized_results: List[Dict[str, Any]] = []
+    seen_evidence_ids: Dict[str, int] = {}  # evidence_id -> index in normalized_results
+
+    for item in raw_candidates:
+        ev_id = str(item.get("evidence_id") or item.get("candidate_evidence_id") or "")
+        if not ev_id:
+            continue
+
+        item_case_id = str(item.get("case_id") or clean_case_id).strip()
+        # Strict Case Isolation (STEP 6)
+        if item_case_id != clean_case_id:
+            continue
+
+        db_meta = ev_meta_map.get(ev_id, {})
+        raw_fn = (
+            db_meta.get("original_filename") or
+            db_meta.get("file_name") or
+            item.get("filename") or
+            item.get("filename_or_name") or
+            item.get("candidate_filename") or
+            ev_id
+        )
+        # Strip stored UUID prefix if present to expose human-readable original filename
+        clean_fn = re.sub(r"^[0-9a-fA-F]{32}_", "", raw_fn)
+        stored_fn = db_meta.get("file_name") or item.get("filename") or clean_fn
+        mime_type = db_meta.get("mime_type") or mimetypes.guess_type(clean_fn)[0] or item.get("mime_type")
+        ev_type = db_meta.get("evidence_type") or item.get("evidence_type") or item.get("category") or "Evidence"
+
+        score = float(
+            item.get("overall_relevance_score") or
+            item.get("relevance_score") or
+            item.get("visual_similarity_score") or
+            item.get("text_relevance_score") or
+            0.0
+        )
+
+        matched_field = item.get("matched_field") or ("visual_similarity" if has_image else "text")
+        matched_terms = item.get("matched_terms") or []
+        snippet = item.get("snippet") or clean_fn
+        reason = item.get("reason") or f"Matching evidence in case {clean_case_id}."
+
+        if canonical_mode == "hybrid":
+            match_source = "Hybrid (Visual + Text)"
+        elif canonical_mode == "image":
+            match_source = "CBIR Visual"
+        elif "context" in str(matched_field).lower() or item.get("hops", 0) > 0:
+            match_source = "Context Search"
+        else:
+            match_source = "Text Search"
+
+        # Do NOT fake visual scores when no image query was supplied (STEP 9)
+        if has_image:
+            vis_score = item.get("visual_similarity_score")
+            edge_score = item.get("edge_similarity")
+            orb_score = item.get("orb_similarity")
+            color_score = item.get("color_similarity")
+            gray_score = item.get("grayscale_similarity")
+        else:
+            vis_score = None
+            edge_score = None
+            orb_score = None
+            color_score = None
+            gray_score = None
+
+        norm_item = {
+            "case_id": clean_case_id,
+            "evidence_id": ev_id,
+            "filename": clean_fn,
+            "original_filename": clean_fn,
+            "file_name": clean_fn,
+            "stored_filename": stored_fn,
+            "evidence_type": ev_type,
+            "category": ev_type,
+            "mime_type": mime_type,
+            "score": round(score, 4),
+            "relevance_score": round(score, 4),
+            "final_score": round(score, 4),
+            "overall_relevance_score": round(score, 4),
+            "relevance_score_display": f"{score * 100:.1f}%",
+            "match_type": matched_field,
+            "match_source": match_source,
+            "matched_field": matched_field,
+            "matched_fields": item.get("matched_fields") or [matched_field],
+            "matched_terms": matched_terms,
+            "snippet": snippet,
+            "reason": reason,
+            "classification": item.get("classification") or "Candidate",
+            "confidence": item.get("confidence") or item.get("confidence_level") or "High",
+            "confidence_level": item.get("confidence_level") or "High",
+            "investigation_status": item.get("investigation_status") or "Candidate",
+            "investigation_recommendation": item.get("investigation_recommendation") or "KEEP_FOR_INVESTIGATION",
+            "verification_required": item.get("verification_required", True),
+            "sha256_exact_duplicate": item.get("sha256_exact_duplicate", False),
+            "visual_similarity_score": vis_score,
+            "edge_similarity": edge_score,
+            "orb_similarity": orb_score,
+            "color_similarity": color_score,
+            "grayscale_similarity": gray_score,
+            "image": db_meta.get("file_path") or item.get("image"),
+            "image_path": db_meta.get("file_path") or item.get("image_path")
+        }
+
+        # Deduplication by canonical evidence_id (STEP 10)
+        if ev_id in seen_evidence_ids:
+            existing_idx = seen_evidence_ids[ev_id]
+            existing_item = normalized_results[existing_idx]
+            # Merge fields and preserve highest score
+            if norm_item["score"] > existing_item["score"]:
+                existing_item["score"] = norm_item["score"]
+                existing_item["relevance_score"] = norm_item["relevance_score"]
+                existing_item["final_score"] = norm_item["final_score"]
+                existing_item["overall_relevance_score"] = norm_item["overall_relevance_score"]
+                existing_item["relevance_score_display"] = norm_item["relevance_score_display"]
+            existing_item["match_source"] = f"{existing_item['match_source']} + {norm_item['match_source']}"
+            existing_item["matched_terms"] = list(dict.fromkeys(existing_item.get("matched_terms", []) + norm_item.get("matched_terms", [])))
+            existing_item["matched_fields"] = list(dict.fromkeys(existing_item.get("matched_fields", []) + norm_item.get("matched_fields", [])))
+        else:
+            seen_evidence_ids[ev_id] = len(normalized_results)
+            normalized_results.append(norm_item)
+
+    # Assign ranks post-deduplication
+    for rank_idx, item in enumerate(normalized_results, start=1):
+        item["rank"] = rank_idx
+
+    final_report = dict(raw_report)
+    final_report["case_id"] = clean_case_id
+    final_report["query_type"] = query_type
+    final_report["search_query"] = query_text or query_image_path or query_evidence_id or ""
+    final_report["results_count"] = len(normalized_results)
+    final_report["results"] = normalized_results
+    final_report["ranked_evidence"] = normalized_results
+    final_report["status"] = "Success" if normalized_results else "no_data_found"
+    if not normalized_results:
+        final_report["message"] = f"No matching evidence found for '{query_text}' in case '{clean_case_id}'."
+
+    return final_report
 
 
 def get_stored_cbir_results(

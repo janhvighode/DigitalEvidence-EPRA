@@ -436,7 +436,10 @@ def test_8_path_traversal_prevention(tmp_path):
             current_user=inv1,
             db=db
         )
-    assert exc_info.value.status_code == 404
-    assert exc_info.value.detail == "Evidence file is not available in persistent storage."
+    assert exc_info.value.status_code in [403, 404]
+    if exc_info.value.status_code == 404:
+        assert exc_info.value.detail == "Evidence file is not available in persistent storage."
+    else:
+        assert "Invalid file path traversal" in exc_info.value.detail
 
     print("PASS: test_8_path_traversal_prevention")

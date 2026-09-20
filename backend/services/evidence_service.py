@@ -388,6 +388,9 @@ def get_evidence_details(
     }
 
 
+from models.evidence_record import EvidenceRecord
+
+
 def get_case_evidence_download(
     db: Session,
     case_identifier: str | int,
@@ -395,9 +398,10 @@ def get_case_evidence_download(
     current_user: User
 ) -> Tuple[Path, str, str]:
     """
-    Safely resolves and returns the physical evidence file from persistent storage for download:
+    Safely resolves and returns the physical evidence file from persistent storage for download/preview:
     - Enforces strict role-based access for the case (Admin, Investigator, Cyber Expert)
-    - Resolves evidence by numeric ID or human-readable evidence_id (e.g. EV-6922-001)
+    - Resolves evidence by numeric ID or human-readable evidence_id (e.g. EV-6922-001) from either
+      Evidence or EvidenceRecord (vault) tables
     - Validates file exists in durable persistent storage
     - Prevents directory traversal attacks
     - Distinguishes 404 for missing DB record vs 404 for missing persistent binary
@@ -406,6 +410,7 @@ def get_case_evidence_download(
     case = authorize_case_access(db, case_identifier, current_user)
 
     ident_str = str(evidence_identifier).strip()
+    evidence = None
     if ident_str.isdigit():
         evidence = db.query(Evidence).filter(
             Evidence.case_id == case.id,
@@ -420,13 +425,46 @@ def get_case_evidence_download(
             Evidence.evidence_id.ilike(ident_str)
         ).first()
 
-    if not evidence:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Evidence '{evidence_identifier}' not found for this case"
-        )
+    if evidence:
+        return StorageService.get_evidence_binary(evidence, case)
 
-    return StorageService.get_evidence_binary(evidence, case)
+    # Fallback: check EvidenceRecord table (vault records)
+    rec_query = db.query(EvidenceRecord).filter(
+        or_(
+            EvidenceRecord.case_id == str(case.case_id),
+            EvidenceRecord.case_id == str(case.id)
+        )
+    )
+    if ident_str.isdigit():
+        rec = rec_query.filter(
+            or_(
+                EvidenceRecord.id == int(ident_str),
+                EvidenceRecord.external_evidence_id == ident_str
+            )
+        ).first()
+    else:
+        rec = rec_query.filter(
+            EvidenceRecord.external_evidence_id.ilike(ident_str)
+        ).first()
+
+    if rec:
+        resolved_path = StorageService.resolve_evidence_path(
+            raw_path=rec.file_path,
+            case_id=case.id
+        )
+        if not resolved_path or not resolved_path.is_file():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Evidence file is not available in persistent storage."
+            )
+        file_name = rec.original_filename or rec.stored_filename or "evidence.bin"
+        mime_type = rec.mime_type or mimetypes.guess_type(file_name)[0] or "application/octet-stream"
+        return resolved_path, file_name, mime_type
+
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail=f"Evidence '{evidence_identifier}' not found for this case"
+    )
 
 
 async def ingest_zip_evidence_batch(
