@@ -65,28 +65,41 @@ def map_entity_type(identifier: str) -> str:
     return "OTHER"
 
 
-def resolve_evidence_file_path(file_path: Optional[str]) -> str:
+def resolve_evidence_file_path(file_path: Optional[str], file_name: Optional[str] = None) -> str:
     """
     Safely resolves the evidence file path across different execution working directories.
+    Supports durable storage_root, UUID-stripped basenames, and sample_evidence fallbacks.
     """
-    if not file_path:
+    if not file_path and not file_name:
         return ""
 
-    p = Path(file_path)
-    if p.is_file():
-        return str(p.resolve())
+    candidates = []
+    if file_path:
+        p = Path(file_path)
+        candidates.extend([p, backend_dir / p, root_dir / p])
 
-    # Try backend_dir relative
-    b_p = backend_dir / p
-    if b_p.is_file():
-        return str(b_p.resolve())
+    for cand in candidates:
+        if cand.is_file():
+            return str(cand.resolve())
 
-    # Try root_dir relative
-    r_p = root_dir / p
-    if r_p.is_file():
-        return str(r_p.resolve())
+    # Fallback 1: Try without UUID prefix in directory (e.g. 56d250891c144e3ca52659b6735146c8_ransomware.exe -> ransomware.exe)
+    if file_path:
+        p = Path(file_path)
+        clean_name = p.name.split("_", 1)[-1] if "_" in p.name else p.name
+        if clean_name != p.name:
+            for base in [p.parent, backend_dir / p.parent, root_dir / p.parent]:
+                cand = base / clean_name
+                if cand.is_file():
+                    return str(cand.resolve())
 
-    return str(file_path)
+    # Fallback 2: Check by original file_name in sample evidence directory
+    name_to_check = file_name or (Path(file_path).name.split("_", 1)[-1] if file_path and "_" in Path(file_path).name else (Path(file_path).name if file_path else None))
+    if name_to_check:
+        sample_cand = root_dir / "ai_modules" / "epra_v2" / "demo" / "sample_evidence" / name_to_check
+        if sample_cand.is_file():
+            return str(sample_cand.resolve())
+
+    return str(file_path) if file_path else ""
 
 
 def build_ranked_entity_response(entity: PossibleEntity) -> RankedEntityResponse:
@@ -193,7 +206,7 @@ def process_case_suspect_ranking(
     skipped_unreadable_count = 0
 
     for ev in evidence_records:
-        resolved_path = resolve_evidence_file_path(ev.file_path)
+        resolved_path = resolve_evidence_file_path(ev.file_path, ev.file_name)
         ext = Path(ev.file_name).suffix.lower()
 
         canon_type = normalize_epra_evidence_type(

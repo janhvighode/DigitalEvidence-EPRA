@@ -198,6 +198,9 @@ def extract_readable_text_from_file(file_path: Optional[str], ext: Optional[str]
         elif ext_low == ".eml":
             with open(p, "rb") as f:
                 msg = email.message_from_binary_file(f, policy=policy.default)
+                from_hdr = msg.get("from", "") or ""
+                to_hdr = msg.get("to", "") or ""
+                cc_hdr = msg.get("cc", "") or ""
                 subj = msg.get("subject", "") or ""
                 body = ""
                 if msg.is_multipart():
@@ -206,7 +209,7 @@ def extract_readable_text_from_file(file_path: Optional[str], ext: Optional[str]
                             body += part.get_content() or ""
                 else:
                     body = msg.get_content() if msg.get_content_type() == "text/plain" else ""
-                full = f"{subj} {body}".strip()
+                full = f"{from_hdr}\n{to_hdr}\n{cc_hdr}\n{subj}\n{body}".strip()
                 return full if full else None
         elif ext_low == ".docx":
             with zipfile.ZipFile(p, "r") as z:
