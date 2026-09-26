@@ -11,7 +11,7 @@ class CyberExpertMyCasesService {
     String status = '',
     String priority = '',
     int page = 1,
-    int limit = 10,
+    int limit = 100,
   }) async {
     final prefs = await SharedPreferences.getInstance();
 
@@ -30,19 +30,17 @@ class CyberExpertMyCasesService {
       queryParameters['search'] = search.trim();
     }
 
-    if (status.isNotEmpty) {
-      queryParameters['status'] = status;
+    if (status.trim().isNotEmpty && status.trim().toLowerCase() != 'all') {
+      queryParameters['status'] = status.trim();
     }
 
-    if (priority.isNotEmpty) {
-      queryParameters['priority'] = priority;
+    if (priority.trim().isNotEmpty && priority.trim().toLowerCase() != 'all') {
+      queryParameters['priority'] = priority.trim();
     }
 
     final uri = Uri.parse(
       '${ApiConstants.baseUrl}/cyber-expert/my-cases',
-    ).replace(
-      queryParameters: queryParameters,
-    );
+    ).replace(queryParameters: queryParameters);
 
     final response = await http.get(
       uri,
@@ -52,14 +50,10 @@ class CyberExpertMyCasesService {
       },
     );
 
-    if (response.statusCode >= 200 &&
-        response.statusCode < 300) {
-      return jsonDecode(response.body)
-          as Map<String, dynamic>;
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
     }
 
-    throw Exception(
-      'Failed to load cases (${response.statusCode})',
-    );
+    throw Exception('Failed to load cases (${response.statusCode})');
   }
 }

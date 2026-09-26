@@ -12,44 +12,27 @@ class LoginService {
   }) async {
     final response = await http.post(
       Uri.parse(ApiConstants.login),
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: jsonEncode({
-        "username": username,
-        "password": password,
-      }),
+      headers: {"Content-Type": "application/json"},
+      body: jsonEncode({"username": username, "password": password}),
     );
 
-    final Map<String, dynamic> data =
-        jsonDecode(response.body);
+    final Map<String, dynamic> data = jsonDecode(response.body);
 
-    if (response.statusCode >= 200 &&
-        response.statusCode < 300) {
-      final String? accessToken =
-          data["access_token"]?.toString();
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      final String? accessToken = data["access_token"]?.toString();
 
       if (accessToken != null && accessToken.isNotEmpty) {
         final prefs = await SharedPreferences.getInstance();
 
-        await prefs.setString(
-          "access_token",
-          accessToken,
-        );
+        await prefs.setString("access_token", accessToken);
 
-        await prefs.setString(
-          "username",
-          username,
-        );
+        await prefs.setString("username", username);
 
         // Save role_id if backend sends it in response
         if (data["role_id"] != null) {
           await prefs.setInt(
             "role_id",
-            int.tryParse(
-                  data["role_id"].toString(),
-                ) ??
-                0,
+            int.tryParse(data["role_id"].toString()) ?? 0,
           );
         }
       }

@@ -14,8 +14,7 @@ class CaseActivityScreen extends StatefulWidget {
 }
 
 class _CaseActivityScreenState extends State<CaseActivityScreen> {
-  final TextEditingController _searchController =
-      TextEditingController();
+  final TextEditingController _searchController = TextEditingController();
 
   final ApiService _apiService = ApiService();
 
@@ -50,115 +49,103 @@ class _CaseActivityScreenState extends State<CaseActivityScreen> {
   // ============================================================
 
   Future<void> _loadCaseBoard() async {
-  setState(() {
-    _isLoading = true;
-    _errorMessage = null;
-  });
-
-  try {
-    final response = await _apiService.getCaseBoard();
-    debugPrint("CASE BOARD STATUS = ${response.statusCode}");
-debugPrint("CASE BOARD RESPONSE = ${response.body}");
-    // 401
-   if (response.statusCode == 401) {
-  if (!mounted) return;
-
-  Navigator.of(context).pushAndRemoveUntil(
-    MaterialPageRoute(
-      builder: (_) => const LoginScreen(),
-    ),
-    (route) => false,
-  );
-
-  return;
-}
-
-if (response.statusCode == 403) {
-  if (mounted) {
     setState(() {
-      _isLoading = false;
-      _errorMessage =
-          "You are not authorized to view these cases.";
+      _isLoading = true;
+      _errorMessage = null;
     });
-  }
-  return;
-}
 
-    // SUCCESS
-   if (response.statusCode >= 200 &&
-    response.statusCode < 300) {
-  final decoded = jsonDecode(response.body);
+    try {
+      final response = await _apiService.getCaseBoard();
+      debugPrint("CASE BOARD STATUS = ${response.statusCode}");
+      debugPrint("CASE BOARD RESPONSE = ${response.body}");
+      // 401
+      if (response.statusCode == 401) {
+        if (!mounted) return;
 
-  final List<Map<String, dynamic>> loadedCases = [];
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
+          (route) => false,
+        );
 
-  if (decoded is Map) {
-    for (final entry in decoded.entries) {
-      final status = entry.key.toString();
-      final statusCases = entry.value;
+        return;
+      }
 
-      if (statusCases is List) {
-        for (final item in statusCases) {
-          if (item is Map) {
-            final caseData =
-                Map<String, dynamic>.from(item);
+      if (response.statusCode == 403) {
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+            _errorMessage = "You are not authorized to view these cases.";
+          });
+        }
+        return;
+      }
 
-            loadedCases.add({
-              "id": caseData["id"],
-              "caseId": caseData["case_id"] ?? "",
-              "title": caseData["title"] ?? "",
-              "priority": _formatPriority(
-                caseData["priority"],
-              ),
-              "investigator":
-                  caseData["investigator_name"] ??
-                      "Not Assigned",
-              "created": _formatDate(
-                caseData["created_at"],
-              ),
-              "status":
-                  caseData["status"] ?? status,
-            });
+      // SUCCESS
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final decoded = jsonDecode(response.body);
+
+        final List<Map<String, dynamic>> loadedCases = [];
+
+        if (decoded is Map) {
+          for (final entry in decoded.entries) {
+            final status = entry.key.toString();
+            final statusCases = entry.value;
+
+            if (statusCases is List) {
+              for (final item in statusCases) {
+                if (item is Map) {
+                  final caseData = Map<String, dynamic>.from(item);
+
+                  loadedCases.add({
+                    "id": caseData["id"],
+                    "caseId": caseData["case_id"] ?? "",
+                    "title": caseData["title"] ?? "",
+                    "priority": _formatPriority(caseData["priority"]),
+                    "investigator":
+                        caseData["investigator_name"] ?? "Not Assigned",
+                    "created": _formatDate(caseData["created_at"]),
+                    "status": caseData["status"] ?? status,
+                  });
+                }
+              }
+            }
           }
         }
-      }
-    }
-  }
 
-  if (!mounted) return;
+        if (!mounted) return;
 
-  setState(() {
-    cases.clear();
-    cases.addAll(loadedCases);
-    _isLoading = false;
-  });
-} else {
-      String message = "Failed to load cases.";
+        setState(() {
+          cases.clear();
+          cases.addAll(loadedCases);
+          _isLoading = false;
+        });
+      } else {
+        String message = "Failed to load cases.";
 
-      try {
-        final body = jsonDecode(response.body);
+        try {
+          final body = jsonDecode(response.body);
 
-        if (body is Map && body["detail"] != null) {
-          message = body["detail"].toString();
+          if (body is Map && body["detail"] != null) {
+            message = body["detail"].toString();
+          }
+        } catch (_) {}
+
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+            _errorMessage = message;
+          });
         }
-      } catch (_) {}
-
+      }
+    } catch (e) {
       if (mounted) {
         setState(() {
           _isLoading = false;
-          _errorMessage = message;
+          _errorMessage = "Unable to connect to the server.";
         });
       }
     }
-  } catch (e) {
-    if (mounted) {
-      setState(() {
-        _isLoading = false;
-        _errorMessage =
-            "Unable to connect to the server.";
-      });
-    }
   }
-}
 
   // ============================================================
   // FORMAT HELPERS
@@ -171,8 +158,7 @@ if (response.statusCode == 403) {
 
     if (priority.isEmpty) return "Unknown";
 
-    return priority[0].toUpperCase() +
-        priority.substring(1).toLowerCase();
+    return priority[0].toUpperCase() + priority.substring(1).toLowerCase();
   }
 
   String _formatDate(dynamic value) {
@@ -286,33 +272,20 @@ if (response.statusCode == 403) {
   // SEARCH / FILTER
   // ============================================================
 
-  List<Map<String, dynamic>> _casesForStatus(
-    String status,
-  ) {
+  List<Map<String, dynamic>> _casesForStatus(String status) {
     return cases.where((caseItem) {
-      final bool matchesStatus =
-          caseItem["status"].toString() == status;
+      final bool matchesStatus = caseItem["status"].toString() == status;
 
-      final String query =
-          searchText.toLowerCase().trim();
+      final String query = searchText.toLowerCase().trim();
 
       if (query.isEmpty) {
         return matchesStatus;
       }
 
       final bool matchesSearch =
-          caseItem["caseId"]
-                  .toString()
-                  .toLowerCase()
-                  .contains(query) ||
-              caseItem["title"]
-                  .toString()
-                  .toLowerCase()
-                  .contains(query) ||
-              caseItem["investigator"]
-                  .toString()
-                  .toLowerCase()
-                  .contains(query);
+          caseItem["caseId"].toString().toLowerCase().contains(query) ||
+          caseItem["title"].toString().toLowerCase().contains(query) ||
+          caseItem["investigator"].toString().toLowerCase().contains(query);
 
       return matchesStatus && matchesSearch;
     }).toList();
@@ -322,15 +295,10 @@ if (response.statusCode == 403) {
   // VIEW DETAILS
   // ============================================================
 
-  void _openCaseDetails(
-    Map<String, dynamic> caseData,
-  ) {
+  void _openCaseDetails(Map<String, dynamic> caseData) {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (context) =>
-            CaseActivityDetailsScreen(
-          caseData: caseData,
-        ),
+        builder: (context) => CaseActivityDetailsScreen(caseData: caseData),
       ),
     );
   }
@@ -343,8 +311,7 @@ if (response.statusCode == 403) {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final bool isMobile =
-            constraints.maxWidth < 700;
+        final bool isMobile = constraints.maxWidth < 700;
 
         return Container(
           width: double.infinity,
@@ -355,20 +322,15 @@ if (response.statusCode == 403) {
               vertical: isMobile ? 18 : 24,
             ),
             child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _buildHeader(isMobile),
 
-                SizedBox(
-                  height: isMobile ? 18 : 22,
-                ),
+                SizedBox(height: isMobile ? 18 : 22),
 
                 _buildSearchBar(isMobile),
 
-                SizedBox(
-                  height: isMobile ? 20 : 24,
-                ),
+                SizedBox(height: isMobile ? 20 : 24),
 
                 if (_isLoading)
                   _buildLoadingState()
@@ -393,12 +355,8 @@ if (response.statusCode == 403) {
   Widget _buildLoadingState() {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(
-        vertical: 80,
-      ),
-      child: const Center(
-        child: CircularProgressIndicator(),
-      ),
+      padding: const EdgeInsets.symmetric(vertical: 80),
+      child: const Center(child: CircularProgressIndicator()),
     );
   }
 
@@ -409,16 +367,11 @@ if (response.statusCode == 403) {
   Widget _buildErrorState() {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(
-        horizontal: 25,
-        vertical: 60,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 60),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(17),
-        border: Border.all(
-          color: const Color(0xFFE2E8F0),
-        ),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
       ),
       child: Column(
         children: [
@@ -431,10 +384,7 @@ if (response.statusCode == 403) {
           Text(
             _errorMessage!,
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: Color(0xFF63728A),
-              fontSize: 14,
-            ),
+            style: const TextStyle(color: Color(0xFF63728A), fontSize: 14),
           ),
           const SizedBox(height: 18),
           ElevatedButton.icon(
@@ -460,20 +410,13 @@ if (response.statusCode == 403) {
       ),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [
-            Color(0xFFE8F2FF),
-            Color(0xFFF6FAFF),
-            Colors.white,
-          ],
+          colors: [Color(0xFFE8F2FF), Color(0xFFF6FAFF), Colors.white],
         ),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: const Color(0xFFDCEAFF),
-        ),
+        border: Border.all(color: const Color(0xFFDCEAFF)),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF0875F5)
-                .withOpacity(0.04),
+            color: const Color(0xFF0875F5).withOpacity(0.04),
             blurRadius: 20,
             offset: const Offset(0, 6),
           ),
@@ -488,13 +431,9 @@ if (response.statusCode == 403) {
               gradient: const LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [
-                  Color(0xFF064B9A),
-                  Color(0xFF071B33),
-                ],
+                colors: [Color(0xFF064B9A), Color(0xFF071B33)],
               ),
-              borderRadius:
-                  BorderRadius.circular(17),
+              borderRadius: BorderRadius.circular(17),
             ),
             child: const Icon(
               Icons.view_kanban_rounded,
@@ -502,32 +441,25 @@ if (response.statusCode == 403) {
               size: 31,
             ),
           ),
-          SizedBox(
-            width: isMobile ? 13 : 17,
-          ),
+          SizedBox(width: isMobile ? 13 : 17),
           Container(
             width: 4,
             height: isMobile ? 54 : 64,
             decoration: BoxDecoration(
               color: const Color(0xFF0875F5),
-              borderRadius:
-                  BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(10),
             ),
           ),
-          SizedBox(
-            width: isMobile ? 13 : 17,
-          ),
+          SizedBox(width: isMobile ? 13 : 17),
           Expanded(
             child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   "Case Activity",
                   style: TextStyle(
                     color: const Color(0xFF071B33),
-                    fontSize:
-                        isMobile ? 24 : 30,
+                    fontSize: isMobile ? 24 : 30,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
@@ -536,8 +468,7 @@ if (response.statusCode == 403) {
                   "Monitor and manage all investigation cases.",
                   style: TextStyle(
                     color: const Color(0xFF63728A),
-                    fontSize:
-                        isMobile ? 12 : 14,
+                    fontSize: isMobile ? 12 : 14,
                   ),
                 ),
               ],
@@ -554,12 +485,10 @@ if (response.statusCode == 403) {
 
   Widget _buildSearchBar(bool isMobile) {
     return Container(
-      constraints:
-          const BoxConstraints(maxWidth: 520),
+      constraints: const BoxConstraints(maxWidth: 520),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius:
-            BorderRadius.circular(13),
+        borderRadius: BorderRadius.circular(13),
       ),
       child: TextField(
         controller: _searchController,
@@ -576,40 +505,27 @@ if (response.statusCode == 403) {
             Icons.search_rounded,
             color: Color(0xFF073B7A),
           ),
-          suffixIcon:
-              searchText.isNotEmpty
-                  ? IconButton(
-                      onPressed: () {
-                        _searchController.clear();
+          suffixIcon: searchText.isNotEmpty
+              ? IconButton(
+                  onPressed: () {
+                    _searchController.clear();
 
-                        setState(() {
-                          searchText = "";
-                        });
-                      },
-                      icon: const Icon(
-                        Icons.close_rounded,
-                        size: 19,
-                      ),
-                    )
-                  : null,
+                    setState(() {
+                      searchText = "";
+                    });
+                  },
+                  icon: const Icon(Icons.close_rounded, size: 19),
+                )
+              : null,
           filled: true,
           fillColor: Colors.white,
-          enabledBorder:
-              OutlineInputBorder(
-            borderRadius:
-                BorderRadius.circular(13),
-            borderSide: const BorderSide(
-              color: Color(0xFFDCE5F0),
-            ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(13),
+            borderSide: const BorderSide(color: Color(0xFFDCE5F0)),
           ),
-          focusedBorder:
-              OutlineInputBorder(
-            borderRadius:
-                BorderRadius.circular(13),
-            borderSide: const BorderSide(
-              color: Color(0xFF0875F5),
-              width: 1.6,
-            ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(13),
+            borderSide: const BorderSide(color: Color(0xFF0875F5), width: 1.6),
           ),
         ),
       ),
@@ -622,20 +538,11 @@ if (response.statusCode == 403) {
 
   Widget _buildDesktopBoard() {
     return Row(
-      crossAxisAlignment:
-          CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        for (int i = 0;
-            i < statuses.length;
-            i++) ...[
-          Expanded(
-            child: _buildKanbanColumn(
-              statuses[i],
-              false,
-            ),
-          ),
-          if (i != statuses.length - 1)
-            const SizedBox(width: 14),
+        for (int i = 0; i < statuses.length; i++) ...[
+          Expanded(child: _buildKanbanColumn(statuses[i], false)),
+          if (i != statuses.length - 1) const SizedBox(width: 14),
         ],
       ],
     );
@@ -648,15 +555,9 @@ if (response.statusCode == 403) {
   Widget _buildMobileBoard() {
     return Column(
       children: [
-        for (int i = 0;
-            i < statuses.length;
-            i++) ...[
-          _buildKanbanColumn(
-            statuses[i],
-            true,
-          ),
-          if (i != statuses.length - 1)
-            const SizedBox(height: 16),
+        for (int i = 0; i < statuses.length; i++) ...[
+          _buildKanbanColumn(statuses[i], true),
+          if (i != statuses.length - 1) const SizedBox(height: 16),
         ],
       ],
     );
@@ -666,40 +567,23 @@ if (response.statusCode == 403) {
   // KANBAN COLUMN
   // ============================================================
 
-  Widget _buildKanbanColumn(
-    String status,
-    bool isMobile,
-  ) {
-    final List<Map<String, dynamic>>
-        statusCases =
-        _casesForStatus(status);
+  Widget _buildKanbanColumn(String status, bool isMobile) {
+    final List<Map<String, dynamic>> statusCases = _casesForStatus(status);
 
-    final Color color =
-        _statusColor(status);
+    final Color color = _statusColor(status);
 
-    final Widget columnHeader =
-        Container(
-      padding:
-          const EdgeInsets.symmetric(
-        horizontal: 15,
-        vertical: 14,
-      ),
+    final Widget columnHeader = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 14),
       decoration: BoxDecoration(
         color: color.withOpacity(0.09),
-        borderRadius:
-            const BorderRadius.vertical(
-          top: Radius.circular(16),
-        ),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
       ),
       child: Row(
         children: [
           Container(
             width: 10,
             height: 10,
-            decoration: BoxDecoration(
-              color: color,
-              shape: BoxShape.circle,
-            ),
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
           ),
           const SizedBox(width: 9),
           Expanded(
@@ -713,21 +597,12 @@ if (response.statusCode == 403) {
             ),
           ),
           Container(
-            constraints:
-                const BoxConstraints(
-              minWidth: 28,
-              minHeight: 27,
-            ),
+            constraints: const BoxConstraints(minWidth: 28, minHeight: 27),
             alignment: Alignment.center,
-            padding:
-                const EdgeInsets.symmetric(
-              horizontal: 7,
-              vertical: 4,
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
             decoration: BoxDecoration(
               color: color.withOpacity(0.13),
-              borderRadius:
-                  BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(20),
             ),
             child: Text(
               "${statusCases.length}",
@@ -742,8 +617,7 @@ if (response.statusCode == 403) {
       ),
     );
 
-    final Widget emptyState =
-        Column(
+    final Widget emptyState = Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         Icon(
@@ -754,10 +628,7 @@ if (response.statusCode == 403) {
         const SizedBox(height: 9),
         const Text(
           "No cases found",
-          style: TextStyle(
-            color: Color(0xFF8492A6),
-            fontSize: 12,
-          ),
+          style: TextStyle(color: Color(0xFF8492A6), fontSize: 12),
         ),
       ],
     );
@@ -766,43 +637,27 @@ if (response.statusCode == 403) {
       return Container(
         width: double.infinity,
         decoration: BoxDecoration(
-          color:
-              _statusBackground(status),
-          borderRadius:
-              BorderRadius.circular(17),
-          border: Border.all(
-            color: color.withOpacity(0.20),
-          ),
+          color: _statusBackground(status),
+          borderRadius: BorderRadius.circular(17),
+          border: Border.all(color: color.withOpacity(0.20)),
         ),
         child: Column(
           children: [
             columnHeader,
             if (statusCases.isEmpty)
               Padding(
-                padding:
-                    const EdgeInsets.symmetric(
-                  vertical: 40,
-                ),
+                padding: const EdgeInsets.symmetric(vertical: 40),
                 child: emptyState,
               )
             else
               ListView.separated(
                 shrinkWrap: true,
-                physics:
-                    const NeverScrollableScrollPhysics(),
-                padding:
-                    const EdgeInsets.all(10),
-                itemCount:
-                    statusCases.length,
-                separatorBuilder:
-                    (_, __) =>
-                        const SizedBox(height: 10),
-                itemBuilder:
-                    (context, index) {
-                  return _buildCaseCard(
-                    statusCases[index],
-                    color,
-                  );
+                physics: const NeverScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(10),
+                itemCount: statusCases.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 10),
+                itemBuilder: (context, index) {
+                  return _buildCaseCard(statusCases[index], color);
                 },
               ),
           ],
@@ -814,41 +669,24 @@ if (response.statusCode == 403) {
       width: double.infinity,
       height: 590,
       decoration: BoxDecoration(
-        color:
-            _statusBackground(status),
-        borderRadius:
-            BorderRadius.circular(17),
-        border: Border.all(
-          color: color.withOpacity(0.20),
-        ),
+        color: _statusBackground(status),
+        borderRadius: BorderRadius.circular(17),
+        border: Border.all(color: color.withOpacity(0.20)),
       ),
       child: Column(
         children: [
           columnHeader,
           if (statusCases.isEmpty)
-            Expanded(
-              child: Center(
-                child: emptyState,
-              ),
-            )
+            Expanded(child: Center(child: emptyState))
           else
             Expanded(
               child: ListView.separated(
-                padding:
-                    const EdgeInsets.all(10),
-                physics:
-                    const BouncingScrollPhysics(),
-                itemCount:
-                    statusCases.length,
-                separatorBuilder:
-                    (_, __) =>
-                        const SizedBox(height: 10),
-                itemBuilder:
-                    (context, index) {
-                  return _buildCaseCard(
-                    statusCases[index],
-                    color,
-                  );
+                padding: const EdgeInsets.all(10),
+                physics: const BouncingScrollPhysics(),
+                itemCount: statusCases.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 10),
+                itemBuilder: (context, index) {
+                  return _buildCaseCard(statusCases[index], color);
                 },
               ),
             ),
@@ -861,34 +699,25 @@ if (response.statusCode == 403) {
   // CASE CARD
   // ============================================================
 
-  Widget _buildCaseCard(
-    Map<String, dynamic> caseData,
-    Color statusColor,
-  ) {
-    final String priority =
-        caseData["priority"].toString();
+  Widget _buildCaseCard(Map<String, dynamic> caseData, Color statusColor) {
+    final String priority = caseData["priority"].toString();
 
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius:
-            BorderRadius.circular(14),
-        border: Border.all(
-          color: const Color(0xFFE2E8F0),
-        ),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF071B33)
-                .withOpacity(0.055),
+            color: const Color(0xFF071B33).withOpacity(0.055),
             blurRadius: 12,
             offset: const Offset(0, 5),
           ),
         ],
       ),
       child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
@@ -896,29 +725,23 @@ if (response.statusCode == 403) {
                 width: 36,
                 height: 36,
                 decoration: BoxDecoration(
-                  color:
-                      const Color(0xFFEAF3FF),
-                  borderRadius:
-                      BorderRadius.circular(10),
+                  color: const Color(0xFFEAF3FF),
+                  borderRadius: BorderRadius.circular(10),
                 ),
                 child: const Icon(
                   Icons.folder_copy_rounded,
-                  color:
-                      Color(0xFF064B9A),
+                  color: Color(0xFF064B9A),
                   size: 20,
                 ),
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  caseData["caseId"]
-                      .toString(),
+                  caseData["caseId"].toString(),
                   style: const TextStyle(
-                    color:
-                        Color(0xFF064B9A),
+                    color: Color(0xFF064B9A),
                     fontSize: 12,
-                    fontWeight:
-                        FontWeight.w800,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
               ),
@@ -928,54 +751,38 @@ if (response.statusCode == 403) {
           Text(
             caseData["title"].toString(),
             maxLines: 2,
-            overflow:
-                TextOverflow.ellipsis,
+            overflow: TextOverflow.ellipsis,
             style: const TextStyle(
               color: Color(0xFF071B33),
               fontSize: 14,
-              fontWeight:
-                  FontWeight.w800,
+              fontWeight: FontWeight.w800,
             ),
           ),
           const SizedBox(height: 11),
           Container(
-            padding:
-                const EdgeInsets.symmetric(
-              horizontal: 9,
-              vertical: 5,
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
             decoration: BoxDecoration(
-              color:
-                  _priorityBackground(priority),
-              borderRadius:
-                  BorderRadius.circular(20),
+              color: _priorityBackground(priority),
+              borderRadius: BorderRadius.circular(20),
             ),
             child: Row(
-              mainAxisSize:
-                  MainAxisSize.min,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Container(
                   width: 7,
                   height: 7,
-                  decoration:
-                      BoxDecoration(
-                    color:
-                        _priorityColor(priority),
-                    shape:
-                        BoxShape.circle,
+                  decoration: BoxDecoration(
+                    color: _priorityColor(priority),
+                    shape: BoxShape.circle,
                   ),
                 ),
                 const SizedBox(width: 6),
                 Text(
                   priority,
                   style: TextStyle(
-                    color:
-                        _priorityColor(
-                      priority,
-                    ),
+                    color: _priorityColor(priority),
                     fontSize: 11,
-                    fontWeight:
-                        FontWeight.w800,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
               ],
@@ -985,16 +792,13 @@ if (response.statusCode == 403) {
           _caseInfoRow(
             icon: Icons.person_rounded,
             label: "Investigator",
-            value: caseData["investigator"]
-                .toString(),
+            value: caseData["investigator"].toString(),
           ),
           const SizedBox(height: 10),
           _caseInfoRow(
-            icon:
-                Icons.calendar_month_rounded,
+            icon: Icons.calendar_month_rounded,
             label: "Created",
-            value: caseData["created"]
-                .toString(),
+            value: caseData["created"].toString(),
           ),
           const SizedBox(height: 15),
           SizedBox(
@@ -1002,40 +806,20 @@ if (response.statusCode == 403) {
             height: 40,
             child: OutlinedButton.icon(
               onPressed: () {
-                _openCaseDetails(
-                  caseData,
-                );
+                _openCaseDetails(caseData);
               },
-              style:
-                  OutlinedButton.styleFrom(
-                foregroundColor:
-                    const Color(0xFF064B9A),
-                backgroundColor:
-                    statusColor
-                        .withOpacity(0.035),
-                side: BorderSide(
-                  color: statusColor
-                      .withOpacity(0.28),
-                ),
-                shape:
-                    RoundedRectangleBorder(
-                  borderRadius:
-                      BorderRadius.circular(
-                    10,
-                  ),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFF064B9A),
+                backgroundColor: statusColor.withOpacity(0.035),
+                side: BorderSide(color: statusColor.withOpacity(0.28)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
                 ),
               ),
-              icon: const Icon(
-                Icons.visibility_rounded,
-                size: 17,
-              ),
+              icon: const Icon(Icons.visibility_rounded, size: 17),
               label: const Text(
                 "View Details",
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight:
-                      FontWeight.w700,
-                ),
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
               ),
             ),
           ),
@@ -1054,53 +838,39 @@ if (response.statusCode == 403) {
     required String value,
   }) {
     return Row(
-      crossAxisAlignment:
-          CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
           width: 30,
           height: 30,
           decoration: BoxDecoration(
-            color:
-                const Color(0xFFEAF3FF),
-            borderRadius:
-                BorderRadius.circular(8),
+            color: const Color(0xFFEAF3FF),
+            borderRadius: BorderRadius.circular(8),
           ),
-          child: Icon(
-            icon,
-            size: 17,
-            color:
-                const Color(0xFF073B7A),
-          ),
+          child: Icon(icon, size: 17, color: const Color(0xFF073B7A)),
         ),
         const SizedBox(width: 9),
         Expanded(
           child: Column(
-            crossAxisAlignment:
-                CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 label,
                 style: const TextStyle(
-                  color:
-                      Color(0xFF7A889C),
+                  color: Color(0xFF7A889C),
                   fontSize: 10,
-                  fontWeight:
-                      FontWeight.w600,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
               const SizedBox(height: 2),
               Text(
                 value,
                 maxLines: 2,
-                overflow:
-                    TextOverflow.ellipsis,
+                overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
-                  color:
-                      Color(0xFF17233C),
+                  color: Color(0xFF17233C),
                   fontSize: 11,
-                  fontWeight:
-                      FontWeight.w700,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
             ],

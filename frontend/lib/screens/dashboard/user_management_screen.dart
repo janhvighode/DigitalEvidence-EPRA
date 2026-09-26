@@ -7,14 +7,11 @@ class UserManagementScreen extends StatefulWidget {
   const UserManagementScreen({super.key});
 
   @override
-  State<UserManagementScreen> createState() =>
-      _UserManagementScreenState();
+  State<UserManagementScreen> createState() => _UserManagementScreenState();
 }
 
-class _UserManagementScreenState
-    extends State<UserManagementScreen> {
-  final TextEditingController _searchController =
-      TextEditingController();
+class _UserManagementScreenState extends State<UserManagementScreen> {
+  final TextEditingController _searchController = TextEditingController();
 
   final ApiService _apiService = ApiService();
 
@@ -61,9 +58,7 @@ class _UserManagementScreenState
         final decoded = jsonDecode(response.body);
 
         if (decoded is! List) {
-          _showMessage(
-            "Invalid users response from server.",
-          );
+          _showMessage("Invalid users response from server.");
           return;
         }
 
@@ -81,18 +76,10 @@ class _UserManagementScreenState
               "phone": user["phone_number"]?.toString() ?? "",
               "roleId": user["role_id"],
               "cyberCellId": user["cyber_cell_id"],
-              "role": _getRoleName(
-                user["role_id"],
-              ),
-              "cyberCell": _getCyberCellName(
-                user["cyber_cell_id"],
-              ),
-              "registrationDate":
-                  user["created_at"]?.toString() ?? "",
-              "status":
-                  user["is_active"] == true
-                      ? "Active"
-                      : "Inactive",
+              "role": _getRoleName(user["role_id"]),
+              "cyberCell": _getCyberCellName(user["cyber_cell_id"]),
+              "registrationDate": user["created_at"]?.toString() ?? "",
+              "status": user["is_active"] == true ? "Active" : "Inactive",
             });
           }
 
@@ -104,22 +91,17 @@ class _UserManagementScreenState
         try {
           final body = jsonDecode(response.body);
 
-          if (body is Map &&
-              body["detail"] != null) {
+          if (body is Map && body["detail"] != null) {
             message = body["detail"].toString();
           }
         } catch (_) {}
 
-        _showMessage(
-          "$message (${response.statusCode})",
-        );
+        _showMessage("$message (${response.statusCode})");
       }
     } catch (e) {
       if (!mounted) return;
 
-      _showMessage(
-        "Error loading users: $e",
-      );
+      _showMessage("Error loading users: $e");
     } finally {
       if (mounted) {
         setState(() {
@@ -177,9 +159,7 @@ class _UserManagementScreenState
     await _loadUsers();
 
     if (mounted) {
-      _showMessage(
-        "User list refreshed",
-      );
+      _showMessage("User list refreshed");
     }
   }
 
@@ -188,24 +168,18 @@ class _UserManagementScreenState
   // =========================================================
 
   List<Map<String, dynamic>> get filteredUsers {
-    final query =
-        _searchController.text.trim().toLowerCase();
+    final query = _searchController.text.trim().toLowerCase();
 
     return _users.where((user) {
-      final name =
-          user["name"].toString().toLowerCase();
+      final name = user["name"].toString().toLowerCase();
 
-      final email =
-          user["email"].toString().toLowerCase();
+      final email = user["email"].toString().toLowerCase();
 
       final matchesSearch =
-          query.isEmpty ||
-          name.contains(query) ||
-          email.contains(query);
+          query.isEmpty || name.contains(query) || email.contains(query);
 
       final matchesRole =
-          selectedRole == "All Roles" ||
-          user["role"] == selectedRole;
+          selectedRole == "All Roles" || user["role"] == selectedRole;
 
       return matchesSearch && matchesRole;
     }).toList();
@@ -230,18 +204,13 @@ class _UserManagementScreenState
       return [];
     }
 
-    final safePage =
-        currentPage > totalPages
-            ? totalPages
-            : currentPage;
+    final safePage = currentPage > totalPages ? totalPages : currentPage;
 
-    final start =
-        (safePage - 1) * usersPerPage;
+    final start = (safePage - 1) * usersPerPage;
 
-    final end =
-        (start + usersPerPage) > users.length
-            ? users.length
-            : start + usersPerPage;
+    final end = (start + usersPerPage) > users.length
+        ? users.length
+        : start + usersPerPage;
 
     return users.sublist(start, end);
   }
@@ -254,10 +223,7 @@ class _UserManagementScreenState
     if (!mounted) return;
 
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        behavior: SnackBarBehavior.floating,
-      ),
+      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
     );
   }
 
@@ -267,13 +233,16 @@ class _UserManagementScreenState
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F8FC),
+      backgroundColor: isDark
+          ? const Color(0xFF0B132B)
+          : const Color(0xFFF5F8FC),
 
       body: LayoutBuilder(
         builder: (context, constraints) {
-          final isMobile =
-              constraints.maxWidth < 700;
+          final isMobile = constraints.maxWidth < 700;
 
           return SingleChildScrollView(
             padding: EdgeInsets.symmetric(
@@ -283,20 +252,18 @@ class _UserManagementScreenState
 
             child: Center(
               child: ConstrainedBox(
-                constraints:
-                    const BoxConstraints(
-                  maxWidth: 1300,
-                ),
+                constraints: const BoxConstraints(maxWidth: 1300),
 
                 child: Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.start,
 
                   children: [
-                    const Text(
+                    Text(
                       "Dashboard  >  User Management",
                       style: TextStyle(
-                        color: Color(0xFF63728A),
+                        color: isDark
+                            ? const Color(0xFF94A3B8)
+                            : const Color(0xFF63728A),
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
                       ),
@@ -324,16 +291,18 @@ class _UserManagementScreenState
   // =========================================================
 
   Widget _buildHeader(bool isMobile) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Container(
       width: double.infinity,
-      padding: EdgeInsets.all(
-        isMobile ? 18 : 24,
-      ),
+      padding: EdgeInsets.all(isMobile ? 18 : 24),
 
       decoration: BoxDecoration(
-        color: const Color(0xFFE6F1FF),
-        borderRadius:
-            BorderRadius.circular(20),
+        color: isDark ? const Color(0xFF16223F) : const Color(0xFFE6F1FF),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: isDark ? const Color(0xFF253457) : Colors.transparent,
+        ),
       ),
 
       child: Row(
@@ -342,14 +311,14 @@ class _UserManagementScreenState
             width: isMobile ? 60 : 75,
             height: isMobile ? 60 : 75,
 
-            decoration: const BoxDecoration(
-              color: Color(0xFFDCEBFF),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF1E2D4A) : const Color(0xFFDCEBFF),
               shape: BoxShape.circle,
             ),
 
             child: Icon(
               Icons.groups_rounded,
-              color: const Color(0xFF064DB8),
+              color: isDark ? const Color(0xFF60A5FA) : const Color(0xFF064DB8),
               size: isMobile ? 32 : 40,
             ),
           ),
@@ -358,29 +327,27 @@ class _UserManagementScreenState
 
           Expanded(
             child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
 
               children: [
                 Text(
                   "User Management",
                   style: TextStyle(
-                    fontSize:
-                        isMobile ? 23 : 29,
-                    fontWeight:
-                        FontWeight.w800,
-                    color:
-                        const Color(0xFF071B33),
+                    fontSize: isMobile ? 23 : 29,
+                    fontWeight: FontWeight.w800,
+                    color: isDark ? Colors.white : const Color(0xFF071B33),
                   ),
                 ),
 
                 const SizedBox(height: 6),
 
-                const Text(
+                Text(
                   "Manage all approved users in the system.",
                   style: TextStyle(
                     fontSize: 14,
-                    color: Color(0xFF63728A),
+                    color: isDark
+                        ? const Color(0xFF94A3B8)
+                        : const Color(0xFF63728A),
                   ),
                 ),
               ],
@@ -396,26 +363,24 @@ class _UserManagementScreenState
   // =========================================================
 
   Widget _buildUsersCard(bool isMobile) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Container(
       width: double.infinity,
 
-      padding: EdgeInsets.all(
-        isMobile ? 16 : 22,
-      ),
+      padding: EdgeInsets.all(isMobile ? 16 : 22),
 
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius:
-            BorderRadius.circular(20),
+        color: isDark ? const Color(0xFF16223F) : Colors.white,
+        borderRadius: BorderRadius.circular(20),
 
         border: Border.all(
-          color: const Color(0xFFDCE7F3),
+          color: isDark ? const Color(0xFF253457) : const Color(0xFFDCE7F3),
         ),
       ),
 
       child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
 
         children: [
           if (isMobile)
@@ -427,16 +392,11 @@ class _UserManagementScreenState
 
                 Row(
                   children: [
-                    Expanded(
-                      child:
-                          _buildRoleFilter(),
-                    ),
+                    Expanded(child: _buildRoleFilter()),
 
                     const SizedBox(width: 10),
 
-                    _buildRefreshButton(
-                      compact: true,
-                    ),
+                    _buildRefreshButton(compact: true),
                   ],
                 ),
               ],
@@ -444,17 +404,11 @@ class _UserManagementScreenState
           else
             Row(
               children: [
-                Expanded(
-                  child: _buildSearch(),
-                ),
+                Expanded(child: _buildSearch()),
 
                 const SizedBox(width: 14),
 
-                SizedBox(
-                  width: 235,
-                  child:
-                      _buildRoleFilter(),
-                ),
+                SizedBox(width: 235, child: _buildRoleFilter()),
 
                 const SizedBox(width: 12),
 
@@ -466,49 +420,39 @@ class _UserManagementScreenState
 
           Row(
             children: [
-              const Icon(
-                Icons.people_alt_rounded,
-                color: Color(0xFF064DB8),
-              ),
+              const Icon(Icons.people_alt_rounded, color: Color(0xFF064DB8)),
 
               const SizedBox(width: 9),
 
-              const Text(
+              Text(
                 "Approved Users",
                 style: TextStyle(
                   fontSize: 17,
-                  fontWeight:
-                      FontWeight.w800,
-                  color:
-                      Color(0xFF071B33),
+                  fontWeight: FontWeight.w800,
+                  color: isDark ? Colors.white : const Color(0xFF071B33),
                 ),
               ),
 
               const SizedBox(width: 9),
 
               Container(
-                padding:
-                    const EdgeInsets.symmetric(
-                  horizontal: 9,
-                  vertical: 4,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
 
-                decoration:
-                    BoxDecoration(
-                  color:
-                      const Color(0xFFE7F1FF),
-                  borderRadius:
-                      BorderRadius.circular(20),
+                decoration: BoxDecoration(
+                  color: isDark
+                      ? const Color(0xFF064DB8).withOpacity(0.25)
+                      : const Color(0xFFE7F1FF),
+                  borderRadius: BorderRadius.circular(20),
                 ),
 
                 child: Text(
                   "${filteredUsers.length}",
-                  style: const TextStyle(
-                    color:
-                        Color(0xFF064DB8),
+                  style: TextStyle(
+                    color: isDark
+                        ? const Color(0xFF60A5FA)
+                        : const Color(0xFF064DB8),
                     fontSize: 12,
-                    fontWeight:
-                        FontWeight.bold,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
               ),
@@ -517,17 +461,10 @@ class _UserManagementScreenState
 
           const SizedBox(height: 14),
 
-          if (isRefreshing &&
-              _users.isEmpty)
+          if (isRefreshing && _users.isEmpty)
             const Padding(
-              padding:
-                  EdgeInsets.symmetric(
-                vertical: 50,
-              ),
-              child: Center(
-                child:
-                    CircularProgressIndicator(),
-              ),
+              padding: EdgeInsets.symmetric(vertical: 50),
+              child: Center(child: CircularProgressIndicator()),
             )
           else if (paginatedUsers.isEmpty)
             _buildEmptyState()
@@ -549,8 +486,14 @@ class _UserManagementScreenState
   // =========================================================
 
   Widget _buildSearch() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return TextField(
       controller: _searchController,
+      style: TextStyle(
+        color: isDark ? Colors.white : const Color(0xFF071B33),
+        fontSize: 14,
+      ),
 
       onChanged: (_) {
         setState(() {
@@ -559,44 +502,38 @@ class _UserManagementScreenState
       },
 
       decoration: InputDecoration(
-        hintText:
-            "Search by name or email",
+        hintText: "Search by name or email",
+        hintStyle: TextStyle(
+          color: isDark ? const Color(0xFF64748B) : const Color(0xFF8492A6),
+          fontSize: 13,
+        ),
 
-        prefixIcon: const Icon(
+        prefixIcon: Icon(
           Icons.search_rounded,
-          color: Color(0xFF064DB8),
+          color: isDark ? const Color(0xFF60A5FA) : const Color(0xFF064DB8),
         ),
 
         filled: true,
 
-        fillColor:
-            const Color(0xFFF9FBFE),
+        fillColor: isDark ? const Color(0xFF1E2D4A) : const Color(0xFFF9FBFE),
 
         border: OutlineInputBorder(
-          borderRadius:
-              BorderRadius.circular(12),
-          borderSide: BorderSide.none,
-        ),
-
-        enabledBorder:
-            OutlineInputBorder(
-          borderRadius:
-              BorderRadius.circular(12),
-          borderSide:
-              const BorderSide(
-            color: Color(0xFFD7E1EE),
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(
+            color: isDark ? const Color(0xFF2E4166) : Colors.transparent,
           ),
         ),
 
-        focusedBorder:
-            OutlineInputBorder(
-          borderRadius:
-              BorderRadius.circular(12),
-          borderSide:
-              const BorderSide(
-            color: Color(0xFF0875F5),
-            width: 1.6,
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(
+            color: isDark ? const Color(0xFF2E4166) : const Color(0xFFD7E1EE),
           ),
+        ),
+
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Color(0xFF0875F5), width: 1.6),
         ),
       ),
     );
@@ -607,29 +544,41 @@ class _UserManagementScreenState
   // =========================================================
 
   Widget _buildRoleFilter() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return DropdownButtonFormField<String>(
       value: selectedRole,
+      dropdownColor: isDark ? const Color(0xFF1E2D4A) : Colors.white,
+      style: TextStyle(
+        color: isDark ? Colors.white : const Color(0xFF071B33),
+        fontSize: 14,
+        fontWeight: FontWeight.w500,
+      ),
 
       isExpanded: true,
 
-      decoration:
-          const InputDecoration(
+      decoration: InputDecoration(
         prefixIcon: Icon(
           Icons.filter_alt_rounded,
-          color: Color(0xFF064DB8),
+          color: isDark ? const Color(0xFF60A5FA) : const Color(0xFF064DB8),
         ),
 
         filled: true,
 
-        fillColor:
-            Color(0xFFF9FBFE),
+        fillColor: isDark ? const Color(0xFF1E2D4A) : const Color(0xFFF9FBFE),
 
         border: OutlineInputBorder(
-          borderRadius:
-              BorderRadius.all(
-            Radius.circular(12),
+          borderRadius: const BorderRadius.all(Radius.circular(12)),
+          borderSide: BorderSide(
+            color: isDark ? const Color(0xFF2E4166) : Colors.transparent,
           ),
-          borderSide: BorderSide.none,
+        ),
+
+        enabledBorder: OutlineInputBorder(
+          borderRadius: const BorderRadius.all(Radius.circular(12)),
+          borderSide: BorderSide(
+            color: isDark ? const Color(0xFF2E4166) : const Color(0xFFD7E1EE),
+          ),
         ),
       ),
 
@@ -638,8 +587,10 @@ class _UserManagementScreenState
           value: role,
           child: Text(
             role,
-            overflow:
-                TextOverflow.ellipsis,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: isDark ? Colors.white : const Color(0xFF071B33),
+            ),
           ),
         );
       }).toList(),
@@ -659,36 +610,22 @@ class _UserManagementScreenState
   // REFRESH BUTTON
   // =========================================================
 
-  Widget _buildRefreshButton({
-    bool compact = false,
-  }) {
+  Widget _buildRefreshButton({bool compact = false}) {
     return SizedBox(
       height: 56,
 
       child: ElevatedButton.icon(
-        onPressed:
-            isRefreshing
-                ? null
-                : _refreshUsers,
+        onPressed: isRefreshing ? null : _refreshUsers,
 
-        style:
-            ElevatedButton.styleFrom(
-          backgroundColor:
-              const Color(0xFF064DB8),
-          foregroundColor:
-              Colors.white,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: const Color(0xFF064DB8),
+          foregroundColor: Colors.white,
           elevation: 0,
 
-          padding:
-              EdgeInsets.symmetric(
-            horizontal:
-                compact ? 14 : 20,
-          ),
+          padding: EdgeInsets.symmetric(horizontal: compact ? 14 : 20),
 
-          shape:
-              RoundedRectangleBorder(
-            borderRadius:
-                BorderRadius.circular(12),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
           ),
         ),
 
@@ -696,24 +633,18 @@ class _UserManagementScreenState
             ? const SizedBox(
                 width: 17,
                 height: 17,
-                child:
-                    CircularProgressIndicator(
+                child: CircularProgressIndicator(
                   color: Colors.white,
                   strokeWidth: 2,
                 ),
               )
-            : const Icon(
-                Icons.refresh_rounded,
-              ),
+            : const Icon(Icons.refresh_rounded),
 
         label: compact
             ? const SizedBox.shrink()
             : const Text(
                 "Refresh",
-                style: TextStyle(
-                  fontWeight:
-                      FontWeight.w700,
-                ),
+                style: TextStyle(fontWeight: FontWeight.w700),
               ),
       ),
     );
@@ -724,113 +655,149 @@ class _UserManagementScreenState
   // =========================================================
 
   Widget _buildDesktopTable() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Container(
       width: double.infinity,
 
       decoration: BoxDecoration(
         border: Border.all(
-          color: const Color(0xFFE3EAF3),
+          color: isDark ? const Color(0xFF253457) : const Color(0xFFE3EAF3),
         ),
-        borderRadius:
-            BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(14),
       ),
 
       child: ClipRRect(
-        borderRadius:
-            BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(14),
 
-        child:
-            SingleChildScrollView(
-          scrollDirection:
-              Axis.horizontal,
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
 
           child: DataTable(
-            columns: const [
+            headingRowColor: WidgetStateProperty.all(
+              isDark ? const Color(0xFF1E2D4A) : const Color(0xFFF8FAFD),
+            ),
+            columns: [
               DataColumn(
-                label: Text("User ID"),
+                label: Text(
+                  "User ID",
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? const Color(0xFFE2E8F0) : null,
+                  ),
+                ),
               ),
               DataColumn(
-                label: Text("Name"),
+                label: Text(
+                  "Name",
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? const Color(0xFFE2E8F0) : null,
+                  ),
+                ),
               ),
               DataColumn(
-                label: Text("Email"),
+                label: Text(
+                  "Email",
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? const Color(0xFFE2E8F0) : null,
+                  ),
+                ),
               ),
               DataColumn(
-                label: Text("Role"),
+                label: Text(
+                  "Role",
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? const Color(0xFFE2E8F0) : null,
+                  ),
+                ),
               ),
               DataColumn(
-                label: Text("Cyber Cell"),
+                label: Text(
+                  "Cyber Cell",
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? const Color(0xFFE2E8F0) : null,
+                  ),
+                ),
               ),
               DataColumn(
-                label: Text("Phone"),
+                label: Text(
+                  "Phone",
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? const Color(0xFFE2E8F0) : null,
+                  ),
+                ),
               ),
               DataColumn(
-                label: Text("Status"),
+                label: Text(
+                  "Status",
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? const Color(0xFFE2E8F0) : null,
+                  ),
+                ),
               ),
             ],
 
-            rows:
-                paginatedUsers.map(
-              (user) {
-                return DataRow(
-                  cells: [
-                    DataCell(
-                      Text(
-                        user["userId"]
-                            .toString(),
+            rows: paginatedUsers.map((user) {
+              return DataRow(
+                cells: [
+                  DataCell(
+                    Text(
+                      user["userId"].toString(),
+                      style: TextStyle(
+                        color: isDark ? const Color(0xFF94A3B8) : null,
                       ),
                     ),
+                  ),
 
-                    DataCell(
-                      Text(
-                        user["name"]
-                            .toString(),
-                        style:
-                            const TextStyle(
-                          fontWeight:
-                              FontWeight.w700,
-                        ),
+                  DataCell(
+                    Text(
+                      user["name"].toString(),
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: isDark ? Colors.white : null,
                       ),
                     ),
+                  ),
 
-                    DataCell(
-                      Text(
-                        user["email"]
-                            .toString(),
+                  DataCell(
+                    Text(
+                      user["email"].toString(),
+                      style: TextStyle(
+                        color: isDark ? const Color(0xFFCBD5E1) : null,
                       ),
                     ),
+                  ),
 
-                    DataCell(
-                      _roleBadge(
-                        user["role"]
-                            .toString(),
-                      ),
-                    ),
+                  DataCell(_roleBadge(user["role"].toString())),
 
-                    DataCell(
-                      Text(
-                        user["cyberCell"]
-                            .toString(),
+                  DataCell(
+                    Text(
+                      user["cyberCell"].toString(),
+                      style: TextStyle(
+                        color: isDark ? const Color(0xFFCBD5E1) : null,
                       ),
                     ),
+                  ),
 
-                    DataCell(
-                      Text(
-                        user["phone"]
-                            .toString(),
+                  DataCell(
+                    Text(
+                      user["phone"].toString(),
+                      style: TextStyle(
+                        color: isDark ? const Color(0xFFCBD5E1) : null,
                       ),
                     ),
+                  ),
 
-                    DataCell(
-                      _statusBadge(
-                        user["status"]
-                            .toString(),
-                      ),
-                    ),
-                  ],
-                );
-              },
-            ).toList(),
+                  DataCell(_statusBadge(user["status"].toString())),
+                ],
+              );
+            }).toList(),
           ),
         ),
       ),
@@ -842,139 +809,105 @@ class _UserManagementScreenState
   // =========================================================
 
   Widget _buildMobileUsers() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Column(
-      children:
-          paginatedUsers.map(
-        (user) {
-          return Container(
-            width: double.infinity,
+      children: paginatedUsers.map((user) {
+        return Container(
+          width: double.infinity,
 
-            margin:
-                const EdgeInsets.only(
-              bottom: 12,
+          margin: const EdgeInsets.only(bottom: 12),
+
+          padding: const EdgeInsets.all(15),
+
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF1E2D4A) : const Color(0xFFFBFDFF),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: isDark ? const Color(0xFF2E4166) : const Color(0xFFE1E9F3),
             ),
+          ),
 
-            padding:
-                const EdgeInsets.all(15),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
 
-            decoration:
-                BoxDecoration(
-              color:
-                  const Color(0xFFFBFDFF),
-              borderRadius:
-                  BorderRadius.circular(14),
-              border: Border.all(
-                color:
-                    const Color(0xFFE1E9F3),
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    Icons.person_rounded,
+                    color: isDark
+                        ? const Color(0xFF60A5FA)
+                        : const Color(0xFF064DB8),
+                  ),
+
+                  const SizedBox(width: 12),
+
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          user["name"].toString(),
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            color: isDark ? Colors.white : null,
+                          ),
+                        ),
+
+                        const SizedBox(height: 3),
+
+                        Text(
+                          user["email"].toString(),
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: isDark
+                                ? const Color(0xFF94A3B8)
+                                : const Color(0xFF63728A),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  _statusBadge(user["status"].toString()),
+                ],
               ),
-            ),
 
-            child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+              const SizedBox(height: 14),
 
-              children: [
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.person_rounded,
-                      color:
-                          Color(0xFF064DB8),
-                    ),
+              _mobileInfo("User ID", user["userId"]),
 
-                    const SizedBox(width: 12),
+              const SizedBox(height: 10),
 
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment:
-                            CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            user["name"]
-                                .toString(),
-                            style:
-                                const TextStyle(
-                              fontWeight:
-                                  FontWeight.w800,
-                            ),
-                          ),
+              _mobileInfo("Role", user["role"]),
 
-                          const SizedBox(
-                              height: 3),
+              const SizedBox(height: 10),
 
-                          Text(
-                            user["email"]
-                                .toString(),
-                            overflow:
-                                TextOverflow
-                                    .ellipsis,
-                            style:
-                                const TextStyle(
-                              fontSize: 12,
-                              color:
-                                  Color(0xFF63728A),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+              _mobileInfo("Cyber Cell", user["cyberCell"]),
 
-                    _statusBadge(
-                      user["status"]
-                          .toString(),
-                    ),
-                  ],
-                ),
+              const SizedBox(height: 10),
 
-                const SizedBox(height: 14),
-
-                _mobileInfo(
-                  "User ID",
-                  user["userId"],
-                ),
-
-                const SizedBox(height: 10),
-
-                _mobileInfo(
-                  "Role",
-                  user["role"],
-                ),
-
-                const SizedBox(height: 10),
-
-                _mobileInfo(
-                  "Cyber Cell",
-                  user["cyberCell"],
-                ),
-
-                const SizedBox(height: 10),
-
-                _mobileInfo(
-                  "Phone",
-                  user["phone"],
-                ),
-              ],
-            ),
-          );
-        },
-      ).toList(),
+              _mobileInfo("Phone", user["phone"]),
+            ],
+          ),
+        );
+      }).toList(),
     );
   }
 
-  Widget _mobileInfo(
-    String label,
-    dynamic value,
-  ) {
+  Widget _mobileInfo(String label, dynamic value) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Column(
-      crossAxisAlignment:
-          CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           label,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 11,
-            color:
-                Color(0xFF8492A6),
+            color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF8492A6),
           ),
         ),
 
@@ -982,14 +915,11 @@ class _UserManagementScreenState
 
         Text(
           value.toString(),
-          overflow:
-              TextOverflow.ellipsis,
-          style: const TextStyle(
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
             fontSize: 12,
-            fontWeight:
-                FontWeight.w700,
-            color:
-                Color(0xFF071B33),
+            fontWeight: FontWeight.w700,
+            color: isDark ? Colors.white : const Color(0xFF071B33),
           ),
         ),
       ],
@@ -1001,33 +931,22 @@ class _UserManagementScreenState
   // =========================================================
 
   Widget _statusBadge(String status) {
-    final active =
-        status == "Active";
+    final active = status == "Active";
 
     return Container(
-      padding:
-          const EdgeInsets.symmetric(
-        horizontal: 10,
-        vertical: 5,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
 
       decoration: BoxDecoration(
-        color: active
-            ? const Color(0xFFE4F7EC)
-            : const Color(0xFFFFE9E9),
-        borderRadius:
-            BorderRadius.circular(20),
+        color: active ? const Color(0xFFE4F7EC) : const Color(0xFFFFE9E9),
+        borderRadius: BorderRadius.circular(20),
       ),
 
       child: Text(
         status,
         style: TextStyle(
           fontSize: 11,
-          fontWeight:
-              FontWeight.w700,
-          color: active
-              ? const Color(0xFF00874A)
-              : const Color(0xFFD92727),
+          fontWeight: FontWeight.w700,
+          color: active ? const Color(0xFF00874A) : const Color(0xFFD92727),
         ),
       ),
     );
@@ -1035,27 +954,19 @@ class _UserManagementScreenState
 
   Widget _roleBadge(String role) {
     return Container(
-      padding:
-          const EdgeInsets.symmetric(
-        horizontal: 10,
-        vertical: 5,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
 
       decoration: BoxDecoration(
-        color:
-            const Color(0xFFEAF3FF),
-        borderRadius:
-            BorderRadius.circular(20),
+        color: const Color(0xFFEAF3FF),
+        borderRadius: BorderRadius.circular(20),
       ),
 
       child: Text(
         role,
         style: const TextStyle(
-          color:
-              Color(0xFF064DB8),
+          color: Color(0xFF064DB8),
           fontSize: 11,
-          fontWeight:
-              FontWeight.w700,
+          fontWeight: FontWeight.w700,
         ),
       ),
     );
@@ -1069,39 +980,24 @@ class _UserManagementScreenState
     return Container(
       width: double.infinity,
 
-      padding:
-          const EdgeInsets.symmetric(
-        vertical: 50,
-      ),
+      padding: const EdgeInsets.symmetric(vertical: 50),
 
       child: const Column(
         children: [
-          Icon(
-            Icons.person_search_rounded,
-            size: 48,
-            color: Color(0xFF9FB5D1),
-          ),
+          Icon(Icons.person_search_rounded, size: 48, color: Color(0xFF9FB5D1)),
 
           SizedBox(height: 12),
 
           Text(
             "No users found",
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight:
-                  FontWeight.w700,
-            ),
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
           ),
 
           SizedBox(height: 4),
 
           Text(
             "Try changing your search or role filter.",
-            style: TextStyle(
-              color:
-                  Color(0xFF63728A),
-              fontSize: 12,
-            ),
+            style: TextStyle(color: Color(0xFF63728A), fontSize: 12),
           ),
         ],
       ),
@@ -1112,26 +1008,20 @@ class _UserManagementScreenState
   // PAGINATION
   // =========================================================
 
-  Widget _buildPagination(
-    bool isMobile,
-  ) {
+  Widget _buildPagination(bool isMobile) {
     return Row(
-      mainAxisAlignment:
-          MainAxisAlignment.end,
+      mainAxisAlignment: MainAxisAlignment.end,
 
       children: [
         OutlinedButton(
-          onPressed:
-              currentPage > 1
-                  ? () {
-                      setState(() {
-                        currentPage--;
-                      });
-                    }
-                  : null,
-          child: const Text(
-            "Previous",
-          ),
+          onPressed: currentPage > 1
+              ? () {
+                  setState(() {
+                    currentPage--;
+                  });
+                }
+              : null,
+          child: const Text("Previous"),
         ),
 
         const SizedBox(width: 10),
@@ -1140,24 +1030,18 @@ class _UserManagementScreenState
           width: 38,
           height: 38,
 
-          alignment:
-              Alignment.center,
+          alignment: Alignment.center,
 
-          decoration:
-              BoxDecoration(
-            color:
-                const Color(0xFF064DB8),
-            borderRadius:
-                BorderRadius.circular(9),
+          decoration: BoxDecoration(
+            color: const Color(0xFF064DB8),
+            borderRadius: BorderRadius.circular(9),
           ),
 
           child: Text(
             "$currentPage",
-            style:
-                const TextStyle(
+            style: const TextStyle(
               color: Colors.white,
-              fontWeight:
-                  FontWeight.bold,
+              fontWeight: FontWeight.bold,
             ),
           ),
         ),
@@ -1165,17 +1049,14 @@ class _UserManagementScreenState
         const SizedBox(width: 10),
 
         OutlinedButton(
-          onPressed:
-              currentPage < totalPages
-                  ? () {
-                      setState(() {
-                        currentPage++;
-                      });
-                    }
-                  : null,
-          child: const Text(
-            "Next",
-          ),
+          onPressed: currentPage < totalPages
+              ? () {
+                  setState(() {
+                    currentPage++;
+                  });
+                }
+              : null,
+          child: const Text("Next"),
         ),
       ],
     );

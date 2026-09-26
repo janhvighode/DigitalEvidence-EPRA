@@ -12,9 +12,7 @@ class ChangePasswordService {
   }) async {
     final response = await http.put(
       Uri.parse("$baseUrl/change-password/"),
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: {"Content-Type": "application/json"},
       body: jsonEncode({
         "username": username,
         "old_password": oldPassword,

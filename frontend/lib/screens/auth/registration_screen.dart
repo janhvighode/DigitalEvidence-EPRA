@@ -8,7 +8,6 @@ import '../../widgets/glow_button.dart';
 import '../../widgets/left_panel.dart';
 import 'registration_success_screen.dart';
 import '../../services/register_service.dart';
-import 'role_selection_screen.dart';
 
 class RegistrationScreen extends StatefulWidget {
   final int roleId;
@@ -21,7 +20,7 @@ class RegistrationScreen extends StatefulWidget {
     required this.roleId,
     required this.cityId,
     required this.cyberCellId,
-     required this.cyberCellName,
+    required this.cyberCellName,
   });
 
   @override
@@ -31,18 +30,15 @@ class RegistrationScreen extends StatefulWidget {
 class _RegistrationScreenState extends State<RegistrationScreen> {
   final _formKey = GlobalKey<FormState>();
 
-  final TextEditingController fullNameController =
-      TextEditingController();
+  final TextEditingController fullNameController = TextEditingController();
 
-  final TextEditingController emailController =
-      TextEditingController();
+  final TextEditingController emailController = TextEditingController();
 
-  final TextEditingController phoneController =
-      TextEditingController();
+  final TextEditingController phoneController = TextEditingController();
 
   final RegisterService _registerService = RegisterService();
 
-bool _isLoading = false;
+  bool _isLoading = false;
 
   @override
   void dispose() {
@@ -72,24 +68,16 @@ bool _isLoading = false;
                     child: mobile
                         // MOBILE / ANDROID
                         ? SingleChildScrollView(
-                            child: buildRightPanel(
-                              mobile: true,
-                            ),
+                            child: buildRightPanel(mobile: true),
                           )
-
                         // DESKTOP / CHROME
                         : Row(
                             children: [
-                              const Expanded(
-                                flex: 3,
-                                child: LeftPanel(),
-                              ),
+                              const Expanded(flex: 3, child: LeftPanel()),
 
                               Expanded(
                                 flex: 2,
-                                child: buildRightPanel(
-                                  mobile: false,
-                                ),
+                                child: buildRightPanel(mobile: false),
                               ),
                             ],
                           ),
@@ -103,9 +91,7 @@ bool _isLoading = false;
     );
   }
 
-  Widget buildRightPanel({
-    required bool mobile,
-  }) {
+  Widget buildRightPanel({required bool mobile}) {
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -150,10 +136,7 @@ bool _isLoading = false;
               child: Text(
                 "Complete your Profile",
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 16,
-                  color: AppColors.grey,
-                ),
+                style: TextStyle(fontSize: 16, color: AppColors.grey),
               ),
             ),
 
@@ -162,10 +145,7 @@ bool _isLoading = false;
             // FULL NAME
             const Text(
               "Full Name",
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
             ),
 
             const SizedBox(height: 8),
@@ -181,10 +161,7 @@ bool _isLoading = false;
             // EMAIL
             const Text(
               "Email Address",
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
             ),
 
             const SizedBox(height: 8),
@@ -201,10 +178,7 @@ bool _isLoading = false;
             // PHONE NUMBER
             const Text(
               "Phone Number",
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
             ),
 
             const SizedBox(height: 8),
@@ -219,9 +193,9 @@ bool _isLoading = false;
             const SizedBox(height: 40),
 
             GlowButton(
-  title: _isLoading ? "Registering..." : "Register",
-  onPressed: onRegisterPressed,
-),
+              title: _isLoading ? "Registering..." : "Register",
+              onPressed: onRegisterPressed,
+            ),
 
             const SizedBox(height: 10),
           ],
@@ -247,8 +221,7 @@ bool _isLoading = false;
 
         // EMAIL VALIDATION
         if (keyboardType == TextInputType.emailAddress) {
-          final emailRegex =
-              RegExp(r'^[\w\.-]+@([\w-]+\.)+[\w-]{2,4}$');
+          final emailRegex = RegExp(r'^[\w\.-]+@([\w-]+\.)+[\w-]{2,4}$');
 
           if (!emailRegex.hasMatch(value.trim())) {
             return "Enter a valid email";
@@ -267,24 +240,15 @@ bool _isLoading = false;
         return null;
       },
 
-      decoration: _inputDecoration(
-        hint,
-        icon,
-      ),
+      decoration: _inputDecoration(hint, icon),
     );
   }
 
-  InputDecoration _inputDecoration(
-    String hint,
-    IconData icon,
-  ) {
+  InputDecoration _inputDecoration(String hint, IconData icon) {
     return InputDecoration(
       hintText: hint,
 
-      prefixIcon: Icon(
-        icon,
-        color: AppColors.primary,
-      ),
+      prefixIcon: Icon(icon, color: AppColors.primary),
 
       filled: true,
       fillColor: Colors.grey.shade100,
@@ -301,83 +265,67 @@ bool _isLoading = false;
 
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(15),
-        borderSide: const BorderSide(
-          color: AppColors.primary,
-          width: 2,
-        ),
+        borderSide: const BorderSide(color: AppColors.primary, width: 2),
       ),
 
       errorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(15),
-        borderSide: const BorderSide(
-          color: Colors.red,
-        ),
+        borderSide: const BorderSide(color: Colors.red),
       ),
 
       focusedErrorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(15),
-        borderSide: const BorderSide(
-          color: Colors.red,
-          width: 2,
-        ),
+        borderSide: const BorderSide(color: Colors.red, width: 2),
       ),
     );
   }
 
- Future<void> onRegisterPressed() async {
-  if (!_formKey.currentState!.validate()) {
-    return;
-  }
+  Future<void> onRegisterPressed() async {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
 
-  setState(() {
-    _isLoading = true;
-  });
+    setState(() {
+      _isLoading = true;
+    });
 
-  try {
-    final result = await _registerService.registerUser(
-      fullName: fullNameController.text.trim(),
-      email: emailController.text.trim(),
-      phoneNumber: phoneController.text.trim(),
-      roleId: widget.roleId,
-      cityId: widget.cityId,
-      cyberCellId: widget.cyberCellId,
-    );
-
-    if (!mounted) return;
-
-    if (result["success"] == true) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (context) =>
-              RegistrationSuccessScreen(
-  cyberCellName: widget.cyberCellName,
-)
-        ),
+    try {
+      final result = await _registerService.registerUser(
+        fullName: fullNameController.text.trim(),
+        email: emailController.text.trim(),
+        phoneNumber: phoneController.text.trim(),
+        roleId: widget.roleId,
+        cityId: widget.cityId,
+        cyberCellId: widget.cyberCellId,
       );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            result["message"] ?? "Registration failed",
+
+      if (!mounted) return;
+
+      if (result["success"] == true) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) =>
+                RegistrationSuccessScreen(cyberCellName: widget.cyberCellName),
           ),
-        ),
-      );
-    }
-  } catch (e) {
-    if (!mounted) return;
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(result["message"] ?? "Registration failed")),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text("Error: $e"),
-      ),
-    );
-  } finally {
-    if (mounted) {
-      setState(() {
-        _isLoading = false;
-      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Error: $e")));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
-}
 }

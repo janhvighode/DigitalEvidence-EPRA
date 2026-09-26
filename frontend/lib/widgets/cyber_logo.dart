@@ -12,10 +12,7 @@ class CyberLogo extends StatelessWidget {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         gradient: const LinearGradient(
-          colors: [
-            AppColors.primary,
-            AppColors.primaryDark,
-          ],
+          colors: [AppColors.primary, AppColors.primaryDark],
         ),
         boxShadow: [
           BoxShadow(
@@ -28,18 +25,11 @@ class CyberLogo extends StatelessWidget {
       child: Stack(
         alignment: Alignment.center,
         children: [
-          const Icon(
-            Icons.security_rounded,
-            color: Colors.white,
-            size: 70,
-          ),
+          const Icon(Icons.security_rounded, color: Colors.white, size: 70),
           Positioned(
             bottom: 18,
             child: Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 10,
-                vertical: 4,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(20),

@@ -17,8 +17,7 @@ class RoleSelectionScreen extends StatefulWidget {
   const RoleSelectionScreen({super.key});
 
   @override
-  State<RoleSelectionScreen> createState() =>
-      _RoleSelectionScreenState();
+  State<RoleSelectionScreen> createState() => _RoleSelectionScreenState();
 }
 
 class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
@@ -28,17 +27,15 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
   int? selectedLocationId;
   int? selectedCyberCellId;
 
-final ApiService apiService = ApiService();
+  final ApiService apiService = ApiService();
 
-List<RoleModel> roleList = [];
+  List<RoleModel> roleList = [];
 
-List<LocationModel> cityList = [];
+  List<LocationModel> cityList = [];
 
-List<CyberCellModel> cyberCellList = [];
+  List<CyberCellModel> cyberCellList = [];
 
-  final List<String> states = [
-    "Maharashtra",
-  ];
+  final List<String> states = ["Maharashtra"];
 
   final Map<String, List<String>> locations = {
     "Nagpur": [
@@ -52,18 +49,14 @@ List<CyberCellModel> cyberCellList = [];
       "Kothrud Cyber Cell",
       "Hadapsar Cyber Cell",
     ],
-    "Mumbai": [
-      "Andheri Cyber Cell",
-      "Bandra Cyber Cell",
-      "Dadar Cyber Cell",
-    ],
+    "Mumbai": ["Andheri Cyber Cell", "Bandra Cyber Cell", "Dadar Cyber Cell"],
   };
   @override
-void initState() {
-  super.initState();
-  loadRoles();
-  loadCities();
-}
+  void initState() {
+    super.initState();
+    loadRoles();
+    loadCities();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -75,26 +68,19 @@ void initState() {
           const BackgroundDesign(),
 
           SafeArea(
-            child: mobile
-                ? _buildMobileLayout()
-                : _buildDesktopLayout(),
+            child: mobile ? _buildMobileLayout() : _buildDesktopLayout(),
           ),
         ],
       ),
     );
   }
 
-
   // ================= MOBILE LAYOUT =================
 
   Widget _buildMobileLayout() {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
-      child: Center(
-        child: GlassCard(
-          child: buildRightPanel(isMobile: true),
-        ),
-      ),
+      child: Center(child: GlassCard(child: buildRightPanel(isMobile: true))),
     );
   }
 
@@ -116,10 +102,7 @@ void initState() {
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      const Expanded(
-                        flex: 3,
-                        child: LeftPanel(),
-                      ),
+                      const Expanded(flex: 3, child: LeftPanel()),
                       Expanded(
                         flex: 2,
                         child: buildRightPanel(isMobile: false),
@@ -176,10 +159,7 @@ void initState() {
               child: Text(
                 "Select your role and location",
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: AppColors.grey,
-                  fontSize: 16,
-                ),
+                style: TextStyle(color: AppColors.grey, fontSize: 16),
               ),
             ),
 
@@ -222,10 +202,7 @@ void initState() {
             const SizedBox(height: 32),
 
             // NEXT BUTTON
-            GlowButton(
-              title: "Next",
-              onPressed: onNextPressed,
-            ),
+            GlowButton(title: "Next", onPressed: onNextPressed),
 
             const SizedBox(height: 10),
           ],
@@ -239,10 +216,7 @@ void initState() {
   Widget _buildLabel(String text) {
     return Text(
       text,
-      style: const TextStyle(
-        fontWeight: FontWeight.w600,
-        fontSize: 16,
-      ),
+      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
     );
   }
 
@@ -260,10 +234,10 @@ void initState() {
         );
       }).toList(),
       onChanged: (int? value) {
-  setState(() {
-    selectedRoleId = value;
-  });
-},
+        setState(() {
+          selectedRoleId = value;
+        });
+      },
     );
   }
 
@@ -277,10 +251,7 @@ void initState() {
       items: states.map((state) {
         return DropdownMenuItem<String>(
           value: state,
-          child: Text(
-            state,
-            overflow: TextOverflow.ellipsis,
-          ),
+          child: Text(state, overflow: TextOverflow.ellipsis),
         );
       }).toList(),
       onChanged: (value) {
@@ -293,199 +264,191 @@ void initState() {
 
   // ================= CITY DROPDOWN =================
 
- Widget buildCityDropdown() {
-  return DropdownButtonFormField<int>(
-    value: selectedCityId,
-    decoration: _inputDecoration("Select City"),
-    isExpanded: true,
+  Widget buildCityDropdown() {
+    return DropdownButtonFormField<int>(
+      value: selectedCityId,
+      decoration: _inputDecoration("Select City"),
+      isExpanded: true,
 
-    items: cityList.map((city) {
-      return DropdownMenuItem<int>(
-        value: city.id,
-        child: Text(city.cityName),
-      );
-    }).toList(),
+      items: cityList.map((city) {
+        return DropdownMenuItem<int>(
+          value: city.id,
+          child: Text(city.cityName),
+        );
+      }).toList(),
 
-   onChanged: (value) async {
-  if (value == null) return;
+      onChanged: (value) async {
+        if (value == null) return;
 
-  setState(() {
-    selectedCityId = value;
-    selectedCyberCellId = null;
-    cyberCellList.clear();
-  });
+        setState(() {
+          selectedCityId = value;
+          selectedCyberCellId = null;
+          cyberCellList.clear();
+        });
 
-  await loadCyberCells(value);
-},
-  );
-}
+        await loadCyberCells(value);
+      },
+    );
+  }
   // ================= BRANCH DROPDOWN =================
 
   Widget buildBranchDropdown() {
-  return DropdownButtonFormField<int>(
-    value: selectedCyberCellId,
-    isExpanded: true,
-    decoration: _inputDecoration("Select Branch"),
+    return DropdownButtonFormField<int>(
+      value: selectedCyberCellId,
+      isExpanded: true,
+      decoration: _inputDecoration("Select Branch"),
 
-    items: cyberCellList.map((cell) {
-      return DropdownMenuItem<int>(
-        value: cell.id,
-        child: Text(
-          cell.cyberCellName,
-          overflow: TextOverflow.ellipsis,
-        ),
-      );
-    }).toList(),
-     onChanged: selectedCityId == null
-    ? null
-    : (value) {
-        setState(() {
-          selectedCyberCellId = value;
-        });
-      },
-  );
-}
+      items: cyberCellList.map((cell) {
+        return DropdownMenuItem<int>(
+          value: cell.id,
+          child: Text(cell.cyberCellName, overflow: TextOverflow.ellipsis),
+        );
+      }).toList(),
+      onChanged: selectedCityId == null
+          ? null
+          : (value) {
+              setState(() {
+                selectedCyberCellId = value;
+              });
+            },
+    );
+  }
 
   // ================= NEXT BUTTON =================
   Future<void> loadRoles() async {
-  try {
-    print("Loading Roles...");
+    try {
+      print("Loading Roles...");
 
-    final response = await apiService.getRoles();
+      final response = await apiService.getRoles();
 
-    print("STATUS = ${response.statusCode}");
-    print("BODY = ${response.body}");
+      print("STATUS = ${response.statusCode}");
+      print("BODY = ${response.body}");
 
-    if (response.statusCode == 200) {
-      final List data = jsonDecode(response.body);
+      if (response.statusCode == 200) {
+        final List data = jsonDecode(response.body);
 
-      setState(() {
-        final Map<int, RoleModel> uniqueRoles = {};
+        setState(() {
+          final Map<int, RoleModel> uniqueRoles = {};
 
-        for (final item in data) {
-          final role = RoleModel.fromJson(item);
-          uniqueRoles[role.id] = role;
-        }
+          for (final item in data) {
+            final role = RoleModel.fromJson(item);
+            uniqueRoles[role.id] = role;
+          }
 
-        roleList = uniqueRoles.values.toList();
-      });
+          roleList = uniqueRoles.values.toList();
+        });
 
-      print("ROLE COUNT = ${roleList.length}");
+        print("ROLE COUNT = ${roleList.length}");
+      }
+    } catch (e) {
+      print("ERROR = $e");
     }
-  } catch (e) {
-    print("ERROR = $e");
   }
-}
 
-Future<void> loadCities() async {
-  try {
-    final response = await apiService.getLocations();
+  Future<void> loadCities() async {
+    try {
+      final response = await apiService.getLocations();
 
-    if (response.statusCode == 200) {
-      final List data = jsonDecode(response.body);
+      if (response.statusCode == 200) {
+        final List data = jsonDecode(response.body);
 
-      setState(() {
-        final Map<int, LocationModel> uniqueCities = {};
+        setState(() {
+          final Map<int, LocationModel> uniqueCities = {};
 
-for (final item in data) {
-  final city = LocationModel.fromJson(item);
-  uniqueCities[city.id] = city;
-}
+          for (final item in data) {
+            final city = LocationModel.fromJson(item);
+            uniqueCities[city.id] = city;
+          }
 
-cityList = uniqueCities.values.toList();
-      });
+          cityList = uniqueCities.values.toList();
+        });
 
-      print("Cities Loaded : ${cityList.length}");
-    } else {
-      print("City API Failed");
+        print("Cities Loaded : ${cityList.length}");
+      } else {
+        print("City API Failed");
+      }
+    } catch (e) {
+      print(e);
     }
-  } catch (e) {
-    print(e);
   }
-}
-Future<void> loadCyberCells(int cityId) async {
-  print("CITY ID = $cityId");
-  try {
-    print("Loading Cyber Cells...");
 
-    final response = await apiService.getCyberCells(cityId);
+  Future<void> loadCyberCells(int cityId) async {
+    print("CITY ID = $cityId");
+    try {
+      print("Loading Cyber Cells...");
 
-    print("CYBER STATUS = ${response.statusCode}");
-    print("CYBER BODY = ${response.body}");
+      final response = await apiService.getCyberCells(cityId);
 
-    if (response.statusCode == 200) {
-      final List data = jsonDecode(response.body);
+      print("CYBER STATUS = ${response.statusCode}");
+      print("CYBER BODY = ${response.body}");
 
-      setState(() {
-        final Map<int, CyberCellModel> uniqueCells = {};
+      if (response.statusCode == 200) {
+        final List data = jsonDecode(response.body);
 
-for (final item in data) {
-  final cell = CyberCellModel.fromJson(item);
-  uniqueCells[cell.id] = cell;
-}
+        setState(() {
+          final Map<int, CyberCellModel> uniqueCells = {};
 
-cyberCellList = uniqueCells.values.toList();
-      });
+          for (final item in data) {
+            final cell = CyberCellModel.fromJson(item);
+            uniqueCells[cell.id] = cell;
+          }
 
-      print("CYBER COUNT = ${cyberCellList.length}");
-    } else {
-      print("Failed to load Cyber Cells");
+          cyberCellList = uniqueCells.values.toList();
+        });
+
+        print("CYBER COUNT = ${cyberCellList.length}");
+      } else {
+        print("Failed to load Cyber Cells");
+      }
+    } catch (e) {
+      print("ERROR = $e");
     }
-  } catch (e) {
-    print("ERROR = $e");
   }
-}
-void onNextPressed() {
-  if (selectedRoleId == null ||
-      selectedState == null ||
-      selectedCityId == null ||
-      selectedCyberCellId == null) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text("Please fill all the fields"),
+
+  void onNextPressed() {
+    if (selectedRoleId == null ||
+        selectedState == null ||
+        selectedCityId == null ||
+        selectedCyberCellId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please fill all the fields")),
+      );
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => RegistrationScreen(
+          roleId: selectedRoleId!,
+          cityId: selectedCityId!,
+          cyberCellId: selectedCyberCellId!,
+          cyberCellName: cyberCellList
+              .firstWhere((cell) => cell.id == selectedCyberCellId)
+              .cyberCellName,
+        ),
       ),
     );
-    return;
   }
 
-  Navigator.push(
-  context,
-  MaterialPageRoute(
-    builder: (context) => RegistrationScreen(
-      roleId: selectedRoleId!,
-      cityId: selectedCityId!,
-      cyberCellId: selectedCyberCellId!,
-      cyberCellName: cyberCellList
-    .firstWhere((cell) => cell.id == selectedCyberCellId)
-    .cyberCellName,
-    ),
-  ),
-);
-}
-InputDecoration _inputDecoration(String hint) {
-  return InputDecoration(
-    hintText: hint,
-    filled: true,
-    fillColor: Colors.grey.shade100,
-    contentPadding: const EdgeInsets.symmetric(
-      horizontal: 16,
-      vertical: 16,
-    ),
-    border: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(15),
-      borderSide: BorderSide.none,
-    ),
-    enabledBorder: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(15),
-      borderSide: BorderSide.none,
-    ),
-    focusedBorder: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(15),
-      borderSide: const BorderSide(
-        color: AppColors.primary,
-        width: 1.5,
+  InputDecoration _inputDecoration(String hint) {
+    return InputDecoration(
+      hintText: hint,
+      filled: true,
+      fillColor: Colors.grey.shade100,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(15),
+        borderSide: BorderSide.none,
       ),
-    ),
-  );
-}
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(15),
+        borderSide: BorderSide.none,
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(15),
+        borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+      ),
+    );
+  }
 }

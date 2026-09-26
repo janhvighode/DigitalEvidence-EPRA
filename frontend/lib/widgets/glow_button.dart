@@ -5,11 +5,7 @@ class GlowButton extends StatelessWidget {
   final String title;
   final VoidCallback onPressed;
 
-  const GlowButton({
-    super.key,
-    required this.title,
-    required this.onPressed,
-  });
+  const GlowButton({super.key, required this.title, required this.onPressed});
 
   @override
   Widget build(BuildContext context) {
@@ -23,9 +19,7 @@ class GlowButton extends StatelessWidget {
           foregroundColor: Colors.white,
           elevation: 10,
           shadowColor: AppColors.primary.withValues(alpha: 0.5),
-          padding: const EdgeInsets.symmetric(
-            horizontal: 16,
-          ),
+          padding: const EdgeInsets.symmetric(horizontal: 16),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(40),
           ),
@@ -49,10 +43,7 @@ class GlowButton extends StatelessWidget {
 
             const SizedBox(width: 8),
 
-            const Icon(
-              Icons.arrow_forward_rounded,
-              size: 20,
-            ),
+            const Icon(Icons.arrow_forward_rounded, size: 20),
           ],
         ),
       ),

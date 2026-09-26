@@ -7,41 +7,35 @@ import '../../widgets/glass_card.dart';
 import '../../widgets/glow_button.dart';
 import '../../widgets/left_panel.dart';
 import '../dashboard/dashboard_screen.dart';
+import '../dashboard/investigator_dashboard_screen.dart';
+import '../dashboard/cyber_expert_dashboard_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/change_password_service.dart';
 
 class ChangePasswordScreen extends StatefulWidget {
   final String username;
+  final int? roleId;
 
-  const ChangePasswordScreen({
-    super.key,
-    required this.username,
-  });
-
+  const ChangePasswordScreen({super.key, required this.username, this.roleId});
 
   @override
-  State<ChangePasswordScreen> createState() =>
-      _ChangePasswordScreenState();
+  State<ChangePasswordScreen> createState() => _ChangePasswordScreenState();
 }
 
-class _ChangePasswordScreenState
-    extends State<ChangePasswordScreen> {
-
+class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
   final _formKey = GlobalKey<FormState>();
 
-  final TextEditingController usernameController =
-      TextEditingController();
+  final TextEditingController usernameController = TextEditingController();
 
   final TextEditingController currentPasswordController =
       TextEditingController();
 
-  final TextEditingController newPasswordController =
-      TextEditingController();
+  final TextEditingController newPasswordController = TextEditingController();
 
   final TextEditingController confirmPasswordController =
       TextEditingController();
 
-  final ChangePasswordService _changePasswordService =
-      ChangePasswordService();
+  final ChangePasswordService _changePasswordService = ChangePasswordService();
 
   bool _isLoading = false;
 
@@ -83,21 +77,14 @@ class _ChangePasswordScreenState
                   child: GlassCard(
                     child: mobile
                         ? SingleChildScrollView(
-                            child: buildRightPanel(
-                              isMobile: true,
-                            ),
+                            child: buildRightPanel(isMobile: true),
                           )
                         : Row(
                             children: [
-                              const Expanded(
-                                flex: 3,
-                                child: LeftPanel(),
-                              ),
+                              const Expanded(flex: 3, child: LeftPanel()),
                               Expanded(
                                 flex: 2,
-                                child: buildRightPanel(
-                                  isMobile: false,
-                                ),
+                                child: buildRightPanel(isMobile: false),
                               ),
                             ],
                           ),
@@ -111,9 +98,7 @@ class _ChangePasswordScreenState
     );
   }
 
-  Widget buildRightPanel({
-    required bool isMobile,
-  }) {
+  Widget buildRightPanel({required bool isMobile}) {
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -153,10 +138,7 @@ class _ChangePasswordScreenState
                 child: Text(
                   "Create a strong password for your account",
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: AppColors.grey,
-                  ),
+                  style: TextStyle(fontSize: 16, color: AppColors.grey),
                 ),
               ),
 
@@ -164,10 +146,7 @@ class _ChangePasswordScreenState
 
               const Text(
                 "Username",
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 16,
-                ),
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
               ),
 
               const SizedBox(height: 8),
@@ -178,10 +157,7 @@ class _ChangePasswordScreenState
 
               const Text(
                 "Current Password",
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 16,
-                ),
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
               ),
 
               const SizedBox(height: 8),
@@ -192,10 +168,7 @@ class _ChangePasswordScreenState
 
               const Text(
                 "New Password",
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 16,
-                ),
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
               ),
 
               const SizedBox(height: 8),
@@ -206,10 +179,7 @@ class _ChangePasswordScreenState
 
               const Text(
                 "Confirm Password",
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 16,
-                ),
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
               ),
 
               const SizedBox(height: 8),
@@ -234,20 +204,14 @@ class _ChangePasswordScreenState
               const Text("• One number"),
               const Text("• One special character"),
               const Text("• No spaces"),
-              const Text(
-                "• Must be different from current password",
-              ),
+              const Text("• Must be different from current password"),
 
               const SizedBox(height: 35),
 
               GlowButton(
-  title: _isLoading
-      ? "Changing Password..."
-      : "Change Password",
-  onPressed: _isLoading
-      ? () {}
-      : onChangePasswordPressed,
-),
+                title: _isLoading ? "Changing Password..." : "Change Password",
+                onPressed: _isLoading ? () {} : onChangePasswordPressed,
+              ),
 
               const SizedBox(height: 20),
             ],
@@ -362,8 +326,7 @@ class _ChangePasswordScreenState
             return "Add at least one number";
           }
 
-          if (!RegExp(r'[!@#$%^&*(),.?":{}|<>]')
-              .hasMatch(value)) {
+          if (!RegExp(r'[!@#$%^&*(),.?":{}|<>]').hasMatch(value)) {
             return "Add at least one special character";
           }
 
@@ -388,11 +351,7 @@ class _ChangePasswordScreenState
         hint: hint,
         icon: Icons.lock_outline,
         suffixIcon: IconButton(
-          icon: Icon(
-            obscure
-                ? Icons.visibility_off
-                : Icons.visibility,
-          ),
+          icon: Icon(obscure ? Icons.visibility_off : Icons.visibility),
           onPressed: onToggle,
         ),
       ),
@@ -411,10 +370,7 @@ class _ChangePasswordScreenState
     return InputDecoration(
       hintText: hint,
 
-      prefixIcon: Icon(
-        icon,
-        color: AppColors.primary,
-      ),
+      prefixIcon: Icon(icon, color: AppColors.primary),
 
       suffixIcon: suffixIcon,
 
@@ -433,25 +389,17 @@ class _ChangePasswordScreenState
 
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(15),
-        borderSide: const BorderSide(
-          color: AppColors.primary,
-          width: 2,
-        ),
+        borderSide: const BorderSide(color: AppColors.primary, width: 2),
       ),
 
       errorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(15),
-        borderSide: const BorderSide(
-          color: Colors.red,
-        ),
+        borderSide: const BorderSide(color: Colors.red),
       ),
 
       focusedErrorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(15),
-        borderSide: const BorderSide(
-          color: Colors.red,
-          width: 2,
-        ),
+        borderSide: const BorderSide(color: Colors.red, width: 2),
       ),
     );
   }
@@ -460,55 +408,73 @@ class _ChangePasswordScreenState
   // CHANGE PASSWORD
   // ============================================================
 
- Future<void> onChangePasswordPressed() async {
-  if (!_formKey.currentState!.validate()) {
-    return;
-  }
-
-  setState(() {
-    _isLoading = true;
-  });
-
-  try {
-    final result = await _changePasswordService.changePassword(
-      username: usernameController.text.trim(),
-      oldPassword: currentPasswordController.text,
-      newPassword: newPasswordController.text,
-      confirmPassword: confirmPasswordController.text,
-    );
-
-    if (!mounted) return;
-
-    if (result["success"] == true) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (_) => const DashboardScreen(),
-        ),
-      );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            result["message"] ?? "Password change failed",
-          ),
-        ),
-      );
+  Future<void> onChangePasswordPressed() async {
+    if (!_formKey.currentState!.validate()) {
+      return;
     }
-  } catch (e) {
-    if (!mounted) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text("Error: $e"),
-      ),
-    );
-  } finally {
-    if (mounted) {
-      setState(() {
-        _isLoading = false;
-      });
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final result = await _changePasswordService.changePassword(
+        username: usernameController.text.trim(),
+        oldPassword: currentPasswordController.text,
+        newPassword: newPasswordController.text,
+        confirmPassword: confirmPasswordController.text,
+      );
+
+      if (!mounted) return;
+
+      if (result["success"] == true) {
+        final prefs = await SharedPreferences.getInstance();
+        final int effectiveRole = widget.roleId ?? prefs.getInt("role_id") ?? 1;
+
+        if (!mounted) return;
+
+        if (effectiveRole == 2) {
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const InvestigatorDashboardScreen(),
+            ),
+            (route) => false,
+          );
+        } else if (effectiveRole == 3) {
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const CyberExpertDashboardScreen(),
+            ),
+            (route) => false,
+          );
+        } else {
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: (_) => const DashboardScreen()),
+            (route) => false,
+          );
+        }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result["message"] ?? "Password change failed"),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Error: $e")));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 }
-    }

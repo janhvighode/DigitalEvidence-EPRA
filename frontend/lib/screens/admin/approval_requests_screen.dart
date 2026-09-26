@@ -8,14 +8,11 @@ class ApprovalRequestsScreen extends StatefulWidget {
   const ApprovalRequestsScreen({super.key});
 
   @override
-  State<ApprovalRequestsScreen> createState() =>
-      _ApprovalRequestsScreenState();
+  State<ApprovalRequestsScreen> createState() => _ApprovalRequestsScreenState();
 }
 
-class _ApprovalRequestsScreenState
-    extends State<ApprovalRequestsScreen> {
-  final TextEditingController _searchController =
-      TextEditingController();
+class _ApprovalRequestsScreenState extends State<ApprovalRequestsScreen> {
+  final TextEditingController _searchController = TextEditingController();
 
   final ApiService _apiService = ApiService();
 
@@ -35,18 +32,9 @@ class _ApprovalRequestsScreenState
     }
 
     return _requests.where((request) {
-      return request["fullName"]
-              .toString()
-              .toLowerCase()
-              .contains(query) ||
-          request["username"]
-              .toString()
-              .toLowerCase()
-              .contains(query) ||
-          request["email"]
-              .toString()
-              .toLowerCase()
-              .contains(query);
+      return request["fullName"].toString().toLowerCase().contains(query) ||
+          request["username"].toString().toLowerCase().contains(query) ||
+          request["email"].toString().toLowerCase().contains(query);
     }).toList();
   }
 
@@ -74,16 +62,11 @@ class _ApprovalRequestsScreenState
     });
 
     try {
-      final response =
-          await _apiService.getPendingRegistrations();
+      final response = await _apiService.getPendingRegistrations();
 
-      print(
-        "PENDING REQUEST STATUS: ${response.statusCode}",
-      );
+      print("PENDING REQUEST STATUS: ${response.statusCode}");
 
-      print(
-        "PENDING REQUEST BODY: ${response.body}",
-      );
+      print("PENDING REQUEST BODY: ${response.body}");
 
       if (!mounted) return;
 
@@ -101,8 +84,7 @@ class _ApprovalRequestsScreenState
               "email": item["email"] ?? "-",
               "phone": item["phone_number"] ?? "-",
               "role": item["requested_role_id"]?.toString() ?? "-",
-              "cyberCell":
-                  item["cyber_cell_id"]?.toString() ?? "-",
+              "cyberCell": item["cyber_cell_id"]?.toString() ?? "-",
               "date": _formatDate(item["created_at"]),
               "time": _formatTime(item["created_at"]),
               "status": item["status"] ?? "Pending",
@@ -130,11 +112,7 @@ class _ApprovalRequestsScreenState
       print("PENDING REQUEST ERROR: $e");
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            "Error loading registration requests: $e",
-          ),
-        ),
+        SnackBar(content: Text("Error loading registration requests: $e")),
       );
     } finally {
       if (mounted) {
@@ -180,11 +158,10 @@ class _ApprovalRequestsScreenState
       final hour = date.hour == 0
           ? 12
           : date.hour > 12
-              ? date.hour - 12
-              : date.hour;
+          ? date.hour - 12
+          : date.hour;
 
-      final minute =
-          date.minute.toString().padLeft(2, '0');
+      final minute = date.minute.toString().padLeft(2, '0');
 
       final period = date.hour >= 12 ? "PM" : "AM";
 
@@ -224,9 +201,7 @@ class _ApprovalRequestsScreenState
 
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text(
-          "Registration requests refreshed",
-        ),
+        content: Text("Registration requests refreshed"),
         behavior: SnackBarBehavior.floating,
       ),
     );
@@ -236,9 +211,7 @@ class _ApprovalRequestsScreenState
   // VIEW REQUEST
   // ==========================================================
 
-  void _viewRequest(
-    Map<String, dynamic> request,
-  ) {
+  void _viewRequest(Map<String, dynamic> request) {
     showDialog(
       context: context,
       builder: (context) {
@@ -247,15 +220,12 @@ class _ApprovalRequestsScreenState
             borderRadius: BorderRadius.circular(22),
           ),
           child: ConstrainedBox(
-            constraints: const BoxConstraints(
-              maxWidth: 520,
-            ),
+            constraints: const BoxConstraints(maxWidth: 520),
             child: Padding(
               padding: const EdgeInsets.all(26),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     children: [
@@ -263,10 +233,8 @@ class _ApprovalRequestsScreenState
                         width: 52,
                         height: 52,
                         decoration: BoxDecoration(
-                          color:
-                              const Color(0xFFE7F1FF),
-                          borderRadius:
-                              BorderRadius.circular(14),
+                          color: const Color(0xFFE7F1FF),
+                          borderRadius: BorderRadius.circular(14),
                         ),
                         child: const Icon(
                           Icons.person_search_rounded,
@@ -277,36 +245,27 @@ class _ApprovalRequestsScreenState
                       const SizedBox(width: 14),
                       const Expanded(
                         child: Column(
-                          crossAxisAlignment:
-                              CrossAxisAlignment.start,
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
                               "Registration Details",
                               style: TextStyle(
                                 fontSize: 21,
-                                fontWeight:
-                                    FontWeight.w800,
-                                color:
-                                    Color(0xFF071B33),
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFF071B33),
                               ),
                             ),
                             SizedBox(height: 3),
                             Text(
                               "Review applicant information",
-                              style: TextStyle(
-                                color:
-                                    Color(0xFF71829A),
-                              ),
+                              style: TextStyle(color: Color(0xFF71829A)),
                             ),
                           ],
                         ),
                       ),
                       IconButton(
-                        onPressed: () =>
-                            Navigator.pop(context),
-                        icon: const Icon(
-                          Icons.close_rounded,
-                        ),
+                        onPressed: () => Navigator.pop(context),
+                        icon: const Icon(Icons.close_rounded),
                       ),
                     ],
                   ),
@@ -383,21 +342,12 @@ class _ApprovalRequestsScreenState
                             Navigator.pop(context);
                             _confirmReject(request);
                           },
-                          icon: const Icon(
-                            Icons.close_rounded,
-                          ),
+                          icon: const Icon(Icons.close_rounded),
                           label: const Text("Reject"),
-                          style:
-                              OutlinedButton.styleFrom(
-                            foregroundColor:
-                                const Color(0xFFDC2626),
-                            side: const BorderSide(
-                              color: Color(0xFFFCA5A5),
-                            ),
-                            padding:
-                                const EdgeInsets.symmetric(
-                              vertical: 15,
-                            ),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(0xFFDC2626),
+                            side: const BorderSide(color: Color(0xFFFCA5A5)),
+                            padding: const EdgeInsets.symmetric(vertical: 15),
                           ),
                         ),
                       ),
@@ -408,20 +358,12 @@ class _ApprovalRequestsScreenState
                             Navigator.pop(context);
                             _confirmApprove(request);
                           },
-                          icon: const Icon(
-                            Icons.check_rounded,
-                          ),
+                          icon: const Icon(Icons.check_rounded),
                           label: const Text("Approve"),
-                          style:
-                              ElevatedButton.styleFrom(
-                            backgroundColor:
-                                const Color(0xFF059669),
-                            foregroundColor:
-                                Colors.white,
-                            padding:
-                                const EdgeInsets.symmetric(
-                              vertical: 15,
-                            ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF059669),
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 15),
                           ),
                         ),
                       ),
@@ -440,15 +382,9 @@ class _ApprovalRequestsScreenState
   // DETAIL ROW
   // ==========================================================
 
-  Widget _detailRow(
-    IconData icon,
-    String title,
-    String value,
-  ) {
+  Widget _detailRow(IconData icon, String title, String value) {
     return Padding(
-      padding: const EdgeInsets.symmetric(
-        vertical: 7,
-      ),
+      padding: const EdgeInsets.symmetric(vertical: 7),
       child: Row(
         children: [
           Container(
@@ -456,14 +392,9 @@ class _ApprovalRequestsScreenState
             height: 35,
             decoration: BoxDecoration(
               color: const Color(0xFFEAF3FF),
-              borderRadius:
-                  BorderRadius.circular(9),
+              borderRadius: BorderRadius.circular(9),
             ),
-            child: Icon(
-              icon,
-              size: 18,
-              color: const Color(0xFF064DB8),
-            ),
+            child: Icon(icon, size: 18, color: const Color(0xFF064DB8)),
           ),
           const SizedBox(width: 12),
           SizedBox(
@@ -494,9 +425,7 @@ class _ApprovalRequestsScreenState
   // CONFIRM APPROVE
   // ==========================================================
 
-  void _confirmApprove(
-    Map<String, dynamic> request,
-  ) {
+  void _confirmApprove(Map<String, dynamic> request) {
     showDialog(
       context: context,
       builder: (dialogContext) {
@@ -529,12 +458,10 @@ class _ApprovalRequestsScreenState
             "Approve ${request["fullName"]}'s registration request?",
             textAlign: TextAlign.center,
           ),
-          actionsAlignment:
-              MainAxisAlignment.center,
+          actionsAlignment: MainAxisAlignment.center,
           actions: [
             TextButton(
-              onPressed: () =>
-                  Navigator.pop(dialogContext),
+              onPressed: () => Navigator.pop(dialogContext),
               child: const Text("Cancel"),
             ),
             ElevatedButton(
@@ -545,8 +472,7 @@ class _ApprovalRequestsScreenState
                       _approveRequest(request);
                     },
               style: ElevatedButton.styleFrom(
-                backgroundColor:
-                    const Color(0xFF059669),
+                backgroundColor: const Color(0xFF059669),
                 foregroundColor: Colors.white,
               ),
               child: const Text("Approve"),
@@ -561,9 +487,7 @@ class _ApprovalRequestsScreenState
   // CONFIRM REJECT
   // ==========================================================
 
-  void _confirmReject(
-    Map<String, dynamic> request,
-  ) {
+  void _confirmReject(Map<String, dynamic> request) {
     showDialog(
       context: context,
       builder: (dialogContext) {
@@ -596,12 +520,10 @@ class _ApprovalRequestsScreenState
             "Reject ${request["fullName"]}'s registration request?",
             textAlign: TextAlign.center,
           ),
-          actionsAlignment:
-              MainAxisAlignment.center,
+          actionsAlignment: MainAxisAlignment.center,
           actions: [
             TextButton(
-              onPressed: () =>
-                  Navigator.pop(dialogContext),
+              onPressed: () => Navigator.pop(dialogContext),
               child: const Text("Cancel"),
             ),
             ElevatedButton(
@@ -612,8 +534,7 @@ class _ApprovalRequestsScreenState
                       _rejectRequest(request);
                     },
               style: ElevatedButton.styleFrom(
-                backgroundColor:
-                    const Color(0xFFDC2626),
+                backgroundColor: const Color(0xFFDC2626),
                 foregroundColor: Colors.white,
               ),
               child: const Text("Reject"),
@@ -629,26 +550,19 @@ class _ApprovalRequestsScreenState
   // PUT /admin/approve/{registration_id}
   // ==========================================================
 
-  Future<void> _approveRequest(
-    Map<String, dynamic> request,
-  ) async {
+  Future<void> _approveRequest(Map<String, dynamic> request) async {
     setState(() {
       isLoading = true;
     });
 
     try {
-      final response =
-          await _apiService.approveRegistration(
+      final response = await _apiService.approveRegistration(
         request["id"] as int,
       );
 
-      print(
-        "APPROVE STATUS: ${response.statusCode}",
-      );
+      print("APPROVE STATUS: ${response.statusCode}");
 
-      print(
-        "APPROVE BODY: ${response.body}",
-      );
+      print("APPROVE BODY: ${response.body}");
 
       if (!mounted) return;
 
@@ -658,38 +572,25 @@ class _ApprovalRequestsScreenState
         final decoded = jsonDecode(response.body);
 
         if (decoded is Map) {
-          result =
-              Map<String, dynamic>.from(decoded);
+          result = Map<String, dynamic>.from(decoded);
         }
       }
 
-      if (response.statusCode == 200 &&
-          result["success"] == true) {
+      if (response.statusCode == 200 && result["success"] == true) {
         setState(() {
-          _requests.removeWhere(
-            (item) => item["id"] == request["id"],
-          );
+          _requests.removeWhere((item) => item["id"] == request["id"]);
         });
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              "${request["fullName"]} approved successfully",
-            ),
-            backgroundColor:
-                const Color(0xFF059669),
-            behavior:
-                SnackBarBehavior.floating,
+            content: Text("${request["fullName"]} approved successfully"),
+            backgroundColor: const Color(0xFF059669),
+            behavior: SnackBarBehavior.floating,
           ),
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              result["message"] ??
-                  "Approval failed.",
-            ),
-          ),
+          SnackBar(content: Text(result["message"] ?? "Approval failed.")),
         );
       }
     } catch (e) {
@@ -697,13 +598,9 @@ class _ApprovalRequestsScreenState
 
       print("APPROVE ERROR: $e");
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            "Approval error: $e",
-          ),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Approval error: $e")));
     } finally {
       if (mounted) {
         setState(() {
@@ -718,26 +615,19 @@ class _ApprovalRequestsScreenState
   // PUT /admin/reject/{registration_id}
   // ==========================================================
 
-  Future<void> _rejectRequest(
-    Map<String, dynamic> request,
-  ) async {
+  Future<void> _rejectRequest(Map<String, dynamic> request) async {
     setState(() {
       isLoading = true;
     });
 
     try {
-      final response =
-          await _apiService.rejectRegistration(
+      final response = await _apiService.rejectRegistration(
         request["id"] as int,
       );
 
-      print(
-        "REJECT STATUS: ${response.statusCode}",
-      );
+      print("REJECT STATUS: ${response.statusCode}");
 
-      print(
-        "REJECT BODY: ${response.body}",
-      );
+      print("REJECT BODY: ${response.body}");
 
       if (!mounted) return;
 
@@ -747,38 +637,25 @@ class _ApprovalRequestsScreenState
         final decoded = jsonDecode(response.body);
 
         if (decoded is Map) {
-          result =
-              Map<String, dynamic>.from(decoded);
+          result = Map<String, dynamic>.from(decoded);
         }
       }
 
-      if (response.statusCode == 200 &&
-          result["success"] == true) {
+      if (response.statusCode == 200 && result["success"] == true) {
         setState(() {
-          _requests.removeWhere(
-            (item) => item["id"] == request["id"],
-          );
+          _requests.removeWhere((item) => item["id"] == request["id"]);
         });
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              "${request["fullName"]} rejected",
-            ),
-            backgroundColor:
-                const Color(0xFFDC2626),
-            behavior:
-                SnackBarBehavior.floating,
+            content: Text("${request["fullName"]} rejected"),
+            backgroundColor: const Color(0xFFDC2626),
+            behavior: SnackBarBehavior.floating,
           ),
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              result["message"] ??
-                  "Rejection failed.",
-            ),
-          ),
+          SnackBar(content: Text(result["message"] ?? "Rejection failed.")),
         );
       }
     } catch (e) {
@@ -786,13 +663,9 @@ class _ApprovalRequestsScreenState
 
       print("REJECT ERROR: $e");
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            "Rejection error: $e",
-          ),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Rejection error: $e")));
     } finally {
       if (mounted) {
         setState(() {
@@ -810,41 +683,28 @@ class _ApprovalRequestsScreenState
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final isMobile =
-            constraints.maxWidth < 760;
+        final isMobile = constraints.maxWidth < 760;
 
         return SingleChildScrollView(
-          padding:
-              EdgeInsets.all(isMobile ? 16 : 28),
+          padding: EdgeInsets.all(isMobile ? 16 : 28),
           child: Center(
             child: ConstrainedBox(
-              constraints:
-                  const BoxConstraints(
-                maxWidth: 1400,
-              ),
+              constraints: const BoxConstraints(maxWidth: 1400),
               child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _buildHeader(isMobile),
 
-                  SizedBox(
-                    height: isMobile ? 18 : 24,
-                  ),
+                  SizedBox(height: isMobile ? 18 : 24),
 
                   _buildTopBar(isMobile),
 
-                  SizedBox(
-                    height: isMobile ? 16 : 20,
-                  ),
+                  SizedBox(height: isMobile ? 16 : 20),
 
                   if (isLoading)
-                    const LinearProgressIndicator(
-                      color: Color(0xFF0875F5),
-                    ),
+                    const LinearProgressIndicator(color: Color(0xFF0875F5)),
 
-                  if (isLoading)
-                    const SizedBox(height: 12),
+                  if (isLoading) const SizedBox(height: 12),
 
                   if (isMobile)
                     _buildMobileRequests()
@@ -877,43 +737,28 @@ class _ApprovalRequestsScreenState
       ),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [
-            Color(0xFFEAF3FF),
-            Color(0xFFF8FBFF),
-            Colors.white,
-          ],
+          colors: [Color(0xFFEAF3FF), Color(0xFFF8FBFF), Colors.white],
         ),
-        borderRadius:
-            BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(20),
       ),
       child: isMobile
           ? Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _headerTitle(true),
                 const Spacer(),
                 const Align(
                   alignment: Alignment.center,
-                  child: ApprovalPeopleGraphic(
-                    width: 210,
-                    height: 78,
-                  ),
+                  child: ApprovalPeopleGraphic(width: 210, height: 78),
                 ),
               ],
             )
           : Row(
               children: [
-                Expanded(
-                  flex: 6,
-                  child: _headerTitle(false),
-                ),
+                Expanded(flex: 6, child: _headerTitle(false)),
                 const Expanded(
                   flex: 4,
-                  child: ApprovalPeopleGraphic(
-                    width: 330,
-                    height: 120,
-                  ),
+                  child: ApprovalPeopleGraphic(width: 330, height: 120),
                 ),
               ],
             ),
@@ -928,8 +773,7 @@ class _ApprovalRequestsScreenState
           height: isMobile ? 68 : 86,
           decoration: BoxDecoration(
             color: const Color(0xFF0875F5),
-            borderRadius:
-                BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(20),
           ),
         ),
         const SizedBox(width: 16),
@@ -938,12 +782,10 @@ class _ApprovalRequestsScreenState
           height: isMobile ? 54 : 66,
           decoration: BoxDecoration(
             color: const Color(0xFF082B59),
-            borderRadius:
-                BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(14),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF082B59)
-                    .withOpacity(.18),
+                color: const Color(0xFF082B59).withOpacity(.18),
                 blurRadius: 15,
                 offset: const Offset(0, 6),
               ),
@@ -958,30 +800,23 @@ class _ApprovalRequestsScreenState
         const SizedBox(width: 16),
         Expanded(
           child: Column(
-            mainAxisAlignment:
-                MainAxisAlignment.center,
-            crossAxisAlignment:
-                CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 "Registration Approval",
                 style: TextStyle(
-                  fontSize:
-                      isMobile ? 23 : 31,
-                  fontWeight:
-                      FontWeight.w800,
-                  color:
-                      const Color(0xFF071B33),
+                  fontSize: isMobile ? 23 : 31,
+                  fontWeight: FontWeight.w800,
+                  color: const Color(0xFF071B33),
                 ),
               ),
               const SizedBox(height: 6),
               Text(
                 "Review and manage new user registration requests.",
                 style: TextStyle(
-                  fontSize:
-                      isMobile ? 12 : 14,
-                  color:
-                      const Color(0xFF63728A),
+                  fontSize: isMobile ? 12 : 14,
+                  color: const Color(0xFF63728A),
                 ),
               ),
             ],
@@ -1000,53 +835,31 @@ class _ApprovalRequestsScreenState
       controller: _searchController,
       onChanged: (_) => setState(() {}),
       decoration: InputDecoration(
-        hintText:
-            "Search by name, username, email...",
-        prefixIcon: const Icon(
-          Icons.search_rounded,
-          color: Color(0xFF082B59),
-        ),
+        hintText: "Search by name, username, email...",
+        prefixIcon: const Icon(Icons.search_rounded, color: Color(0xFF082B59)),
         filled: true,
         fillColor: const Color(0xFFFBFDFF),
-        contentPadding:
-            const EdgeInsets.symmetric(
-          vertical: 15,
-        ),
+        contentPadding: const EdgeInsets.symmetric(vertical: 15),
         border: OutlineInputBorder(
-          borderRadius:
-              BorderRadius.circular(12),
-          borderSide: const BorderSide(
-            color: Color(0xFFD7E3F2),
-          ),
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Color(0xFFD7E3F2)),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius:
-              BorderRadius.circular(12),
-          borderSide: const BorderSide(
-            color: Color(0xFFD7E3F2),
-          ),
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Color(0xFFD7E3F2)),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius:
-              BorderRadius.circular(12),
-          borderSide: const BorderSide(
-            color: Color(0xFF0875F5),
-            width: 1.6,
-          ),
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Color(0xFF0875F5), width: 1.6),
         ),
       ),
     );
 
     final count = Container(
-      padding:
-          const EdgeInsets.symmetric(
-        horizontal: 18,
-        vertical: 14,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
       decoration: BoxDecoration(
         color: const Color(0xFFEAF3FF),
-        borderRadius:
-            BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(10),
       ),
       child: Text(
         "Pending Requests: ${_requests.length}",
@@ -1057,31 +870,15 @@ class _ApprovalRequestsScreenState
       ),
     );
 
-    final refresh =
-        OutlinedButton.icon(
-      onPressed:
-          isLoading ? null : _refreshRequests,
-      icon: const Icon(
-        Icons.refresh_rounded,
-      ),
+    final refresh = OutlinedButton.icon(
+      onPressed: isLoading ? null : _refreshRequests,
+      icon: const Icon(Icons.refresh_rounded),
       label: const Text("Refresh"),
-      style:
-          OutlinedButton.styleFrom(
-        foregroundColor:
-            const Color(0xFF071B33),
-        padding:
-            const EdgeInsets.symmetric(
-          horizontal: 18,
-          vertical: 16,
-        ),
-        side: const BorderSide(
-          color: Color(0xFFD7E3F2),
-        ),
-        shape:
-            RoundedRectangleBorder(
-          borderRadius:
-              BorderRadius.circular(10),
-        ),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: const Color(0xFF071B33),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+        side: const BorderSide(color: Color(0xFFD7E3F2)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
     );
 
@@ -1104,10 +901,7 @@ class _ApprovalRequestsScreenState
             )
           : Row(
               children: [
-                Expanded(
-                  flex: 5,
-                  child: search,
-                ),
+                Expanded(flex: 5, child: search),
                 const Spacer(),
                 count,
                 const SizedBox(width: 12),
@@ -1131,172 +925,83 @@ class _ApprovalRequestsScreenState
       child: data.isEmpty
           ? _emptyState()
           : SingleChildScrollView(
-              scrollDirection:
-                  Axis.horizontal,
+              scrollDirection: Axis.horizontal,
               child: DataTable(
-                headingRowColor:
-                    WidgetStateProperty.all(
+                headingRowColor: WidgetStateProperty.all(
                   const Color(0xFFE3EFFF),
                 ),
-                headingTextStyle:
-                    const TextStyle(
+                headingTextStyle: const TextStyle(
                   color: Color(0xFF064B9A),
-                  fontWeight:
-                      FontWeight.w800,
+                  fontWeight: FontWeight.w800,
                   fontSize: 13,
                 ),
-                dataTextStyle:
-                    const TextStyle(
+                dataTextStyle: const TextStyle(
                   color: Color(0xFF26384D),
                   fontSize: 13,
                 ),
                 columnSpacing: 25,
                 horizontalMargin: 22,
                 columns: const [
-                  DataColumn(
-                    label: Text("Full Name"),
-                  ),
-                  DataColumn(
-                    label: Text("Username"),
-                  ),
-                  DataColumn(
-                    label: Text("Email"),
-                  ),
-                  DataColumn(
-                    label: Text("Phone Number"),
-                  ),
-                  DataColumn(
-                    label: Text("Role"),
-                  ),
-                  DataColumn(
-                    label: Text("Cyber Cell"),
-                  ),
-                  DataColumn(
-                    label: Text("Registration Date"),
-                  ),
-                  DataColumn(
-                    label: Text("Status"),
-                  ),
-                  DataColumn(
-                    label: Text("Actions"),
-                  ),
+                  DataColumn(label: Text("Full Name")),
+                  DataColumn(label: Text("Username")),
+                  DataColumn(label: Text("Email")),
+                  DataColumn(label: Text("Phone Number")),
+                  DataColumn(label: Text("Role")),
+                  DataColumn(label: Text("Cyber Cell")),
+                  DataColumn(label: Text("Registration Date")),
+                  DataColumn(label: Text("Status")),
+                  DataColumn(label: Text("Actions")),
                 ],
                 rows: data.map((request) {
                   return DataRow(
                     cells: [
                       DataCell(
                         Text(
-                          request["fullName"]
-                              .toString(),
-                          style:
-                              const TextStyle(
-                            fontWeight:
-                                FontWeight.w700,
-                            color:
-                                Color(0xFF071B33),
+                          request["fullName"].toString(),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF071B33),
                           ),
                         ),
                       ),
-                      DataCell(
-                        Text(
-                          request["username"]
-                              .toString(),
-                        ),
-                      ),
-                      DataCell(
-                        Text(
-                          request["email"]
-                              .toString(),
-                        ),
-                      ),
-                      DataCell(
-                        Text(
-                          request["phone"]
-                              .toString(),
-                        ),
-                      ),
-                      DataCell(
-                        Text(
-                          request["role"]
-                              .toString(),
-                        ),
-                      ),
-                      DataCell(
-                        Text(
-                          request["cyberCell"]
-                              .toString(),
-                        ),
-                      ),
+                      DataCell(Text(request["username"].toString())),
+                      DataCell(Text(request["email"].toString())),
+                      DataCell(Text(request["phone"].toString())),
+                      DataCell(Text(request["role"].toString())),
+                      DataCell(Text(request["cyberCell"].toString())),
                       DataCell(
                         Text(
                           "${request["date"]}\n"
                           "${request["time"]}",
                         ),
                       ),
-                      DataCell(
-                        _pendingBadge(),
-                      ),
+                      DataCell(_pendingBadge()),
                       DataCell(
                         Row(
-                          mainAxisSize:
-                              MainAxisSize.min,
+                          mainAxisSize: MainAxisSize.min,
                           children: [
                             _actionIcon(
-                              icon: Icons
-                                  .remove_red_eye_rounded,
-                              color:
-                                  const Color(
-                                0xFF0875F5,
-                              ),
-                              background:
-                                  const Color(
-                                0xFFEAF3FF,
-                              ),
+                              icon: Icons.remove_red_eye_rounded,
+                              color: const Color(0xFF0875F5),
+                              background: const Color(0xFFEAF3FF),
                               tooltip: "View",
-                              onTap: () =>
-                                  _viewRequest(
-                                request,
-                              ),
+                              onTap: () => _viewRequest(request),
                             ),
-                            const SizedBox(
-                              width: 7,
-                            ),
+                            const SizedBox(width: 7),
                             _actionIcon(
-                              icon: Icons
-                                  .check_rounded,
-                              color:
-                                  const Color(
-                                0xFF059669,
-                              ),
-                              background:
-                                  const Color(
-                                0xFFE7F8F1,
-                              ),
+                              icon: Icons.check_rounded,
+                              color: const Color(0xFF059669),
+                              background: const Color(0xFFE7F8F1),
                               tooltip: "Approve",
-                              onTap: () =>
-                                  _confirmApprove(
-                                request,
-                              ),
+                              onTap: () => _confirmApprove(request),
                             ),
-                            const SizedBox(
-                              width: 7,
-                            ),
+                            const SizedBox(width: 7),
                             _actionIcon(
-                              icon: Icons
-                                  .close_rounded,
-                              color:
-                                  const Color(
-                                0xFFDC2626,
-                              ),
-                              background:
-                                  const Color(
-                                0xFFFFEEEE,
-                              ),
+                              icon: Icons.close_rounded,
+                              color: const Color(0xFFDC2626),
+                              background: const Color(0xFFFFEEEE),
                               tooltip: "Reject",
-                              onTap: () =>
-                                  _confirmReject(
-                                request,
-                              ),
+                              onTap: () => _confirmReject(request),
                             ),
                           ],
                         ),
@@ -1324,28 +1029,21 @@ class _ApprovalRequestsScreenState
       children: data.map((request) {
         return Container(
           width: double.infinity,
-          margin:
-              const EdgeInsets.only(bottom: 13),
-          padding:
-              const EdgeInsets.all(17),
+          margin: const EdgeInsets.only(bottom: 13),
+          padding: const EdgeInsets.all(17),
           decoration: _cardDecoration(),
           child: Column(
-            crossAxisAlignment:
-                CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
                   Expanded(
                     child: Text(
-                      request["fullName"]
-                          .toString(),
-                      style:
-                          const TextStyle(
+                      request["fullName"].toString(),
+                      style: const TextStyle(
                         fontSize: 16,
-                        fontWeight:
-                            FontWeight.w800,
-                        color:
-                            Color(0xFF071B33),
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF071B33),
                       ),
                     ),
                   ),
@@ -1358,10 +1056,7 @@ class _ApprovalRequestsScreenState
               Text(
                 "${request["username"]}  |  "
                 "${request["email"]}",
-                style: const TextStyle(
-                  color: Color(0xFF63728A),
-                  fontSize: 12,
-                ),
+                style: const TextStyle(color: Color(0xFF63728A), fontSize: 12),
               ),
 
               const SizedBox(height: 8),
@@ -1369,10 +1064,7 @@ class _ApprovalRequestsScreenState
               Text(
                 "${request["role"]}  |  "
                 "${request["cyberCell"]}",
-                style: const TextStyle(
-                  color: Color(0xFF26384D),
-                  fontSize: 13,
-                ),
+                style: const TextStyle(color: Color(0xFF26384D), fontSize: 13),
               ),
 
               const SizedBox(height: 5),
@@ -1380,10 +1072,7 @@ class _ApprovalRequestsScreenState
               Text(
                 "${request["date"]}  •  "
                 "${request["time"]}",
-                style: const TextStyle(
-                  color: Color(0xFF71829A),
-                  fontSize: 12,
-                ),
+                style: const TextStyle(color: Color(0xFF71829A), fontSize: 12),
               ),
 
               const SizedBox(height: 15),
@@ -1391,41 +1080,29 @@ class _ApprovalRequestsScreenState
               Row(
                 children: [
                   Expanded(
-                    child:
-                        _mobileActionButton(
+                    child: _mobileActionButton(
                       "View",
-                      Icons
-                          .remove_red_eye_rounded,
+                      Icons.remove_red_eye_rounded,
                       const Color(0xFF0875F5),
-                      () =>
-                          _viewRequest(request),
+                      () => _viewRequest(request),
                     ),
                   ),
                   const SizedBox(width: 7),
                   Expanded(
-                    child:
-                        _mobileActionButton(
+                    child: _mobileActionButton(
                       "Approve",
-                      Icons
-                          .check_circle_outline_rounded,
+                      Icons.check_circle_outline_rounded,
                       const Color(0xFF059669),
-                      () =>
-                          _confirmApprove(
-                        request,
-                      ),
+                      () => _confirmApprove(request),
                     ),
                   ),
                   const SizedBox(width: 7),
                   Expanded(
-                    child:
-                        _mobileActionButton(
+                    child: _mobileActionButton(
                       "Reject",
                       Icons.cancel_outlined,
                       const Color(0xFFDC2626),
-                      () =>
-                          _confirmReject(
-                        request,
-                      ),
+                      () => _confirmReject(request),
                     ),
                   ),
                 ],
@@ -1449,26 +1126,12 @@ class _ApprovalRequestsScreenState
   ) {
     return OutlinedButton.icon(
       onPressed: onTap,
-      icon: Icon(
-        icon,
-        size: 17,
-      ),
-      label: Text(
-        text,
-        style:
-            const TextStyle(fontSize: 11),
-      ),
-      style:
-          OutlinedButton.styleFrom(
+      icon: Icon(icon, size: 17),
+      label: Text(text, style: const TextStyle(fontSize: 11)),
+      style: OutlinedButton.styleFrom(
         foregroundColor: color,
-        side: BorderSide(
-          color: color.withOpacity(.25),
-        ),
-        padding:
-            const EdgeInsets.symmetric(
-          vertical: 12,
-          horizontal: 5,
-        ),
+        side: BorderSide(color: color.withOpacity(.25)),
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 5),
       ),
     );
   }
@@ -1488,24 +1151,16 @@ class _ApprovalRequestsScreenState
       message: tooltip,
       child: InkWell(
         onTap: onTap,
-        borderRadius:
-            BorderRadius.circular(30),
+        borderRadius: BorderRadius.circular(30),
         child: Container(
           width: 34,
           height: 34,
           decoration: BoxDecoration(
             color: background,
             shape: BoxShape.circle,
-            border: Border.all(
-              color:
-                  color.withOpacity(.18),
-            ),
+            border: Border.all(color: color.withOpacity(.18)),
           ),
-          child: Icon(
-            icon,
-            color: color,
-            size: 18,
-          ),
+          child: Icon(icon, color: color, size: 18),
         ),
       ),
     );
@@ -1517,15 +1172,10 @@ class _ApprovalRequestsScreenState
 
   Widget _pendingBadge() {
     return Container(
-      padding:
-          const EdgeInsets.symmetric(
-        horizontal: 10,
-        vertical: 6,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         color: const Color(0xFFFFF2D8),
-        borderRadius:
-            BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: const Text(
         "Pending",
@@ -1548,25 +1198,18 @@ class _ApprovalRequestsScreenState
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
         color: const Color(0xFFEAF3FF),
-        borderRadius:
-            BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(12),
       ),
       child: const Row(
         children: [
-          Icon(
-            Icons.info_outline_rounded,
-            color: Color(0xFF064DB8),
-          ),
+          Icon(Icons.info_outline_rounded, color: Color(0xFF064DB8)),
           SizedBox(width: 10),
           Expanded(
             child: Text(
               "Click on View to see complete details. "
               "Approve or Reject the request after reviewing "
               "the information.",
-              style: TextStyle(
-                color: Color(0xFF163B69),
-                fontSize: 13,
-              ),
+              style: TextStyle(color: Color(0xFF163B69), fontSize: 13),
             ),
           ),
         ],
@@ -1581,18 +1224,11 @@ class _ApprovalRequestsScreenState
   Widget _emptyState() {
     return Container(
       width: double.infinity,
-      padding:
-          const EdgeInsets.symmetric(
-        vertical: 60,
-      ),
+      padding: const EdgeInsets.symmetric(vertical: 60),
       alignment: Alignment.center,
       child: const Column(
         children: [
-          Icon(
-            Icons.inbox_rounded,
-            size: 50,
-            color: Color(0xFF9EB4CE),
-          ),
+          Icon(Icons.inbox_rounded, size: 50, color: Color(0xFF9EB4CE)),
           SizedBox(height: 12),
           Text(
             "No pending registration requests found.",
@@ -1613,15 +1249,11 @@ class _ApprovalRequestsScreenState
   BoxDecoration _cardDecoration() {
     return BoxDecoration(
       color: Colors.white,
-      borderRadius:
-          BorderRadius.circular(16),
-      border: Border.all(
-        color: const Color(0xFFDCE8F6),
-      ),
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(color: const Color(0xFFDCE8F6)),
       boxShadow: [
         BoxShadow(
-          color: const Color(0xFF123C6A)
-              .withOpacity(.06),
+          color: const Color(0xFF123C6A).withOpacity(.06),
           blurRadius: 22,
           offset: const Offset(0, 7),
         ),
@@ -1634,8 +1266,7 @@ class _ApprovalRequestsScreenState
 // HEADER GRAPHIC
 // ============================================================
 
-class ApprovalPeopleGraphic
-    extends StatelessWidget {
+class ApprovalPeopleGraphic extends StatelessWidget {
   final double width;
   final double height;
 
@@ -1651,72 +1282,44 @@ class ApprovalPeopleGraphic
       child: SizedBox(
         width: width,
         height: height,
-        child: CustomPaint(
-          painter:
-              ApprovalPeoplePainter(),
-        ),
+        child: CustomPaint(painter: ApprovalPeoplePainter()),
       ),
     );
   }
 }
 
-class ApprovalPeoplePainter
-    extends CustomPainter {
+class ApprovalPeoplePainter extends CustomPainter {
   @override
-  void paint(
-    Canvas canvas,
-    Size size,
-  ) {
+  void paint(Canvas canvas, Size size) {
     final navy = Paint()
-      ..color =
-          const Color(0xFF082B59)
-      ..style =
-          PaintingStyle.fill;
+      ..color = const Color(0xFF082B59)
+      ..style = PaintingStyle.fill;
 
     final blue = Paint()
-      ..color =
-          const Color(0xFF0875F5)
-      ..style =
-          PaintingStyle.fill;
+      ..color = const Color(0xFF0875F5)
+      ..style = PaintingStyle.fill;
 
     final lightBlue = Paint()
-      ..color =
-          const Color(0xFFBFDFFF)
-      ..style =
-          PaintingStyle.fill;
+      ..color = const Color(0xFFBFDFFF)
+      ..style = PaintingStyle.fill;
 
     final skin = Paint()
-      ..color =
-          const Color(0xFFF2B38D)
-      ..style =
-          PaintingStyle.fill;
+      ..color = const Color(0xFFF2B38D)
+      ..style = PaintingStyle.fill;
 
     final line = Paint()
-      ..color =
-          const Color(0xFF87BFFF)
-              .withOpacity(.55)
+      ..color = const Color(0xFF87BFFF).withOpacity(.55)
       ..strokeWidth = 1.4
-      ..style =
-          PaintingStyle.stroke;
+      ..style = PaintingStyle.stroke;
 
-    final centerX =
-        size.width / 2;
+    final centerX = size.width / 2;
 
     // SECURITY SHIELD
 
     final shield = Path()
-      ..moveTo(
-        centerX,
-        size.height * .15,
-      )
-      ..lineTo(
-        centerX + 29,
-        size.height * .25,
-      )
-      ..lineTo(
-        centerX + 25,
-        size.height * .58,
-      )
+      ..moveTo(centerX, size.height * .15)
+      ..lineTo(centerX + 29, size.height * .25)
+      ..lineTo(centerX + 25, size.height * .58)
       ..quadraticBezierTo(
         centerX + 17,
         size.height * .72,
@@ -1729,116 +1332,66 @@ class ApprovalPeoplePainter
         centerX - 25,
         size.height * .58,
       )
-      ..lineTo(
-        centerX - 29,
-        size.height * .25,
-      )
+      ..lineTo(centerX - 29, size.height * .25)
       ..close();
 
-    canvas.drawPath(
-      shield,
-      navy,
-    );
+    canvas.drawPath(shield, navy);
 
     canvas.drawCircle(
-      Offset(
-        centerX,
-        size.height * .38,
-      ),
+      Offset(centerX, size.height * .38),
       8,
-      Paint()
-        ..color = Colors.white,
+      Paint()..color = Colors.white,
     );
 
     canvas.drawRRect(
       RRect.fromRectAndRadius(
         Rect.fromCenter(
-          center: Offset(
-            centerX,
-            size.height * .56,
-          ),
+          center: Offset(centerX, size.height * .56),
           width: 24,
           height: 18,
         ),
         const Radius.circular(8),
       ),
-      Paint()
-        ..color = Colors.white,
+      Paint()..color = Colors.white,
     );
 
     // CONNECTION DOTS
 
     canvas.drawLine(
-      Offset(
-        centerX - 30,
-        size.height * .48,
-      ),
-      Offset(
-        centerX - 67,
-        size.height * .48,
-      ),
+      Offset(centerX - 30, size.height * .48),
+      Offset(centerX - 67, size.height * .48),
       line,
     );
 
     canvas.drawLine(
-      Offset(
-        centerX + 30,
-        size.height * .48,
-      ),
-      Offset(
-        centerX + 67,
-        size.height * .48,
-      ),
+      Offset(centerX + 30, size.height * .48),
+      Offset(centerX + 67, size.height * .48),
       line,
     );
 
-    canvas.drawCircle(
-      Offset(
-        centerX - 67,
-        size.height * .48,
-      ),
-      3,
-      lightBlue,
-    );
+    canvas.drawCircle(Offset(centerX - 67, size.height * .48), 3, lightBlue);
 
-    canvas.drawCircle(
-      Offset(
-        centerX + 67,
-        size.height * .48,
-      ),
-      3,
-      lightBlue,
-    );
+    canvas.drawCircle(Offset(centerX + 67, size.height * .48), 3, lightBlue);
 
     // LEFT PERSON
 
-    final leftX =
-        centerX - size.width * .30;
+    final leftX = centerX - size.width * .30;
 
     canvas.drawCircle(
-      Offset(
-        leftX,
-        size.height * .31,
-      ),
+      Offset(leftX, size.height * .31),
       size.height * .09,
       skin,
     );
 
     final leftHair = Path()
-      ..moveTo(
-        leftX - 11,
-        size.height * .29,
-      )
+      ..moveTo(leftX - 11, size.height * .29)
       ..quadraticBezierTo(
         leftX,
         size.height * .18,
         leftX + 12,
         size.height * .25,
       )
-      ..lineTo(
-        leftX + 7,
-        size.height * .31,
-      )
+      ..lineTo(leftX + 7, size.height * .31)
       ..quadraticBezierTo(
         leftX - 3,
         size.height * .26,
@@ -1846,16 +1399,10 @@ class ApprovalPeoplePainter
         size.height * .29,
       );
 
-    canvas.drawPath(
-      leftHair,
-      navy,
-    );
+    canvas.drawPath(leftHair, navy);
 
     final leftBody = Path()
-      ..moveTo(
-        leftX - 21,
-        size.height * .72,
-      )
+      ..moveTo(leftX - 21, size.height * .72)
       ..quadraticBezierTo(
         leftX - 19,
         size.height * .43,
@@ -1870,21 +1417,13 @@ class ApprovalPeoplePainter
       )
       ..close();
 
-    canvas.drawPath(
-      leftBody,
-      blue,
-    );
+    canvas.drawPath(leftBody, blue);
 
     // LEFT LAPTOP
 
     canvas.drawRRect(
       RRect.fromRectAndRadius(
-        Rect.fromLTWH(
-          leftX + 2,
-          size.height * .53,
-          38,
-          size.height * .24,
-        ),
+        Rect.fromLTWH(leftX + 2, size.height * .53, 38, size.height * .24),
         const Radius.circular(3),
       ),
       navy,
@@ -1892,33 +1431,23 @@ class ApprovalPeoplePainter
 
     // RIGHT PERSON
 
-    final rightX =
-        centerX + size.width * .30;
+    final rightX = centerX + size.width * .30;
 
     canvas.drawCircle(
-      Offset(
-        rightX,
-        size.height * .31,
-      ),
+      Offset(rightX, size.height * .31),
       size.height * .09,
       skin,
     );
 
     final rightHair = Path()
-      ..moveTo(
-        rightX - 10,
-        size.height * .24,
-      )
+      ..moveTo(rightX - 10, size.height * .24)
       ..quadraticBezierTo(
         rightX + 3,
         size.height * .17,
         rightX + 13,
         size.height * .30,
       )
-      ..lineTo(
-        rightX + 12,
-        size.height * .39,
-      )
+      ..lineTo(rightX + 12, size.height * .39)
       ..quadraticBezierTo(
         rightX + 3,
         size.height * .31,
@@ -1926,16 +1455,10 @@ class ApprovalPeoplePainter
         size.height * .24,
       );
 
-    canvas.drawPath(
-      rightHair,
-      navy,
-    );
+    canvas.drawPath(rightHair, navy);
 
     final rightBody = Path()
-      ..moveTo(
-        rightX - 23,
-        size.height * .72,
-      )
+      ..moveTo(rightX - 23, size.height * .72)
       ..quadraticBezierTo(
         rightX - 18,
         size.height * .43,
@@ -1950,21 +1473,13 @@ class ApprovalPeoplePainter
       )
       ..close();
 
-    canvas.drawPath(
-      rightBody,
-      blue,
-    );
+    canvas.drawPath(rightBody, blue);
 
     // RIGHT LAPTOP
 
     canvas.drawRRect(
       RRect.fromRectAndRadius(
-        Rect.fromLTWH(
-          rightX - 40,
-          size.height * .53,
-          38,
-          size.height * .24,
-        ),
+        Rect.fromLTWH(rightX - 40, size.height * .53, 38, size.height * .24),
         const Radius.circular(3),
       ),
       navy,
@@ -1972,29 +1487,13 @@ class ApprovalPeoplePainter
 
     // DECORATIVE DOTS
 
-    canvas.drawCircle(
-      Offset(
-        centerX - 73,
-        size.height * .15,
-      ),
-      3,
-      lightBlue,
-    );
+    canvas.drawCircle(Offset(centerX - 73, size.height * .15), 3, lightBlue);
 
-    canvas.drawCircle(
-      Offset(
-        centerX + 73,
-        size.height * .15,
-      ),
-      3,
-      blue,
-    );
+    canvas.drawCircle(Offset(centerX + 73, size.height * .15), 3, blue);
   }
 
   @override
-  bool shouldRepaint(
-    covariant CustomPainter oldDelegate,
-  ) {
+  bool shouldRepaint(covariant CustomPainter oldDelegate) {
     return false;
   }
 }

@@ -4,7 +4,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/api_service.dart';
 import '../auth/login_screen.dart';
 
-
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
 
@@ -55,9 +54,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (isLoading) {
       return const Scaffold(
         backgroundColor: pageBackground,
-        body: Center(
-          child: CircularProgressIndicator(),
-        ),
+        body: Center(child: CircularProgressIndicator()),
       );
     }
 
@@ -74,17 +71,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
             child: Center(
               child: ConstrainedBox(
-                constraints: const BoxConstraints(
-                  maxWidth: 1350,
-                ),
+                constraints: const BoxConstraints(maxWidth: 1350),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _buildHeader(isMobile),
 
-                    SizedBox(
-                      height: isMobile ? 18 : 24,
-                    ),
+                    SizedBox(height: isMobile ? 18 : 24),
 
                     if (isMobile)
                       Column(
@@ -98,13 +91,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       )
                     else
                       Row(
-                        crossAxisAlignment:
-                            CrossAxisAlignment.start,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Expanded(
-                            flex: 11,
-                            child: _buildProfileCard(false),
-                          ),
+                          Expanded(flex: 11, child: _buildProfileCard(false)),
                           const SizedBox(width: 22),
                           Expanded(
                             flex: 9,
@@ -143,16 +132,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [
-            Color(0xFFEAF3FF),
-            Color(0xFFF8FBFF),
-          ],
+          colors: [Color(0xFFEAF3FF), Color(0xFFF8FBFF)],
         ),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: const Color(0xFFC7DFFF),
-          width: 1.2,
-        ),
+        border: Border.all(color: const Color(0xFFC7DFFF), width: 1.2),
         boxShadow: [
           BoxShadow(
             color: blue.withOpacity(0.08),
@@ -169,9 +152,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             decoration: BoxDecoration(
               color: const Color(0xFFD9E9FF),
               borderRadius: BorderRadius.circular(18),
-              border: Border.all(
-                color: const Color(0xFFBBD7FF),
-              ),
+              border: Border.all(color: const Color(0xFFBBD7FF)),
             ),
             child: Icon(
               Icons.person_rounded,
@@ -195,8 +176,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
           Expanded(
             child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   "Profile",
@@ -242,21 +222,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            Color(0xFFF0F4FF),
-            Color(0xFFF8F2FF),
-            Color(0xFFF2F8FF),
-          ],
+          colors: [Color(0xFFF0F4FF), Color(0xFFF8F2FF), Color(0xFFF2F8FF)],
         ),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: const Color(0xFFC8C9FF),
-          width: 1.4,
-        ),
+        border: Border.all(color: const Color(0xFFC8C9FF), width: 1.4),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF6558E8)
-                .withOpacity(0.12),
+            color: const Color(0xFF6558E8).withOpacity(0.12),
             blurRadius: 22,
             offset: const Offset(0, 7),
           ),
@@ -271,10 +243,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             decoration: BoxDecoration(
               color: const Color(0xFFDCEAFF),
               shape: BoxShape.circle,
-              border: Border.all(
-                color: blue,
-                width: 2.2,
-              ),
+              border: Border.all(color: blue, width: 2.2),
               boxShadow: [
                 BoxShadow(
                   color: blue.withOpacity(0.18),
@@ -305,10 +274,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           const SizedBox(height: 5),
 
           Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 13,
-              vertical: 5,
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 5),
             decoration: BoxDecoration(
               color: const Color(0xFFDDEBFF),
               borderRadius: BorderRadius.circular(20),
@@ -328,8 +294,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _detailBox(
             icon: Icons.person_outline_rounded,
             label: "Full Name",
-            value:
-                profile["full_name"]?.toString() ?? "",
+            value: profile["full_name"]?.toString() ?? "",
             background: const Color(0xFFE6F0FF),
             borderColor: const Color(0xFFBDD7FF),
             iconBackground: const Color(0xFFCCE1FF),
@@ -341,8 +306,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _detailBox(
             icon: Icons.alternate_email_rounded,
             label: "Username",
-            value:
-                profile["username"]?.toString() ?? "",
+            value: profile["username"]?.toString() ?? "",
             background: const Color(0xFFE7F8EE),
             borderColor: const Color(0xFFBEE7CE),
             iconBackground: const Color(0xFFCFF0DB),
@@ -354,8 +318,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _detailBox(
             icon: Icons.email_outlined,
             label: "Email",
-            value:
-                profile["email"]?.toString() ?? "",
+            value: profile["email"]?.toString() ?? "",
             background: const Color(0xFFF1EAFE),
             borderColor: const Color(0xFFD9C8FA),
             iconBackground: const Color(0xFFE3D6FA),
@@ -367,8 +330,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _detailBox(
             icon: Icons.phone_rounded,
             label: "Phone Number",
-            value:
-                profile["phone_number"]?.toString() ?? "",
+            value: profile["phone_number"]?.toString() ?? "",
             background: const Color(0xFFFFF2DF),
             borderColor: const Color(0xFFF6D9A8),
             iconBackground: const Color(0xFFFFE4BA),
@@ -380,8 +342,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _detailBox(
             icon: Icons.admin_panel_settings_rounded,
             label: "Role",
-            value:
-                profile["role"]?.toString() ?? "",
+            value: profile["role"]?.toString() ?? "",
             background: const Color(0xFFFFE9ED),
             borderColor: const Color(0xFFF5C5CD),
             iconBackground: const Color(0xFFFFD3DA),
@@ -393,8 +354,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _detailBox(
             icon: Icons.apartment_rounded,
             label: "Cyber Cell",
-            value:
-                profile["cyber_cell"]?.toString() ?? "",
+            value: profile["cyber_cell"]?.toString() ?? "",
             background: const Color(0xFFE4F7F8),
             borderColor: const Color(0xFFBCE5E7),
             iconBackground: const Color(0xFFC9EEF0),
@@ -420,17 +380,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(
-        horizontal: 13,
-        vertical: 12,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
       decoration: BoxDecoration(
         color: background,
         borderRadius: BorderRadius.circular(13),
-        border: Border.all(
-          color: borderColor,
-          width: 1,
-        ),
+        border: Border.all(color: borderColor, width: 1),
       ),
       child: Row(
         children: [
@@ -441,19 +395,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
               color: iconBackground,
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Icon(
-              icon,
-              color: iconColor,
-              size: 25,
-            ),
+            child: Icon(icon, color: iconColor, size: 25),
           ),
 
           const SizedBox(width: 14),
 
           Expanded(
             child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   label,
@@ -542,12 +491,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
         borderRadius: BorderRadius.circular(20),
         child: Container(
           width: double.infinity,
-          constraints: BoxConstraints(
-            minHeight: isMobile ? 155 : 205,
-          ),
-          padding: EdgeInsets.all(
-            isMobile ? 18 : 24,
-          ),
+          constraints: BoxConstraints(minHeight: isMobile ? 155 : 205),
+          padding: EdgeInsets.all(isMobile ? 18 : 24),
           decoration: BoxDecoration(
             color: backgroundColor,
             borderRadius: BorderRadius.circular(20),
@@ -583,10 +528,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     decoration: BoxDecoration(
                       color: iconBackground,
                       shape: BoxShape.circle,
-                      border: Border.all(
-                        color:
-                            accentColor.withOpacity(0.20),
-                      ),
+                      border: Border.all(color: accentColor.withOpacity(0.20)),
                     ),
                     child: Icon(
                       icon,
@@ -595,23 +537,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                   ),
 
-                  SizedBox(
-                    width: isMobile ? 16 : 22,
-                  ),
+                  SizedBox(width: isMobile ? 16 : 22),
 
                   Expanded(
                     child: Column(
-                      mainAxisAlignment:
-                          MainAxisAlignment.center,
-                      crossAxisAlignment:
-                          CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
                           title,
                           style: TextStyle(
                             color: navy,
-                            fontSize:
-                                isMobile ? 18 : 21,
+                            fontSize: isMobile ? 18 : 21,
                             fontWeight: FontWeight.w900,
                           ),
                         ),
@@ -621,10 +558,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         Text(
                           description,
                           style: TextStyle(
-                            color:
-                                const Color(0xFF405674),
-                            fontSize:
-                                isMobile ? 12 : 14,
+                            color: const Color(0xFF405674),
+                            fontSize: isMobile ? 12 : 14,
                             height: 1.5,
                             fontWeight: FontWeight.w500,
                           ),
@@ -639,8 +574,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     width: 45,
                     height: 45,
                     decoration: BoxDecoration(
-                      color:
-                          Colors.white.withOpacity(0.65),
+                      color: Colors.white.withOpacity(0.65),
                       shape: BoxShape.circle,
                     ),
                     child: Icon(
@@ -683,27 +617,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return Dialog(
-              insetPadding:
-                  const EdgeInsets.all(18),
+              insetPadding: const EdgeInsets.all(18),
               shape: RoundedRectangleBorder(
-                borderRadius:
-                    BorderRadius.circular(20),
+                borderRadius: BorderRadius.circular(20),
               ),
               child: Container(
                 width: 520,
                 padding: const EdgeInsets.all(24),
                 child: SingleChildScrollView(
                   child: Column(
-                    mainAxisSize:
-                        MainAxisSize.min,
-                    crossAxisAlignment:
-                        CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Row(
                         children: [
                           Icon(
-                            Icons
-                                .manage_accounts_rounded,
+                            Icons.manage_accounts_rounded,
                             color: blue,
                             size: 29,
                           ),
@@ -713,8 +642,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             style: TextStyle(
                               color: navy,
                               fontSize: 22,
-                              fontWeight:
-                                  FontWeight.w900,
+                              fontWeight: FontWeight.w900,
                             ),
                           ),
                         ],
@@ -723,32 +651,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       const SizedBox(height: 22),
 
                       _inputField(
-                        controller:
-                            nameController,
+                        controller: nameController,
                         label: "Full Name",
-                        icon: Icons
-                            .person_outline_rounded,
+                        icon: Icons.person_outline_rounded,
                       ),
 
                       const SizedBox(height: 14),
 
                       _inputField(
-                        controller:
-                            emailController,
+                        controller: emailController,
                         label: "Email",
-                        icon: Icons
-                            .email_outlined,
+                        icon: Icons.email_outlined,
                         enabled: false,
                       ),
 
                       const SizedBox(height: 14),
 
                       _inputField(
-                        controller:
-                            phoneController,
+                        controller: phoneController,
                         label: "Phone Number",
-                        icon: Icons
-                            .phone_outlined,
+                        icon: Icons.phone_outlined,
                       ),
 
                       const SizedBox(height: 22),
@@ -756,86 +678,56 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       Row(
                         children: [
                           Expanded(
-                            child:
-                                OutlinedButton(
+                            child: OutlinedButton(
                               onPressed: saving
                                   ? null
                                   : () {
-                                      Navigator.pop(
-                                        dialogContext,
-                                      );
+                                      Navigator.pop(dialogContext);
                                     },
-                              child:
-                                  const Text(
-                                "Cancel",
-                              ),
+                              child: const Text("Cancel"),
                             ),
                           ),
 
                           const SizedBox(width: 12),
 
                           Expanded(
-                            child:
-                                ElevatedButton(
+                            child: ElevatedButton(
                               onPressed: saving
                                   ? null
                                   : () async {
-                                      if (nameController
-                                          .text
-                                          .trim()
-                                          .isEmpty) {
-                                        _showError(
-                                          "Full name is required.",
-                                        );
+                                      if (nameController.text.trim().isEmpty) {
+                                        _showError("Full name is required.");
                                         return;
                                       }
 
-                                      setDialogState(
-                                        () {
-                                          saving =
-                                              true;
-                                        },
-                                      );
+                                      setDialogState(() {
+                                        saving = true;
+                                      });
 
                                       try {
-                                        final response =
-                                            await _apiService
-                                                .updateProfile(
-                                          {
-                                            "full_name":
-                                                nameController
-                                                    .text
-                                                    .trim(),
-                                            "phone_number":
-                                                phoneController
-                                                    .text
-                                                    .trim(),
-                                          },
-                                        );
+                                        final response = await _apiService
+                                            .updateProfile({
+                                              "full_name": nameController.text
+                                                  .trim(),
+                                              "phone_number": phoneController
+                                                  .text
+                                                  .trim(),
+                                            });
 
                                         if (!mounted) {
                                           return;
                                         }
 
-                                        final data =
-                                            jsonDecode(
-                                          response.body,
-                                        );
+                                        final data = jsonDecode(response.body);
 
-                                        if (response
-                                                .statusCode ==
-                                            200) {
+                                        if (response.statusCode == 200) {
                                           setState(() {
-                                            profile =
-                                                Map<String,
-                                                    dynamic>.from(
+                                            profile = Map<String, dynamic>.from(
                                               data,
                                             );
                                           });
 
-                                          Navigator.pop(
-                                            dialogContext,
-                                          );
+                                          Navigator.pop(dialogContext);
 
                                           _showSuccess(
                                             "Profile updated successfully.",
@@ -857,37 +749,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                         );
                                       } finally {
                                         if (mounted) {
-                                          setDialogState(
-                                            () {
-                                              saving =
-                                                  false;
-                                            },
-                                          );
+                                          setDialogState(() {
+                                            saving = false;
+                                          });
                                         }
                                       }
                                     },
-                              style:
-                                  ElevatedButton
-                                      .styleFrom(
-                                backgroundColor:
-                                    blue,
-                                foregroundColor:
-                                    Colors.white,
-                                minimumSize:
-                                    const Size
-                                        .fromHeight(
-                                  50,
-                                ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: blue,
+                                foregroundColor: Colors.white,
+                                minimumSize: const Size.fromHeight(50),
                               ),
                               child: Text(
-                                saving
-                                    ? "Saving..."
-                                    : "Save Changes",
-                                style:
-                                    const TextStyle(
-                                  fontWeight:
-                                      FontWeight
-                                          .w800,
+                                saving ? "Saving..." : "Save Changes",
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w800,
                                 ),
                               ),
                             ),
@@ -910,14 +786,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
   // ============================================================
 
   void _showChangePasswordDialog() {
-    final currentController =
-        TextEditingController();
+    final currentController = TextEditingController();
 
-    final newController =
-        TextEditingController();
+    final newController = TextEditingController();
 
-    final confirmController =
-        TextEditingController();
+    final confirmController = TextEditingController();
 
     showDialog(
       context: context,
@@ -927,28 +800,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return Dialog(
-              insetPadding:
-                  const EdgeInsets.all(18),
+              insetPadding: const EdgeInsets.all(18),
               shape: RoundedRectangleBorder(
-                borderRadius:
-                    BorderRadius.circular(20),
+                borderRadius: BorderRadius.circular(20),
               ),
               child: Container(
                 width: 520,
                 padding: const EdgeInsets.all(24),
                 child: SingleChildScrollView(
                   child: Column(
-                    mainAxisSize:
-                        MainAxisSize.min,
-                    crossAxisAlignment:
-                        CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Row(
                         children: [
                           Icon(
                             Icons.lock_rounded,
-                            color:
-                                Color(0xFF087A3C),
+                            color: Color(0xFF087A3C),
                             size: 28,
                           ),
                           SizedBox(width: 10),
@@ -957,8 +825,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             style: TextStyle(
                               color: navy,
                               fontSize: 22,
-                              fontWeight:
-                                  FontWeight.w900,
+                              fontWeight: FontWeight.w900,
                             ),
                           ),
                         ],
@@ -967,26 +834,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       const SizedBox(height: 22),
 
                       _inputField(
-                        controller:
-                            TextEditingController(
-                          text: profile["username"]
-                                  ?.toString() ??
-                              "",
+                        controller: TextEditingController(
+                          text: profile["username"]?.toString() ?? "",
                         ),
                         label: "Username",
-                        icon: Icons
-                            .person_outline_rounded,
+                        icon: Icons.person_outline_rounded,
                         enabled: false,
                       ),
 
                       const SizedBox(height: 14),
 
                       _inputField(
-                        controller:
-                            currentController,
+                        controller: currentController,
                         label: "Current Password",
-                        icon: Icons
-                            .lock_outline_rounded,
+                        icon: Icons.lock_outline_rounded,
                         obscure: true,
                       ),
 
@@ -995,20 +856,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       _inputField(
                         controller: newController,
                         label: "New Password",
-                        icon:
-                            Icons.password_rounded,
+                        icon: Icons.password_rounded,
                         obscure: true,
                       ),
 
                       const SizedBox(height: 14),
 
                       _inputField(
-                        controller:
-                            confirmController,
-                        label:
-                            "Confirm New Password",
-                        icon: Icons
-                            .verified_user_outlined,
+                        controller: confirmController,
+                        label: "Confirm New Password",
+                        icon: Icons.verified_user_outlined,
                         obscure: true,
                       ),
 
@@ -1017,102 +874,67 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       Row(
                         children: [
                           Expanded(
-                            child:
-                                OutlinedButton(
+                            child: OutlinedButton(
                               onPressed: saving
                                   ? null
                                   : () {
-                                      Navigator.pop(
-                                        dialogContext,
-                                      );
+                                      Navigator.pop(dialogContext);
                                     },
-                              child:
-                                  const Text(
-                                "Cancel",
-                              ),
+                              child: const Text("Cancel"),
                             ),
                           ),
 
                           const SizedBox(width: 12),
 
                           Expanded(
-                            child:
-                                ElevatedButton(
+                            child: ElevatedButton(
                               onPressed: saving
                                   ? null
                                   : () async {
-                                      if (currentController
-                                              .text
-                                              .isEmpty ||
-                                          newController
-                                              .text
-                                              .isEmpty ||
-                                          confirmController
-                                              .text
-                                              .isEmpty) {
+                                      if (currentController.text.isEmpty ||
+                                          newController.text.isEmpty ||
+                                          confirmController.text.isEmpty) {
                                         _showError(
                                           "Please fill all password fields.",
                                         );
                                         return;
                                       }
 
-                                      if (newController
-                                              .text !=
-                                          confirmController
-                                              .text) {
+                                      if (newController.text !=
+                                          confirmController.text) {
                                         _showError(
                                           "New passwords do not match.",
                                         );
                                         return;
                                       }
 
-                                      setDialogState(
-                                        () {
-                                          saving =
-                                              true;
-                                        },
-                                      );
+                                      setDialogState(() {
+                                        saving = true;
+                                      });
 
                                       try {
-                                        final response =
-                                            await _apiService
-                                                .changePassword(
-                                          {
-                                            "username":
-                                                profile["username"]
-                                                    ?.toString(),
-                                            "old_password":
-                                                currentController
-                                                    .text,
-                                            "new_password":
-                                                newController
-                                                    .text,
-                                            "confirm_password":
-                                                confirmController
-                                                    .text,
-                                          },
-                                        );
+                                        final response = await _apiService
+                                            .changePassword({
+                                              "username": profile["username"]
+                                                  ?.toString(),
+                                              "old_password":
+                                                  currentController.text,
+                                              "new_password":
+                                                  newController.text,
+                                              "confirm_password":
+                                                  confirmController.text,
+                                            });
 
                                         if (!mounted) {
                                           return;
                                         }
 
-                                        final data =
-                                            jsonDecode(
-                                          response.body,
-                                        );
+                                        final data = jsonDecode(response.body);
 
-                                        if (response
-                                                    .statusCode >=
-                                                200 &&
-                                            response
-                                                    .statusCode <
-                                                300 &&
-                                            data["success"] ==
-                                                true) {
-                                          Navigator.pop(
-                                            dialogContext,
-                                          );
+                                        if (response.statusCode >= 200 &&
+                                            response.statusCode < 300 &&
+                                            data["success"] == true) {
+                                          Navigator.pop(dialogContext);
 
                                           _showSuccess(
                                             data["message"] ??
@@ -1135,39 +957,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                         );
                                       } finally {
                                         if (mounted) {
-                                          setDialogState(
-                                            () {
-                                              saving =
-                                                  false;
-                                            },
-                                          );
+                                          setDialogState(() {
+                                            saving = false;
+                                          });
                                         }
                                       }
                                     },
-                              style:
-                                  ElevatedButton
-                                      .styleFrom(
-                                backgroundColor:
-                                    const Color(
-                                  0xFF087A3C,
-                                ),
-                                foregroundColor:
-                                    Colors.white,
-                                minimumSize:
-                                    const Size
-                                        .fromHeight(
-                                  50,
-                                ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF087A3C),
+                                foregroundColor: Colors.white,
+                                minimumSize: const Size.fromHeight(50),
                               ),
                               child: Text(
-                                saving
-                                    ? "Updating..."
-                                    : "Update Password",
-                                style:
-                                    const TextStyle(
-                                  fontWeight:
-                                      FontWeight
-                                          .w800,
+                                saving ? "Updating..." : "Update Password",
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w800,
                                 ),
                               ),
                             ),
@@ -1202,39 +1006,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
       enabled: enabled,
       decoration: InputDecoration(
         labelText: label,
-        prefixIcon: Icon(
-          icon,
-          color: blue,
-        ),
+        prefixIcon: Icon(icon, color: blue),
         filled: true,
-        fillColor:
-            enabled ? Colors.white : Colors.grey.shade100,
+        fillColor: enabled ? Colors.white : Colors.grey.shade100,
         border: OutlineInputBorder(
-          borderRadius:
-              BorderRadius.circular(13),
+          borderRadius: BorderRadius.circular(13),
           borderSide: BorderSide.none,
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius:
-              BorderRadius.circular(13),
-          borderSide: const BorderSide(
-            color: Color(0xFFD9E4F2),
-          ),
+          borderRadius: BorderRadius.circular(13),
+          borderSide: const BorderSide(color: Color(0xFFD9E4F2)),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius:
-              BorderRadius.circular(13),
-          borderSide: const BorderSide(
-            color: blue,
-            width: 1.5,
-          ),
+          borderRadius: BorderRadius.circular(13),
+          borderSide: const BorderSide(color: blue, width: 1.5),
         ),
         disabledBorder: OutlineInputBorder(
-          borderRadius:
-              BorderRadius.circular(13),
-          borderSide: const BorderSide(
-            color: Color(0xFFE0E0E0),
-          ),
+          borderRadius: BorderRadius.circular(13),
+          borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
         ),
       ),
     );
@@ -1245,85 +1034,81 @@ class _ProfileScreenState extends State<ProfileScreen> {
   // ============================================================
 
   Future<void> _loadProfile() async {
-  if (mounted) {
-    setState(() {
-      isLoading = true;
-    });
-  }
-
-  try {
-    final response = await _apiService.getProfile();
-
-    if (!mounted) return;
-
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-
-      if (data is Map) {
-        setState(() {
-          profile = Map<String, dynamic>.from(data);
-          isLoading = false;
-        });
-      } else {
-        setState(() {
-          isLoading = false;
-        });
-
-        _showError("Invalid profile response.");
-      }
-
-      return;
+    if (mounted) {
+      setState(() {
+        isLoading = true;
+      });
     }
 
-    if (response.statusCode == 401) {
+    try {
+      final response = await _apiService.getProfile();
+
+      if (!mounted) return;
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+
+        if (data is Map) {
+          setState(() {
+            profile = Map<String, dynamic>.from(data);
+            isLoading = false;
+          });
+        } else {
+          setState(() {
+            isLoading = false;
+          });
+
+          _showError("Invalid profile response.");
+        }
+
+        return;
+      }
+
+      if (response.statusCode == 401) {
+        setState(() {
+          isLoading = false;
+        });
+
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove("access_token");
+
+        if (!mounted) return;
+
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (_) => LoginScreen()),
+          (route) => false,
+        );
+
+        return;
+      }
+
       setState(() {
         isLoading = false;
       });
 
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove("access_token");
+      final data = _decodeResponse(response.body);
 
+      _showError(
+        data["detail"] ??
+            data["message"] ??
+            "Failed to load profile. Status: ${response.statusCode}",
+      );
+    } catch (e) {
       if (!mounted) return;
 
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(
-          builder: (_) => LoginScreen(),
-        ),
-        (route) => false,
-      );
+      setState(() {
+        isLoading = false;
+      });
 
-      return;
+      _showError("Unable to load profile: $e");
     }
-
-    setState(() {
-      isLoading = false;
-    });
-
-    final data = _decodeResponse(response.body);
-
-    _showError(
-      data["detail"] ??
-          data["message"] ??
-          "Failed to load profile. Status: ${response.statusCode}",
-    );
-  } catch (e) {
-    if (!mounted) return;
-
-    setState(() {
-      isLoading = false;
-    });
-
-    _showError("Unable to load profile: $e");
   }
-}
   // ============================================================
   // RESPONSE HELPER
   // ============================================================
 
-  Map<String, dynamic> _decodeResponse(
-    String body,
-  ) {
+  Map<String, dynamic> _decodeResponse(String body) {
     if (body.isEmpty) {
       return {};
     }
@@ -1346,23 +1131,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
   // ============================================================
 
   void _showSuccess(String message) {
-    ScaffoldMessenger.of(context)
-        .showSnackBar(
+    ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        behavior:
-            SnackBarBehavior.floating,
-        backgroundColor:
-            const Color(0xFF07833B),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: const Color(0xFF07833B),
         content: Row(
           children: [
-            const Icon(
-              Icons.check_circle_rounded,
-              color: Colors.white,
-            ),
+            const Icon(Icons.check_circle_rounded, color: Colors.white),
             const SizedBox(width: 10),
-            Expanded(
-              child: Text(message),
-            ),
+            Expanded(child: Text(message)),
           ],
         ),
       ),
@@ -1374,13 +1151,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   // ============================================================
 
   void _showError(String message) {
-    ScaffoldMessenger.of(context)
-        .showSnackBar(
+    ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        behavior:
-            SnackBarBehavior.floating,
-        backgroundColor:
-            const Color(0xFFDC2626),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: const Color(0xFFDC2626),
         content: Text(message),
       ),
     );
