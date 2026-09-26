@@ -6,35 +6,49 @@ import '../../widgets/background_design.dart';
 import '../../widgets/glass_card.dart';
 import '../../widgets/glow_button.dart';
 import '../../widgets/left_panel.dart';
+import '../dashboard/dashboard_screen.dart';
+import '../dashboard/investigator_dashboard_screen.dart';
+import '../dashboard/cyber_expert_dashboard_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../../services/change_password_service.dart';
 
 class ChangePasswordScreen extends StatefulWidget {
-  const ChangePasswordScreen({super.key});
+  final String username;
+  final int? roleId;
+
+  const ChangePasswordScreen({super.key, required this.username, this.roleId});
 
   @override
-  State<ChangePasswordScreen> createState() =>
-      _ChangePasswordScreenState();
+  State<ChangePasswordScreen> createState() => _ChangePasswordScreenState();
 }
 
-class _ChangePasswordScreenState
-    extends State<ChangePasswordScreen> {
-
+class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
   final _formKey = GlobalKey<FormState>();
 
-  final TextEditingController usernameController =
-      TextEditingController();
+  final TextEditingController usernameController = TextEditingController();
 
   final TextEditingController currentPasswordController =
       TextEditingController();
 
-  final TextEditingController newPasswordController =
-      TextEditingController();
+  final TextEditingController newPasswordController = TextEditingController();
 
   final TextEditingController confirmPasswordController =
       TextEditingController();
 
+  final ChangePasswordService _changePasswordService = ChangePasswordService();
+
+  bool _isLoading = false;
+
   bool currentObscure = true;
   bool newObscure = true;
   bool confirmObscure = true;
+
+  @override
+  void initState() {
+    super.initState();
+
+    usernameController.text = widget.username;
+  }
 
   @override
   void dispose() {
@@ -47,13 +61,11 @@ class _ChangePasswordScreenState
 
   @override
   Widget build(BuildContext context) {
-
     final bool mobile = Responsive.isMobile(context);
 
     return Scaffold(
       body: Stack(
         children: [
-
           const BackgroundDesign(),
 
           SafeArea(
@@ -63,23 +75,20 @@ class _ChangePasswordScreenState
                 child: SizedBox(
                   width: Responsive.cardWidth(context),
                   child: GlassCard(
-  child: mobile
-      ? SingleChildScrollView(
-          child: buildRightPanel(),
-        )
-      : Row(
-          children: [
-            const Expanded(
-              flex: 3,
-              child: LeftPanel(),
-            ),
-            Expanded(
-              flex: 2,
-              child: buildRightPanel(),
-            ),
-          ],
-        ),
-),
+                    child: mobile
+                        ? SingleChildScrollView(
+                            child: buildRightPanel(isMobile: true),
+                          )
+                        : Row(
+                            children: [
+                              const Expanded(flex: 3, child: LeftPanel()),
+                              Expanded(
+                                flex: 2,
+                                child: buildRightPanel(isMobile: false),
+                              ),
+                            ],
+                          ),
+                  ),
                 ),
               ),
             ),
@@ -89,18 +98,21 @@ class _ChangePasswordScreenState
     );
   }
 
-  Widget buildRightPanel() {
+  Widget buildRightPanel({required bool isMobile}) {
     return Container(
-      decoration: const BoxDecoration(
+      width: double.infinity,
+      decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.only(
-          topRight: Radius.circular(28),
-          bottomRight: Radius.circular(28),
-        ),
+        borderRadius: isMobile
+            ? BorderRadius.circular(22)
+            : const BorderRadius.only(
+                topRight: Radius.circular(28),
+                bottomRight: Radius.circular(28),
+              ),
       ),
-      padding: const EdgeInsets.symmetric(
-        horizontal: 40,
-        vertical: 35,
+      padding: EdgeInsets.symmetric(
+        horizontal: isMobile ? 22 : 40,
+        vertical: isMobile ? 30 : 35,
       ),
       child: SingleChildScrollView(
         child: Form(
@@ -108,10 +120,10 @@ class _ChangePasswordScreenState
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-
               const Center(
                 child: Text(
                   "Change Password",
+                  textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 32,
                     fontWeight: FontWeight.bold,
@@ -126,10 +138,7 @@ class _ChangePasswordScreenState
                 child: Text(
                   "Create a strong password for your account",
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: AppColors.grey,
-                  ),
+                  style: TextStyle(fontSize: 16, color: AppColors.grey),
                 ),
               ),
 
@@ -137,10 +146,7 @@ class _ChangePasswordScreenState
 
               const Text(
                 "Username",
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 16,
-                ),
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
               ),
 
               const SizedBox(height: 8),
@@ -151,10 +157,7 @@ class _ChangePasswordScreenState
 
               const Text(
                 "Current Password",
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 16,
-                ),
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
               ),
 
               const SizedBox(height: 8),
@@ -165,10 +168,7 @@ class _ChangePasswordScreenState
 
               const Text(
                 "New Password",
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 16,
-                ),
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
               ),
 
               const SizedBox(height: 8),
@@ -179,10 +179,7 @@ class _ChangePasswordScreenState
 
               const Text(
                 "Confirm Password",
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 16,
-                ),
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
               ),
 
               const SizedBox(height: 8),
@@ -212,9 +209,10 @@ class _ChangePasswordScreenState
               const SizedBox(height: 35),
 
               GlowButton(
-                title: "Change Password",
-                onPressed: onChangePasswordPressed,
+                title: _isLoading ? "Changing Password..." : "Change Password",
+                onPressed: _isLoading ? () {} : onChangePasswordPressed,
               ),
+
               const SizedBox(height: 20),
             ],
           ),
@@ -223,16 +221,27 @@ class _ChangePasswordScreenState
     );
   }
 
+  // ============================================================
+  // USERNAME
+  // ============================================================
+
   Widget buildUsernameField() {
     return TextFormField(
       controller: usernameController,
+
+      // Username backend/login se automatically aayega.
       readOnly: true,
+
       decoration: _inputDecoration(
         hint: "Username",
         icon: Icons.person_outline,
       ),
     );
   }
+
+  // ============================================================
+  // CURRENT PASSWORD
+  // ============================================================
 
   Widget buildCurrentPasswordField() {
     return buildPasswordField(
@@ -247,6 +256,10 @@ class _ChangePasswordScreenState
     );
   }
 
+  // ============================================================
+  // NEW PASSWORD
+  // ============================================================
+
   Widget buildNewPasswordField() {
     return buildPasswordField(
       controller: newPasswordController,
@@ -259,6 +272,10 @@ class _ChangePasswordScreenState
       },
     );
   }
+
+  // ============================================================
+  // CONFIRM PASSWORD
+  // ============================================================
 
   Widget buildConfirmPasswordField() {
     return buildPasswordField(
@@ -273,6 +290,10 @@ class _ChangePasswordScreenState
     );
   }
 
+  // ============================================================
+  // PASSWORD FIELD
+  // ============================================================
+
   Widget buildPasswordField({
     required TextEditingController controller,
     required String hint,
@@ -282,9 +303,40 @@ class _ChangePasswordScreenState
     return TextFormField(
       controller: controller,
       obscureText: obscure,
+
       validator: (value) {
         if (value == null || value.isEmpty) {
           return "This field is required";
+        }
+
+        if (controller == newPasswordController) {
+          if (value.length < 12) {
+            return "Password must contain at least 12 characters";
+          }
+
+          if (!RegExp(r'[A-Z]').hasMatch(value)) {
+            return "Add at least one uppercase letter";
+          }
+
+          if (!RegExp(r'[a-z]').hasMatch(value)) {
+            return "Add at least one lowercase letter";
+          }
+
+          if (!RegExp(r'[0-9]').hasMatch(value)) {
+            return "Add at least one number";
+          }
+
+          if (!RegExp(r'[!@#$%^&*(),.?":{}|<>]').hasMatch(value)) {
+            return "Add at least one special character";
+          }
+
+          if (value.contains(' ')) {
+            return "Password must not contain spaces";
+          }
+
+          if (value == currentPasswordController.text) {
+            return "New password must be different";
+          }
         }
 
         if (controller == confirmPasswordController &&
@@ -294,18 +346,21 @@ class _ChangePasswordScreenState
 
         return null;
       },
+
       decoration: _inputDecoration(
         hint: hint,
         icon: Icons.lock_outline,
         suffixIcon: IconButton(
-          icon: Icon(
-            obscure ? Icons.visibility_off : Icons.visibility,
-          ),
+          icon: Icon(obscure ? Icons.visibility_off : Icons.visibility),
           onPressed: onToggle,
         ),
       ),
     );
   }
+
+  // ============================================================
+  // INPUT DESIGN
+  // ============================================================
 
   InputDecoration _inputDecoration({
     required String hint,
@@ -314,42 +369,112 @@ class _ChangePasswordScreenState
   }) {
     return InputDecoration(
       hintText: hint,
-      prefixIcon: Icon(
-        icon,
-        color: AppColors.primary,
-      ),
+
+      prefixIcon: Icon(icon, color: AppColors.primary),
+
       suffixIcon: suffixIcon,
+
       filled: true,
       fillColor: Colors.grey.shade100,
+
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(15),
         borderSide: BorderSide.none,
       ),
+
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(15),
         borderSide: BorderSide.none,
       ),
+
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(15),
-        borderSide: const BorderSide(
-          color: AppColors.primary,
-          width: 2,
-        ),
+        borderSide: const BorderSide(color: AppColors.primary, width: 2),
+      ),
+
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(15),
+        borderSide: const BorderSide(color: Colors.red),
+      ),
+
+      focusedErrorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(15),
+        borderSide: const BorderSide(color: Colors.red, width: 2),
       ),
     );
   }
 
-  void onChangePasswordPressed() {
+  // ============================================================
+  // CHANGE PASSWORD
+  // ============================================================
+
+  Future<void> onChangePasswordPressed() async {
     if (!_formKey.currentState!.validate()) {
       return;
     }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          "Ready for Change Password API integration.",
-        ),
-      ),
-    );
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final result = await _changePasswordService.changePassword(
+        username: usernameController.text.trim(),
+        oldPassword: currentPasswordController.text,
+        newPassword: newPasswordController.text,
+        confirmPassword: confirmPasswordController.text,
+      );
+
+      if (!mounted) return;
+
+      if (result["success"] == true) {
+        final prefs = await SharedPreferences.getInstance();
+        final int effectiveRole = widget.roleId ?? prefs.getInt("role_id") ?? 1;
+
+        if (!mounted) return;
+
+        if (effectiveRole == 2) {
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const InvestigatorDashboardScreen(),
+            ),
+            (route) => false,
+          );
+        } else if (effectiveRole == 3) {
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const CyberExpertDashboardScreen(),
+            ),
+            (route) => false,
+          );
+        } else {
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: (_) => const DashboardScreen()),
+            (route) => false,
+          );
+        }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result["message"] ?? "Password change failed"),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Error: $e")));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
   }
 }

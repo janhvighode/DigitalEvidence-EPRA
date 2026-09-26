@@ -8,7 +8,6 @@ class BackgroundDesign extends StatelessWidget {
   Widget build(BuildContext context) {
     return Stack(
       children: [
-
         // Main Background
         Container(
           decoration: const BoxDecoration(
@@ -73,10 +72,7 @@ class BackgroundDesign extends StatelessWidget {
             height: 18,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              border: Border.all(
-                color: Colors.white70,
-                width: 2,
-              ),
+              border: Border.all(color: Colors.white70, width: 2),
             ),
           ),
         ),
@@ -85,11 +81,7 @@ class BackgroundDesign extends StatelessWidget {
         const Positioned(
           top: 180,
           left: 220,
-          child: Icon(
-            Icons.add,
-            color: Colors.white70,
-            size: 34,
-          ),
+          child: Icon(Icons.add, color: Colors.white70, size: 34),
         ),
 
         // Bottom Left Decorative Circle
@@ -101,10 +93,7 @@ class BackgroundDesign extends StatelessWidget {
             height: 14,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              border: Border.all(
-                color: Colors.white54,
-                width: 2,
-              ),
+              border: Border.all(color: Colors.white54, width: 2),
             ),
           ),
         ),

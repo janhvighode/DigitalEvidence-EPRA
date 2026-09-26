@@ -16,6 +16,12 @@ class Case(Base):
 
     investigator_id = Column(Integer, ForeignKey("users.id"))
 
+    cyber_expert_id = Column(
+    Integer,
+    ForeignKey("users.id"),
+    nullable=True
+)
+
     priority = Column(
         Enum("Low", "Medium", "High", "Critical"),
         default="Medium"

@@ -9,7 +9,9 @@ import '../../widgets/left_panel.dart';
 import 'login_screen.dart';
 
 class RegistrationSuccessScreen extends StatelessWidget {
-  const RegistrationSuccessScreen({super.key});
+  final String cyberCellName;
+
+  const RegistrationSuccessScreen({super.key, required this.cyberCellName});
 
   @override
   Widget build(BuildContext context) {
@@ -27,23 +29,18 @@ class RegistrationSuccessScreen extends StatelessWidget {
                 child: SizedBox(
                   width: Responsive.cardWidth(context),
                   child: GlassCard(
-  child: mobile
-      ? SingleChildScrollView(
-          child: buildRightPanel(context),
-        )
-      : Row(
-          children: [
-            const Expanded(
-              flex: 3,
-              child: LeftPanel(),
-            ),
-            Expanded(
-              flex: 2,
-              child: buildRightPanel(context),
-            ),
-          ],
-        ),
-),
+                    child: mobile
+                        ? SingleChildScrollView(child: buildRightPanel(context))
+                        : Row(
+                            children: [
+                              const Expanded(flex: 3, child: LeftPanel()),
+                              Expanded(
+                                flex: 2,
+                                child: buildRightPanel(context),
+                              ),
+                            ],
+                          ),
+                  ),
                 ),
               ),
             ),
@@ -62,10 +59,7 @@ class RegistrationSuccessScreen extends StatelessWidget {
           bottomRight: Radius.circular(28),
         ),
       ),
-      padding: const EdgeInsets.symmetric(
-        horizontal: 40,
-        vertical: 35,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 35),
       child: Center(
         child: SingleChildScrollView(
           child: Column(
@@ -73,11 +67,7 @@ class RegistrationSuccessScreen extends StatelessWidget {
               const CircleAvatar(
                 radius: 45,
                 backgroundColor: Color(0xFFE8F5E9),
-                child: Icon(
-                  Icons.check_circle,
-                  color: Colors.green,
-                  size: 60,
-                ),
+                child: Icon(Icons.check_circle, color: Colors.green, size: 60),
               ),
 
               const SizedBox(height: 30),
@@ -108,10 +98,10 @@ class RegistrationSuccessScreen extends StatelessWidget {
 
               const SizedBox(height: 20),
 
-              const Text(
-                "Sadar Cyber Cell\nNagpur, Maharashtra",
+              Text(
+                cyberCellName,
                 textAlign: TextAlign.center,
-                style: TextStyle(
+                style: const TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
                 ),

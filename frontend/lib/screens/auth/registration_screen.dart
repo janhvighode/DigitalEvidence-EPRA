@@ -7,9 +7,21 @@ import '../../widgets/glass_card.dart';
 import '../../widgets/glow_button.dart';
 import '../../widgets/left_panel.dart';
 import 'registration_success_screen.dart';
+import '../../services/register_service.dart';
 
 class RegistrationScreen extends StatefulWidget {
-  const RegistrationScreen({super.key});
+  final int roleId;
+  final int cityId;
+  final int cyberCellId;
+  final String cyberCellName;
+
+  const RegistrationScreen({
+    super.key,
+    required this.roleId,
+    required this.cityId,
+    required this.cyberCellId,
+    required this.cyberCellName,
+  });
 
   @override
   State<RegistrationScreen> createState() => _RegistrationScreenState();
@@ -18,14 +30,15 @@ class RegistrationScreen extends StatefulWidget {
 class _RegistrationScreenState extends State<RegistrationScreen> {
   final _formKey = GlobalKey<FormState>();
 
-  final TextEditingController fullNameController =
-      TextEditingController();
+  final TextEditingController fullNameController = TextEditingController();
 
-  final TextEditingController emailController =
-      TextEditingController();
+  final TextEditingController emailController = TextEditingController();
 
-  final TextEditingController phoneController =
-      TextEditingController();
+  final TextEditingController phoneController = TextEditingController();
+
+  final RegisterService _registerService = RegisterService();
+
+  bool _isLoading = false;
 
   @override
   void dispose() {
@@ -55,24 +68,16 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                     child: mobile
                         // MOBILE / ANDROID
                         ? SingleChildScrollView(
-                            child: buildRightPanel(
-                              mobile: true,
-                            ),
+                            child: buildRightPanel(mobile: true),
                           )
-
                         // DESKTOP / CHROME
                         : Row(
                             children: [
-                              const Expanded(
-                                flex: 3,
-                                child: LeftPanel(),
-                              ),
+                              const Expanded(flex: 3, child: LeftPanel()),
 
                               Expanded(
                                 flex: 2,
-                                child: buildRightPanel(
-                                  mobile: false,
-                                ),
+                                child: buildRightPanel(mobile: false),
                               ),
                             ],
                           ),
@@ -86,9 +91,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     );
   }
 
-  Widget buildRightPanel({
-    required bool mobile,
-  }) {
+  Widget buildRightPanel({required bool mobile}) {
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -133,10 +136,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
               child: Text(
                 "Complete your Profile",
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 16,
-                  color: AppColors.grey,
-                ),
+                style: TextStyle(fontSize: 16, color: AppColors.grey),
               ),
             ),
 
@@ -145,10 +145,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
             // FULL NAME
             const Text(
               "Full Name",
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
             ),
 
             const SizedBox(height: 8),
@@ -164,10 +161,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
             // EMAIL
             const Text(
               "Email Address",
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
             ),
 
             const SizedBox(height: 8),
@@ -184,10 +178,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
             // PHONE NUMBER
             const Text(
               "Phone Number",
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
             ),
 
             const SizedBox(height: 8),
@@ -202,7 +193,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
             const SizedBox(height: 40),
 
             GlowButton(
-              title: "Register",
+              title: _isLoading ? "Registering..." : "Register",
               onPressed: onRegisterPressed,
             ),
 
@@ -230,8 +221,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
 
         // EMAIL VALIDATION
         if (keyboardType == TextInputType.emailAddress) {
-          final emailRegex =
-              RegExp(r'^[\w\.-]+@([\w-]+\.)+[\w-]{2,4}$');
+          final emailRegex = RegExp(r'^[\w\.-]+@([\w-]+\.)+[\w-]{2,4}$');
 
           if (!emailRegex.hasMatch(value.trim())) {
             return "Enter a valid email";
@@ -250,24 +240,15 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
         return null;
       },
 
-      decoration: _inputDecoration(
-        hint,
-        icon,
-      ),
+      decoration: _inputDecoration(hint, icon),
     );
   }
 
-  InputDecoration _inputDecoration(
-    String hint,
-    IconData icon,
-  ) {
+  InputDecoration _inputDecoration(String hint, IconData icon) {
     return InputDecoration(
       hintText: hint,
 
-      prefixIcon: Icon(
-        icon,
-        color: AppColors.primary,
-      ),
+      prefixIcon: Icon(icon, color: AppColors.primary),
 
       filled: true,
       fillColor: Colors.grey.shade100,
@@ -284,40 +265,67 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
 
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(15),
-        borderSide: const BorderSide(
-          color: AppColors.primary,
-          width: 2,
-        ),
+        borderSide: const BorderSide(color: AppColors.primary, width: 2),
       ),
 
       errorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(15),
-        borderSide: const BorderSide(
-          color: Colors.red,
-        ),
+        borderSide: const BorderSide(color: Colors.red),
       ),
 
       focusedErrorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(15),
-        borderSide: const BorderSide(
-          color: Colors.red,
-          width: 2,
-        ),
+        borderSide: const BorderSide(color: Colors.red, width: 2),
       ),
     );
   }
 
-  void onRegisterPressed() {
+  Future<void> onRegisterPressed() async {
     if (!_formKey.currentState!.validate()) {
       return;
     }
 
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) =>
-            const RegistrationSuccessScreen(),
-      ),
-    );
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final result = await _registerService.registerUser(
+        fullName: fullNameController.text.trim(),
+        email: emailController.text.trim(),
+        phoneNumber: phoneController.text.trim(),
+        roleId: widget.roleId,
+        cityId: widget.cityId,
+        cyberCellId: widget.cyberCellId,
+      );
+
+      if (!mounted) return;
+
+      if (result["success"] == true) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) =>
+                RegistrationSuccessScreen(cyberCellName: widget.cyberCellName),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(result["message"] ?? "Registration failed")),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Error: $e")));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
   }
 }

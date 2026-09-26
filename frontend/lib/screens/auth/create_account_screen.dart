@@ -27,8 +27,11 @@ class CreateAccountScreen extends StatelessWidget {
                     width: Responsive.cardWidth(context),
                     child: GlassCard(
                       child: mobile
-                          // MOBILE / ANDROID
+                          // =================================================
+                          // MOBILE / ANDROID EMULATOR
+                          // =================================================
                           ? Column(
+                              mainAxisSize: MainAxisSize.min,
                               children: const [
                                 LeftPanel(),
 
@@ -37,23 +40,17 @@ class CreateAccountScreen extends StatelessWidget {
                                 RightPanel(),
                               ],
                             )
-
+                          // =================================================
                           // DESKTOP / CHROME
+                          // =================================================
                           : SizedBox(
                               height: 720,
                               child: Row(
-                                crossAxisAlignment:
-                                    CrossAxisAlignment.stretch,
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: const [
-                                  Expanded(
-                                    flex: 3,
-                                    child: LeftPanel(),
-                                  ),
+                                  Expanded(flex: 3, child: LeftPanel()),
 
-                                  Expanded(
-                                    flex: 2,
-                                    child: RightPanel(),
-                                  ),
+                                  Expanded(flex: 2, child: RightPanel()),
                                 ],
                               ),
                             ),

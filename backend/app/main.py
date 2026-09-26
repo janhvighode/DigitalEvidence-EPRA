@@ -36,6 +36,9 @@ from models.settings import Settings
 from routes.settings_routes import router as settings_router
 from models.system_statistics import SystemStatistics
 from routes.system_statistics_routes import router as statistics_router
+from routes.user_management_routes import router as user_management_router
+from routes.cyber_expert_dashboard import router as cyber_expert_dashboard_router
+from routes.cyber_expert_cases import (router as cyber_expert_cases_router)
 
 
 app = FastAPI(
@@ -44,18 +47,13 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5500",
-        "http://127.0.0.1:5500",
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:8080",
-        "http://127.0.0.1:8080",
-    ],
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
 
 # Create all database tables
 Base.metadata.create_all(bind=engine)
@@ -80,6 +78,9 @@ app.include_router(notification_router)
 app.include_router(profile_router)
 app.include_router(settings_router)
 app.include_router(statistics_router)
+app.include_router(user_management_router)
+app.include_router(cyber_expert_dashboard_router)
+app.include_router(cyber_expert_cases_router)
 
 @app.get("/")
 def home():

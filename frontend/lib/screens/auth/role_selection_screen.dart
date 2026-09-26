@@ -1,5 +1,10 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
 
+import '../../models/cyber_cell_model.dart';
+import '../../models/location_model.dart';
+import '../../models/role_model.dart';
+import '../../services/api_service.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/responsive.dart';
 import '../../widgets/background_design.dart';
@@ -12,25 +17,25 @@ class RoleSelectionScreen extends StatefulWidget {
   const RoleSelectionScreen({super.key});
 
   @override
-  State<RoleSelectionScreen> createState() =>
-      _RoleSelectionScreenState();
+  State<RoleSelectionScreen> createState() => _RoleSelectionScreenState();
 }
 
 class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
-  String? selectedRole;
+  int? selectedRoleId;
   String? selectedState;
-  String? selectedCity;
-  String? selectedLocation;
+  int? selectedCityId;
+  int? selectedLocationId;
+  int? selectedCyberCellId;
 
-  final List<String> roles = [
-    "Administrator",
-    "Investigator",
-    "Cyber Expert",
-  ];
+  final ApiService apiService = ApiService();
 
-  final List<String> states = [
-    "Maharashtra",
-  ];
+  List<RoleModel> roleList = [];
+
+  List<LocationModel> cityList = [];
+
+  List<CyberCellModel> cyberCellList = [];
+
+  final List<String> states = ["Maharashtra"];
 
   final Map<String, List<String>> locations = {
     "Nagpur": [
@@ -44,12 +49,14 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
       "Kothrud Cyber Cell",
       "Hadapsar Cyber Cell",
     ],
-    "Mumbai": [
-      "Andheri Cyber Cell",
-      "Bandra Cyber Cell",
-      "Dadar Cyber Cell",
-    ],
+    "Mumbai": ["Andheri Cyber Cell", "Bandra Cyber Cell", "Dadar Cyber Cell"],
   };
+  @override
+  void initState() {
+    super.initState();
+    loadRoles();
+    loadCities();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -61,9 +68,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
           const BackgroundDesign(),
 
           SafeArea(
-            child: mobile
-                ? _buildMobileLayout()
-                : _buildDesktopLayout(),
+            child: mobile ? _buildMobileLayout() : _buildDesktopLayout(),
           ),
         ],
       ),
@@ -75,11 +80,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
   Widget _buildMobileLayout() {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
-      child: Center(
-        child: GlassCard(
-          child: buildRightPanel(isMobile: true),
-        ),
-      ),
+      child: Center(child: GlassCard(child: buildRightPanel(isMobile: true))),
     );
   }
 
@@ -101,10 +102,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      const Expanded(
-                        flex: 3,
-                        child: LeftPanel(),
-                      ),
+                      const Expanded(flex: 3, child: LeftPanel()),
                       Expanded(
                         flex: 2,
                         child: buildRightPanel(isMobile: false),
@@ -161,10 +159,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
               child: Text(
                 "Select your role and location",
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: AppColors.grey,
-                  fontSize: 16,
-                ),
+                style: TextStyle(color: AppColors.grey, fontSize: 16),
               ),
             ),
 
@@ -207,10 +202,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
             const SizedBox(height: 32),
 
             // NEXT BUTTON
-            GlowButton(
-              title: "Next",
-              onPressed: onNextPressed,
-            ),
+            GlowButton(title: "Next", onPressed: onNextPressed),
 
             const SizedBox(height: 10),
           ],
@@ -224,32 +216,26 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
   Widget _buildLabel(String text) {
     return Text(
       text,
-      style: const TextStyle(
-        fontWeight: FontWeight.w600,
-        fontSize: 16,
-      ),
+      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
     );
   }
 
   // ================= ROLE DROPDOWN =================
 
   Widget buildRoleDropdown() {
-    return DropdownButtonFormField<String>(
-      value: selectedRole,
+    return DropdownButtonFormField<int>(
+      value: selectedRoleId,
       isExpanded: true,
       decoration: _inputDecoration("Select Role"),
-      items: roles.map((role) {
-        return DropdownMenuItem<String>(
-          value: role,
-          child: Text(
-            role,
-            overflow: TextOverflow.ellipsis,
-          ),
+      items: roleList.map((role) {
+        return DropdownMenuItem<int>(
+          value: role.id,
+          child: Text(role.roleName),
         );
       }).toList(),
-      onChanged: (value) {
+      onChanged: (int? value) {
         setState(() {
-          selectedRole = value;
+          selectedRoleId = value;
         });
       },
     );
@@ -265,10 +251,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
       items: states.map((state) {
         return DropdownMenuItem<String>(
           value: state,
-          child: Text(
-            state,
-            overflow: TextOverflow.ellipsis,
-          ),
+          child: Text(state, overflow: TextOverflow.ellipsis),
         );
       }).toList(),
       onChanged: (value) {
@@ -282,71 +265,178 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
   // ================= CITY DROPDOWN =================
 
   Widget buildCityDropdown() {
-    return DropdownButtonFormField<String>(
-      value: selectedCity,
-      isExpanded: true,
+    return DropdownButtonFormField<int>(
+      value: selectedCityId,
       decoration: _inputDecoration("Select City"),
-      items: locations.keys.map((city) {
-        return DropdownMenuItem<String>(
-          value: city,
-          child: Text(
-            city,
-            overflow: TextOverflow.ellipsis,
-          ),
+      isExpanded: true,
+
+      items: cityList.map((city) {
+        return DropdownMenuItem<int>(
+          value: city.id,
+          child: Text(city.cityName),
         );
       }).toList(),
-      onChanged: (value) {
-        setState(() {
-          selectedCity = value;
 
-          // Reset branch when city changes
-          selectedLocation = null;
+      onChanged: (value) async {
+        if (value == null) return;
+
+        setState(() {
+          selectedCityId = value;
+          selectedCyberCellId = null;
+          cyberCellList.clear();
         });
+
+        await loadCyberCells(value);
       },
     );
   }
-
   // ================= BRANCH DROPDOWN =================
 
   Widget buildBranchDropdown() {
-    final List<String> branches = selectedCity == null
-        ? <String>[]
-        : locations[selectedCity] ?? <String>[];
-
-    return DropdownButtonFormField<String>(
-      value: selectedLocation,
+    return DropdownButtonFormField<int>(
+      value: selectedCyberCellId,
       isExpanded: true,
       decoration: _inputDecoration("Select Branch"),
-      items: branches.map((branch) {
-        return DropdownMenuItem<String>(
-          value: branch,
-          child: Text(
-            branch,
-            overflow: TextOverflow.ellipsis,
-          ),
+
+      items: cyberCellList.map((cell) {
+        return DropdownMenuItem<int>(
+          value: cell.id,
+          child: Text(cell.cyberCellName, overflow: TextOverflow.ellipsis),
         );
       }).toList(),
-      onChanged: selectedCity == null
+      onChanged: selectedCityId == null
           ? null
           : (value) {
               setState(() {
-                selectedLocation = value;
+                selectedCyberCellId = value;
               });
             },
     );
   }
 
-  // ================= INPUT DESIGN =================
+  // ================= NEXT BUTTON =================
+  Future<void> loadRoles() async {
+    try {
+      print("Loading Roles...");
+
+      final response = await apiService.getRoles();
+
+      print("STATUS = ${response.statusCode}");
+      print("BODY = ${response.body}");
+
+      if (response.statusCode == 200) {
+        final List data = jsonDecode(response.body);
+
+        setState(() {
+          final Map<int, RoleModel> uniqueRoles = {};
+
+          for (final item in data) {
+            final role = RoleModel.fromJson(item);
+            uniqueRoles[role.id] = role;
+          }
+
+          roleList = uniqueRoles.values.toList();
+        });
+
+        print("ROLE COUNT = ${roleList.length}");
+      }
+    } catch (e) {
+      print("ERROR = $e");
+    }
+  }
+
+  Future<void> loadCities() async {
+    try {
+      final response = await apiService.getLocations();
+
+      if (response.statusCode == 200) {
+        final List data = jsonDecode(response.body);
+
+        setState(() {
+          final Map<int, LocationModel> uniqueCities = {};
+
+          for (final item in data) {
+            final city = LocationModel.fromJson(item);
+            uniqueCities[city.id] = city;
+          }
+
+          cityList = uniqueCities.values.toList();
+        });
+
+        print("Cities Loaded : ${cityList.length}");
+      } else {
+        print("City API Failed");
+      }
+    } catch (e) {
+      print(e);
+    }
+  }
+
+  Future<void> loadCyberCells(int cityId) async {
+    print("CITY ID = $cityId");
+    try {
+      print("Loading Cyber Cells...");
+
+      final response = await apiService.getCyberCells(cityId);
+
+      print("CYBER STATUS = ${response.statusCode}");
+      print("CYBER BODY = ${response.body}");
+
+      if (response.statusCode == 200) {
+        final List data = jsonDecode(response.body);
+
+        setState(() {
+          final Map<int, CyberCellModel> uniqueCells = {};
+
+          for (final item in data) {
+            final cell = CyberCellModel.fromJson(item);
+            uniqueCells[cell.id] = cell;
+          }
+
+          cyberCellList = uniqueCells.values.toList();
+        });
+
+        print("CYBER COUNT = ${cyberCellList.length}");
+      } else {
+        print("Failed to load Cyber Cells");
+      }
+    } catch (e) {
+      print("ERROR = $e");
+    }
+  }
+
+  void onNextPressed() {
+    if (selectedRoleId == null ||
+        selectedState == null ||
+        selectedCityId == null ||
+        selectedCyberCellId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please fill all the fields")),
+      );
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => RegistrationScreen(
+          roleId: selectedRoleId!,
+          cityId: selectedCityId!,
+          cyberCellId: selectedCyberCellId!,
+          cyberCellName: cyberCellList
+              .firstWhere((cell) => cell.id == selectedCyberCellId)
+              .cyberCellName,
+        ),
+      ),
+    );
+  }
 
   InputDecoration _inputDecoration(String hint) {
     return InputDecoration(
       hintText: hint,
       filled: true,
       fillColor: Colors.grey.shade100,
-      contentPadding: const EdgeInsets.symmetric(
-        horizontal: 16,
-        vertical: 16,
-      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(15),
         borderSide: BorderSide.none,
@@ -357,34 +447,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(15),
-        borderSide: const BorderSide(
-          color: AppColors.primary,
-          width: 1.5,
-        ),
-      ),
-    );
-  }
-
-  // ================= NEXT BUTTON =================
-
-  void onNextPressed() {
-    if (selectedRole == null ||
-        selectedState == null ||
-        selectedCity == null ||
-        selectedLocation == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Please fill all the fields"),
-        ),
-      );
-
-      return;
-    }
-
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => const RegistrationScreen(),
+        borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
       ),
     );
   }
