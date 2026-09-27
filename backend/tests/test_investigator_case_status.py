@@ -570,6 +570,65 @@ class TestInvestigatorCaseStatus(unittest.TestCase):
             verify_investigator(self.admin)
         self.assertEqual(ctx.exception.status_code, 403)
 
+    # --------------------------------------------------------------------------
+    # TEST 19: Author, Summary, Branch, Location, and Incident Date Resolution
+    # --------------------------------------------------------------------------
+    def test_19_case_details_author_summary_branch_location(self):
+        from routes.case_status_routes import fetch_case_status_board, fetch_case_status_detail
+
+        # Verify Board summary item resolution
+        board = fetch_case_status_board(
+            search=None, status=None, priority=None, case_health=None,
+            report_status=None, page=1, page_size=10, current_user=self.inv_a, db=self.db
+        )
+        case_item = next((c for c in board.cases if c.case_id == "CASE-6922"), None)
+        self.assertIsNotNone(case_item)
+
+        # 1. Author and Creator resolution from case.created_by -> User
+        self.assertEqual(case_item.author, "Admin Chief")
+        self.assertEqual(case_item.created_by, self.admin.id)
+        self.assertEqual(case_item.created_by_name, "Admin Chief")
+
+        # 2. Case Description and Summary
+        self.assertEqual(case_item.description, "Financial extortion and crypto malware")
+        self.assertEqual(case_item.summary, "Financial extortion and crypto malware")
+
+        # 3. Cyber Cell Branch
+        self.assertEqual(case_item.cyber_cell, "Headquarters Cell")
+        self.assertEqual(case_item.cyber_cell_name, "Headquarters Cell")
+
+        # 4. Location / City
+        self.assertEqual(case_item.location, "Cyber City")
+        self.assertEqual(case_item.city, "Cyber City")
+
+        # 5. Incident Date
+        self.assertIsNotNone(case_item.incident_date)
+        self.assertRegex(case_item.incident_date, r"^\d{4}-\d{2}-\d{2}$")
+
+        # Verify Detail response (both top-level and nested in case_information)
+        detail = fetch_case_status_detail(case_id="CASE-6922", current_user=self.inv_a, db=self.db)
+        
+        # Top-level (for Flutter {...caseItem, ...detailData} shallow merge)
+        self.assertEqual(detail.author, "Admin Chief")
+        self.assertEqual(detail.created_by, self.admin.id)
+        self.assertEqual(detail.description, "Financial extortion and crypto malware")
+        self.assertEqual(detail.summary, "Financial extortion and crypto malware")
+        self.assertEqual(detail.cyber_cell, "Headquarters Cell")
+        self.assertEqual(detail.cyber_cell_name, "Headquarters Cell")
+        self.assertEqual(detail.location, "Cyber City")
+        self.assertEqual(detail.city, "Cyber City")
+        self.assertIsNotNone(detail.incident_date)
+
+        # Nested case_information
+        self.assertEqual(detail.case_information.author, "Admin Chief")
+        self.assertEqual(detail.case_information.description, "Financial extortion and crypto malware")
+        self.assertEqual(detail.case_information.cyber_cell, "Headquarters Cell")
+        self.assertEqual(detail.case_information.location, "Cyber City")
+        self.assertEqual(detail.case_information.incident_date, detail.incident_date)
+
+        # 6. Verify historical author is NOT overwritten by current logged-in user
+        self.assertNotEqual(detail.author, self.inv_a.full_name)
+
 
 if __name__ == "__main__":
     unittest.main()

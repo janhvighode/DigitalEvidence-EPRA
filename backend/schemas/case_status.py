@@ -42,6 +42,18 @@ class CaseStatusSummaryItem(BaseModel):
     assigned_investigator: str
     assigned_cyber_expert: Optional[str] = None
 
+    # Case Details & Ownership
+    description: Optional[str] = None
+    summary: Optional[str] = None
+    author: Optional[str] = None
+    created_by: Optional[int] = None
+    created_by_name: Optional[str] = None
+    cyber_cell: Optional[str] = None
+    cyber_cell_name: Optional[str] = None
+    location: Optional[str] = None
+    city: Optional[str] = None
+    incident_date: Optional[str] = None
+
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     days_since_opened: int
@@ -119,12 +131,21 @@ class CaseInformationItem(BaseModel):
     case_id: str
     title: str
     description: Optional[str] = None
+    summary: Optional[str] = None
     crime_type: str
     priority: str
     current_status: str
     raw_status: str
     assigned_investigator: str
     assigned_cyber_expert: Optional[str] = None
+    author: Optional[str] = None
+    created_by: Optional[int] = None
+    created_by_name: Optional[str] = None
+    cyber_cell: Optional[str] = None
+    cyber_cell_name: Optional[str] = None
+    location: Optional[str] = None
+    city: Optional[str] = None
+    incident_date: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     days_since_opened: int
@@ -146,6 +167,18 @@ class CaseStatusDetailResponse(BaseModel):
     ready_for_next_stage: bool
     report_status: str
     status_history: List[StatusHistoryItem]
+
+    # Flattened top-level fields for direct frontend mergedData compatibility
+    description: Optional[str] = None
+    summary: Optional[str] = None
+    author: Optional[str] = None
+    created_by: Optional[int] = None
+    created_by_name: Optional[str] = None
+    cyber_cell: Optional[str] = None
+    cyber_cell_name: Optional[str] = None
+    location: Optional[str] = None
+    city: Optional[str] = None
+    incident_date: Optional[str] = None
 
 
 # ==============================================================================

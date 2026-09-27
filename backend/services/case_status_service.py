@@ -7,6 +7,8 @@ from sqlalchemy import or_, func
 
 from models.case import Case
 from models.user import User
+from models.cyber_cell import CyberCell
+from models.city import City
 from models.evidence import Evidence
 from models.evidence_hash import EvidenceHash
 from models.epra_result import EPRAResult
@@ -439,11 +441,67 @@ def build_case_status_summary_item(
 
     canonical_st = normalize_to_canonical(case.status)
 
+    # Resolve genuine creator / author from database
+    author = None
+    created_by_id = case.created_by
+    created_by_name = None
+    creator_cell_name = None
+    creator_city_name = None
+
+    if case.created_by:
+        creator = db.query(User).filter(User.id == case.created_by).first()
+        if creator:
+            author = creator.full_name
+            created_by_name = creator.full_name
+            if creator.cyber_cell_id:
+                c_cell = db.query(CyberCell).filter(CyberCell.id == creator.cyber_cell_id).first()
+                if c_cell:
+                    creator_cell_name = c_cell.cyber_cell_name
+                    if c_cell.city_id:
+                        c_city = db.query(City).filter(City.id == c_cell.city_id).first()
+                        if c_city:
+                            creator_city_name = c_city.city_name
+
+    # Resolve cyber cell branch and city location (fallback to investigator if creator has none)
+    cyber_cell_name = creator_cell_name
+    city_name = creator_city_name
+
+    if not cyber_cell_name and case.investigator_id:
+        inv_user = db.query(User).filter(User.id == case.investigator_id).first()
+        if inv_user and inv_user.cyber_cell_id:
+            i_cell = db.query(CyberCell).filter(CyberCell.id == inv_user.cyber_cell_id).first()
+            if i_cell:
+                cyber_cell_name = i_cell.cyber_cell_name
+                if not city_name and i_cell.city_id:
+                    i_city = db.query(City).filter(City.id == i_cell.city_id).first()
+                    if i_city:
+                        city_name = i_city.city_name
+
+    # Incident date: genuine creation timestamp formatted as YYYY-MM-DD
+    incident_date = None
+    if case.created_at:
+        incident_date = case.created_at.strftime("%Y-%m-%d")
+
+    # Crime type and description / summary
+    crime_type = case.crime_type or case.description or "General Cyber Crime"
+    description = case.description
+    summary = case.description or case.title
+
     return CaseStatusSummaryItem(
         id=case.id,
         case_id=case.case_id,
         case_title=case.title or f"Case #{case.case_id}",
-        crime_type=case.description or "General Cyber Crime",
+        crime_type=crime_type,
+        description=description,
+        summary=summary,
+        author=author,
+        created_by=created_by_id,
+        created_by_name=created_by_name,
+        cyber_cell=cyber_cell_name,
+        cyber_cell_name=cyber_cell_name,
+        location=city_name,
+        city=city_name,
+        incident_date=incident_date,
         priority=case.priority or "Medium",
         current_status=canonical_st,
         raw_status=case.status,
@@ -648,13 +706,22 @@ def get_investigator_case_status_detail(
         id=case.id,
         case_id=case.case_id,
         title=case.title,
-        description=case.description,
+        description=summary_item.description,
+        summary=summary_item.summary,
         crime_type=summary_item.crime_type,
         priority=summary_item.priority,
         current_status=summary_item.current_status,
         raw_status=case.status,
         assigned_investigator=summary_item.assigned_investigator,
         assigned_cyber_expert=summary_item.assigned_cyber_expert,
+        author=summary_item.author,
+        created_by=summary_item.created_by,
+        created_by_name=summary_item.created_by_name,
+        cyber_cell=summary_item.cyber_cell,
+        cyber_cell_name=summary_item.cyber_cell_name,
+        location=summary_item.location,
+        city=summary_item.city,
+        incident_date=summary_item.incident_date,
         created_at=case.created_at,
         updated_at=case.updated_at,
         days_since_opened=summary_item.days_since_opened,
@@ -671,7 +738,18 @@ def get_investigator_case_status_detail(
         next_recommended_stage=summary_item.next_stage_readiness.next_recommended_stage,
         ready_for_next_stage=summary_item.next_stage_readiness.ready_for_next_stage,
         report_status=summary_item.report_status,
-        status_history=status_history
+        status_history=status_history,
+        # Flattened top-level fields for direct frontend mergedData compatibility
+        description=summary_item.description,
+        summary=summary_item.summary,
+        author=summary_item.author,
+        created_by=summary_item.created_by,
+        created_by_name=summary_item.created_by_name,
+        cyber_cell=summary_item.cyber_cell,
+        cyber_cell_name=summary_item.cyber_cell_name,
+        location=summary_item.location,
+        city=summary_item.city,
+        incident_date=summary_item.incident_date
     )
 
 
