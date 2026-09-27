@@ -18,12 +18,15 @@ DATABASE_URL = (
     f"mysql+pymysql://{DB_USER}:{DATABASE_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 )
 
-# Create TiDB engine with SSL
+# Create TiDB engine with SSL and resilient connection settings
 engine = create_engine(
     DATABASE_URL,
-    echo=True,
+    echo=False,
+    pool_pre_ping=True,
+    pool_recycle=300,
     connect_args={
-        "ssl": {}
+        "ssl": {},
+        "connect_timeout": 30
     }
 )
 

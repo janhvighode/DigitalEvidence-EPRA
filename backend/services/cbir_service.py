@@ -26,6 +26,7 @@ from models.possible_entity import PossibleEntity, PossibleEntityEvidenceLink
 from models.evidence_link import EvidenceLink
 from services.notification_service import create_notification
 from services.hash_service import HashService
+from services.storage_service import StorageService
 
 from schemas.cbir import (
     CBIRImageEvidenceItem,
@@ -243,75 +244,109 @@ def fetch_case_evidence_dynamically(db: Session, case_id: str) -> List[Dict[str,
     clean_case_id = str(case_id).strip()
     evidence_by_id: Dict[str, Dict[str, Any]] = {}
 
+    case_row = None
+    try:
+        if clean_case_id.isdigit():
+            case_row = db.query(Case).filter(Case.id == int(clean_case_id)).first()
+        if not case_row:
+            case_row = db.query(Case).filter(Case.case_id == clean_case_id).first()
+    except Exception:
+        pass
+
+    target_case_fk = case_row.id if case_row else (int(clean_case_id) if clean_case_id.isdigit() else None)
+    case_code = str(case_row.case_id) if case_row else clean_case_id
+
     # 1. Fetch from EvidenceRecord table
     try:
-        db_records = db.query(EvidenceRecord).filter(
-            EvidenceRecord.case_id == clean_case_id
-        ).all()
+        rec_filter = (EvidenceRecord.case_id == clean_case_id) | (EvidenceRecord.case_id == case_code)
+        if target_case_fk is not None:
+            rec_filter = rec_filter | (EvidenceRecord.case_id == str(target_case_fk))
+        db_records = db.query(EvidenceRecord).filter(rec_filter).all()
         for r in db_records:
             ev_id = r.external_evidence_id or str(r.id)
+            resolved_p = StorageService.resolve_evidence_path(
+                raw_path=r.file_path,
+                case_id=target_case_fk or clean_case_id,
+                storage_key=getattr(r, "storage_key", None)
+            )
+            if not resolved_p and (r.stored_filename or r.original_filename):
+                resolved_p = StorageService.resolve_evidence_path(
+                    raw_path=r.stored_filename or r.original_filename,
+                    case_id=target_case_fk or clean_case_id
+                )
+            p_str = str(resolved_p) if (resolved_p and resolved_p.is_file()) else (r.file_path or "")
+            clean_fn = r.original_filename or r.stored_filename or ev_id
+
             evidence_by_id[ev_id] = {
                 "evidence_id": ev_id,
                 "numeric_id": r.id,
-                "case_id": r.case_id,
-                "original_filename": r.original_filename,
-                "filename": r.original_filename,
-                "file_name": r.original_filename,
-                "file_path": r.file_path,
-                "image_path": r.file_path,
-                "file_extension": r.file_extension,
+                "case_id": clean_case_id,
+                "original_filename": clean_fn,
+                "filename": clean_fn,
+                "file_name": clean_fn,
+                "stored_filename": r.stored_filename or clean_fn,
+                "file_path": p_str,
+                "image_path": p_str,
+                "file_extension": r.file_extension or Path(clean_fn).suffix,
                 "mime_type": r.mime_type,
                 "evidence_type": r.evidence_type or "Image",
                 "category": r.evidence_type or "General",
                 "sha256_hash": r.original_sha256 or r.current_sha256,
                 "created_at": r.uploaded_at.isoformat() if r.uploaded_at else None,
-                "description": r.notes or ""
+                "description": r.notes or "",
+                "preview_url": f"/cases/{clean_case_id}/evidence/{ev_id}/preview"
             }
     except Exception:
         pass
 
-    # 2. If no EvidenceRecord found, fetch from Evidence table
-    if not evidence_by_id:
-        try:
-            case_row = None
-            if clean_case_id.isdigit():
-                case_row = db.query(Case).filter(Case.id == int(clean_case_id)).first()
-            if not case_row:
-                case_row = db.query(Case).filter(Case.case_id == clean_case_id).first()
+    # 2. Fetch from Evidence table
+    try:
+        if target_case_fk is not None:
+            ev_rows = db.query(Evidence).filter(
+                Evidence.case_id == target_case_fk,
+                Evidence.status == "Active"
+            ).all()
 
-            target_case_fk = case_row.id if case_row else (int(clean_case_id) if clean_case_id.isdigit() else None)
-            if target_case_fk is not None:
-                ev_rows = db.query(Evidence).filter(
-                    Evidence.case_id == target_case_fk,
-                    Evidence.status == "Active"
-                ).all()
+            ev_ids = [e.id for e in ev_rows]
+            hash_rows = db.query(EvidenceHash).filter(EvidenceHash.evidence_id.in_(ev_ids)).all() if ev_ids else []
+            h_map = {h.evidence_id: (h.sha256_hash or h.current_hash) for h in hash_rows}
 
-                ev_ids = [e.id for e in ev_rows]
-                hash_rows = db.query(EvidenceHash).filter(EvidenceHash.evidence_id.in_(ev_ids)).all() if ev_ids else []
-                h_map = {h.evidence_id: (h.sha256_hash or h.current_hash) for h in hash_rows}
+            for ev in ev_rows:
+                ev_str_id = str(ev.evidence_id)
+                if ev_str_id not in evidence_by_id and str(ev.id) not in evidence_by_id:
+                    resolved_p = StorageService.resolve_evidence_path(
+                        raw_path=ev.file_path,
+                        case_id=target_case_fk
+                    )
+                    if not resolved_p and ev.file_name:
+                        resolved_p = StorageService.resolve_evidence_path(
+                            raw_path=ev.file_name,
+                            case_id=target_case_fk
+                        )
+                    p_str = str(resolved_p) if (resolved_p and resolved_p.is_file()) else (ev.file_path or "")
+                    clean_fn = ev.file_name or ev_str_id
 
-                for ev in ev_rows:
-                    ev_str_id = str(ev.evidence_id)
-                    if ev_str_id not in evidence_by_id and str(ev.id) not in evidence_by_id:
-                        evidence_by_id[ev_str_id] = {
-                            "evidence_id": ev_str_id,
-                            "numeric_id": ev.id,
-                            "case_id": clean_case_id,
-                            "original_filename": ev.file_name,
-                            "filename": ev.file_name,
-                            "file_name": ev.file_name,
-                            "file_path": ev.file_path,
-                            "image_path": ev.file_path,
-                            "file_extension": Path(ev.file_name).suffix,
-                            "mime_type": ev.file_type,
-                            "evidence_type": "Image" if "image" in (ev.file_type or "").lower() else "Document",
-                            "category": "Image" if "image" in (ev.file_type or "").lower() else "Document",
-                            "sha256_hash": h_map.get(ev.id),
-                            "created_at": str(ev.created_at) if ev.created_at else None,
-                            "description": ""
-                        }
-        except Exception:
-            pass
+                    evidence_by_id[ev_str_id] = {
+                        "evidence_id": ev_str_id,
+                        "numeric_id": ev.id,
+                        "case_id": clean_case_id,
+                        "original_filename": clean_fn,
+                        "filename": clean_fn,
+                        "file_name": clean_fn,
+                        "stored_filename": ev.file_name,
+                        "file_path": p_str,
+                        "image_path": p_str,
+                        "file_extension": Path(clean_fn).suffix,
+                        "mime_type": ev.file_type,
+                        "evidence_type": "Image" if "image" in (ev.file_type or "").lower() else "Document",
+                        "category": "Image" if "image" in (ev.file_type or "").lower() else "Document",
+                        "sha256_hash": h_map.get(ev.id),
+                        "created_at": str(ev.created_at) if ev.created_at else None,
+                        "description": "",
+                        "preview_url": f"/cases/{clean_case_id}/evidence/{ev_str_id}/preview"
+                    }
+    except Exception:
+        pass
 
     # 3. Fetch from CBIR feature_database (SQLite images.db)
     if not evidence_by_id:
@@ -364,6 +399,7 @@ def get_case_image_evidence(case_id: Any, db: Session) -> CBIRImagesListResponse
             category=ev.get("category"),
             filename=ev.get("file_name")
         ):
+            img_prev_url = ev.get("preview_url") or f"/cases/{clean_case_id}/evidence/{ev.get('evidence_id')}/preview"
             image_items.append(
                 CBIRImageEvidenceItem(
                     id=ev.get("numeric_id") or 0,
@@ -371,13 +407,14 @@ def get_case_image_evidence(case_id: Any, db: Session) -> CBIRImagesListResponse
                     file_name=ev.get("file_name", ""),
                     file_type=ev.get("mime_type") or "image/jpeg",
                     file_size=0,
-                    created_at=ev.get("created_at")
+                    created_at=ev.get("created_at"),
+                    preview_url=img_prev_url,
+                    image_url=img_prev_url
                 )
             )
 
-    c_int = int(clean_case_id) if clean_case_id.isdigit() else 0
     return CBIRImagesListResponse(
-        case_id=c_int,
+        case_id=clean_case_id if not clean_case_id.isdigit() else int(clean_case_id),
         total_images=len(image_items),
         images=image_items
     )
@@ -510,6 +547,14 @@ def run_cbir_comparison(
     # 7. Extract or resolve query SHA-256 and visual features
     query_sha = query_item.get("sha256_hash")
     query_path = query_item.get("file_path") or query_item.get("image_path")
+    if not query_path or not os.path.isfile(query_path):
+        resolved_qp = StorageService.resolve_evidence_path(
+            raw_path=query_path or query_item.get("stored_filename") or query_item.get("original_filename"),
+            case_id=clean_case_id
+        )
+        if resolved_qp and resolved_qp.is_file():
+            query_path = str(resolved_qp)
+
     if not query_sha and query_path and os.path.isfile(query_path):
         try:
             query_sha = HashService.generate_sha256(query_path)
@@ -530,6 +575,13 @@ def run_cbir_comparison(
         cand_id = str(cand.get("evidence_id"))
         cand_fn = cand.get("original_filename") or cand.get("file_name") or cand_id
         cand_path = cand.get("file_path") or cand.get("image_path")
+        if not cand_path or not os.path.isfile(cand_path):
+            resolved_cp = StorageService.resolve_evidence_path(
+                raw_path=cand_path or cand.get("stored_filename") or cand.get("original_filename"),
+                case_id=clean_case_id
+            )
+            if resolved_cp and resolved_cp.is_file():
+                cand_path = str(resolved_cp)
 
         cand_sha = cand.get("sha256_hash")
         if not cand_sha and cand_path and os.path.isfile(cand_path):
@@ -592,6 +644,7 @@ def run_cbir_comparison(
             else:
                 reason = "No significant visual match found."
 
+        cand_prev_url = cand.get("preview_url") or f"/cases/{clean_case_id}/evidence/{cand_id}/preview"
         res_dict = {
             "candidate_db_id": cand.get("numeric_id"),
             "case_id": clean_case_id,
@@ -613,7 +666,13 @@ def run_cbir_comparison(
             "recommendation": rec,
             "investigation_recommendation": rec,
             "reason": reason,
-            "signals": signals
+            "signals": signals,
+            "preview_url": cand_prev_url,
+            "image_url": cand_prev_url,
+            "image_path": cand_path or "",
+            "score": round(float(vis_score), 4),
+            "relevance_score": round(float(sem_score), 2),
+            "relevance_score_display": f"{vis_score * 100:.1f}%"
         }
         raw_results.append(res_dict)
 
@@ -621,6 +680,15 @@ def run_cbir_comparison(
         try:
             card_data = format_investigator_image_result(res_dict)
             if card_data:
+                card_data["preview_url"] = cand_prev_url
+                card_data["image_url"] = cand_prev_url
+                if isinstance(card_data.get("compared_evidence"), dict):
+                    card_data["compared_evidence"]["preview_url"] = cand_prev_url
+                    card_data["compared_evidence"]["image_url"] = cand_prev_url
+                if isinstance(card_data.get("query_image"), dict):
+                    q_url = f"/cases/{clean_case_id}/evidence/{actual_query_ev_id}/preview"
+                    card_data["query_image"]["preview_url"] = q_url
+                    card_data["query_image"]["image_url"] = q_url
                 investigator_cards.append(card_data)
         except Exception:
             pass
@@ -635,8 +703,26 @@ def run_cbir_comparison(
 
     # 10. Persist results into TiDB cbir_results table where feasible
     try:
+        case_obj = None
+        if clean_case_id.isdigit():
+            case_obj = db.query(Case).filter(Case.id == int(clean_case_id)).first()
+        if not case_obj:
+            case_obj = db.query(Case).filter(Case.case_id == clean_case_id).first()
+
+        c_num = case_obj.id if case_obj else (int(clean_case_id) if clean_case_id.isdigit() else None)
         q_num = query_item.get("numeric_id")
-        c_num = int(clean_case_id) if clean_case_id.isdigit() else None
+        if not q_num and c_num:
+            q_ev = db.query(Evidence).filter(Evidence.case_id == c_num, Evidence.evidence_id == actual_query_ev_id).first()
+            if q_ev:
+                q_num = q_ev.id
+            else:
+                q_rec = db.query(EvidenceRecord).filter(
+                    (EvidenceRecord.case_id == str(c_num)) | (EvidenceRecord.case_id == clean_case_id),
+                    EvidenceRecord.external_evidence_id == actual_query_ev_id
+                ).first()
+                if q_rec:
+                    q_num = q_rec.id
+
         if c_num and q_num:
             db.query(CBIRResult).filter(
                 CBIRResult.case_id == c_num,
@@ -644,11 +730,24 @@ def run_cbir_comparison(
             ).delete(synchronize_session=False)
 
             for item in raw_results:
-                if item.get("candidate_db_id"):
+                cand_db_id = item.get("candidate_db_id")
+                if not cand_db_id:
+                    cand_ev = db.query(Evidence).filter(Evidence.case_id == c_num, Evidence.evidence_id == item["candidate_evidence_id"]).first()
+                    if cand_ev:
+                        cand_db_id = cand_ev.id
+                    else:
+                        cand_rec = db.query(EvidenceRecord).filter(
+                            (EvidenceRecord.case_id == str(c_num)) | (EvidenceRecord.case_id == clean_case_id),
+                            EvidenceRecord.external_evidence_id == item["candidate_evidence_id"]
+                        ).first()
+                        if cand_rec:
+                            cand_db_id = cand_rec.id
+
+                if cand_db_id:
                     db_record = CBIRResult(
                         case_id=c_num,
                         query_evidence_id=q_num,
-                        candidate_evidence_id=item["candidate_db_id"],
+                        candidate_evidence_id=cand_db_id,
                         visual_similarity_score=item["visual_similarity_score"],
                         semantic_score=item["semantic_score"],
                         edge_similarity=item["edge_similarity"],
@@ -672,14 +771,14 @@ def run_cbir_comparison(
                 for item in raw_results
             )
             if has_meaningful_match:
-                case_obj = db.query(Case).filter((Case.id == c_num) | (Case.case_id == str(clean_case_id))).first()
-                if case_obj and case_obj.cyber_expert_id:
+                case_notif = case_obj or db.query(Case).filter((Case.id == c_num) | (Case.case_id == str(clean_case_id))).first()
+                if case_notif and case_notif.cyber_expert_id:
                     create_notification(
                         db=db,
                         title="CBIR Match Alert",
-                        message=f"Meaningful visual match identified in case {case_obj.case_id} during CBIR analysis.",
+                        message=f"Meaningful visual match identified in case {case_notif.case_id} during CBIR analysis.",
                         notification_type="CBIR_MATCH_ALERT",
-                        user_id=case_obj.cyber_expert_id,
+                        user_id=case_notif.cyber_expert_id,
                         cyber_cell_id=None
                     )
     except Exception:
@@ -719,7 +818,13 @@ def run_cbir_comparison(
             recommendation=r["recommendation"],
             investigation_recommendation=r["investigation_recommendation"],
             reason=r["reason"],
-            rank=r["rank"]
+            rank=r["rank"],
+            preview_url=r.get("preview_url") or f"/cases/{clean_case_id}/evidence/{r['candidate_evidence_id']}/preview",
+            image_url=r.get("preview_url") or f"/cases/{clean_case_id}/evidence/{r['candidate_evidence_id']}/preview",
+            image_path=r.get("image_path") or "",
+            score=r["visual_similarity_score"],
+            relevance_score=r["semantic_score"],
+            relevance_score_display=f"{r['visual_similarity_score'] * 100:.1f}%"
         )
         for r in sliced_results
     ]
@@ -769,7 +874,16 @@ def ensure_case_evidence_synchronized(db: Session, clean_case_id: str) -> None:
         ).all()
         for ev in ev_rows:
             ev_id = str(ev.evidence_id)
-            img_p = ev.file_path or f"uploads/{ev.file_name}"
+            resolved_p = StorageService.resolve_evidence_path(
+                raw_path=ev.file_path,
+                case_id=case_row.id
+            )
+            if not resolved_p and ev.file_name:
+                resolved_p = StorageService.resolve_evidence_path(
+                    raw_path=ev.file_name,
+                    case_id=case_row.id
+                )
+            img_p = str(resolved_p) if (resolved_p and resolved_p.is_file()) else (ev.file_path or f"uploads/{ev.file_name}")
             insert_feature(
                 case_id=str(clean_case_id),
                 evidence_id=ev_id,
@@ -835,12 +949,24 @@ def ensure_case_evidence_synchronized(db: Session, clean_case_id: str) -> None:
 
     # 4. Sync from EvidenceRecord table (vault records)
     try:
-        rec_rows = db.query(EvidenceRecord).filter(
-            EvidenceRecord.case_id == str(clean_case_id)
-        ).all()
+        case_target_id = case_row.id if case_row else (int(clean_case_id) if clean_case_id.isdigit() else None)
+        rec_filter = (EvidenceRecord.case_id == str(clean_case_id))
+        if case_target_id is not None:
+            rec_filter = rec_filter | (EvidenceRecord.case_id == str(case_target_id))
+        rec_rows = db.query(EvidenceRecord).filter(rec_filter).all()
         for r in rec_rows:
             ev_id = str(r.external_evidence_id or r.id)
-            img_p = r.file_path or f"uploads/{r.stored_filename or r.original_filename}"
+            resolved_p = StorageService.resolve_evidence_path(
+                raw_path=r.file_path,
+                case_id=case_target_id or clean_case_id,
+                storage_key=getattr(r, "storage_key", None)
+            )
+            if not resolved_p and (r.stored_filename or r.original_filename):
+                resolved_p = StorageService.resolve_evidence_path(
+                    raw_path=r.stored_filename or r.original_filename,
+                    case_id=case_target_id or clean_case_id
+                )
+            img_p = str(resolved_p) if (resolved_p and resolved_p.is_file()) else (r.file_path or f"uploads/{r.stored_filename or r.original_filename}")
             insert_feature(
                 case_id=str(clean_case_id),
                 evidence_id=ev_id,
@@ -915,6 +1041,17 @@ def search_case_text_service(
             if res_list else f"No relevant evidence found for '{q_str}' in {clean_case_id}."
         )
 
+    for item in res_list:
+        ev_id = item.get("evidence_id")
+        if ev_id:
+            p_url = item.get("preview_url") or f"/cases/{clean_case_id}/evidence/{ev_id}/preview"
+            item["preview_url"] = p_url
+            item["image_url"] = p_url
+            if item.get("semantic_score") is None:
+                item["semantic_score"] = round(float(item.get("relevance_score") or item.get("overall_relevance_score") or 0.0), 2)
+            if item.get("score") is None:
+                item["score"] = round(float(item.get("relevance_score") or item.get("overall_relevance_score") or 0.0), 4)
+
     return CaseSearchResponse(
         status=status_str,
         message=msg,
@@ -979,6 +1116,17 @@ def search_case_context_service(
             f"Found {len(res_list)} contextually related items in case '{clean_case_id}'."
             if res_list else f"No related contextual evidence found for '{q_str}' in {clean_case_id}."
         )
+
+    for item in res_list:
+        ev_id = item.get("evidence_id")
+        if ev_id:
+            p_url = item.get("preview_url") or f"/cases/{clean_case_id}/evidence/{ev_id}/preview"
+            item["preview_url"] = p_url
+            item["image_url"] = p_url
+            if item.get("semantic_score") is None:
+                item["semantic_score"] = round(float(item.get("relevance_score") or item.get("overall_relevance_score") or 0.0), 2)
+            if item.get("score") is None:
+                item["score"] = round(float(item.get("relevance_score") or item.get("overall_relevance_score") or 0.0), 4)
 
     return CaseSearchResponse(
         status=status_str,
@@ -1168,6 +1316,12 @@ def search_case_unified_service(
             color_score = None
             gray_score = None
 
+        sem_val = item.get("semantic_score")
+        if sem_val is None:
+            sem_val = round(score, 2)
+
+        cand_prev_url = db_meta.get("preview_url") or f"/cases/{clean_case_id}/evidence/{ev_id}/preview"
+
         norm_item = {
             "case_id": clean_case_id,
             "evidence_id": ev_id,
@@ -1183,6 +1337,7 @@ def search_case_unified_service(
             "final_score": round(score, 4),
             "overall_relevance_score": round(score, 4),
             "relevance_score_display": f"{score * 100:.1f}%",
+            "semantic_score": round(float(sem_val), 2),
             "match_type": matched_field,
             "match_source": match_source,
             "matched_field": matched_field,
@@ -1202,6 +1357,8 @@ def search_case_unified_service(
             "orb_similarity": orb_score,
             "color_similarity": color_score,
             "grayscale_similarity": gray_score,
+            "preview_url": cand_prev_url,
+            "image_url": cand_prev_url,
             "image": db_meta.get("file_path") or item.get("image"),
             "image_path": db_meta.get("file_path") or item.get("image_path")
         }
@@ -1217,6 +1374,14 @@ def search_case_unified_service(
                 existing_item["final_score"] = norm_item["final_score"]
                 existing_item["overall_relevance_score"] = norm_item["overall_relevance_score"]
                 existing_item["relevance_score_display"] = norm_item["relevance_score_display"]
+                existing_item["semantic_score"] = norm_item["semantic_score"]
+            # Preserve visual scores if new item has them and existing does not
+            if norm_item.get("visual_similarity_score") is not None and existing_item.get("visual_similarity_score") is None:
+                existing_item["visual_similarity_score"] = norm_item["visual_similarity_score"]
+                existing_item["edge_similarity"] = norm_item["edge_similarity"]
+                existing_item["orb_similarity"] = norm_item["orb_similarity"]
+                existing_item["color_similarity"] = norm_item["color_similarity"]
+                existing_item["grayscale_similarity"] = norm_item["grayscale_similarity"]
             existing_item["match_source"] = f"{existing_item['match_source']} + {norm_item['match_source']}"
             existing_item["matched_terms"] = list(dict.fromkeys(existing_item.get("matched_terms", []) + norm_item.get("matched_terms", [])))
             existing_item["matched_fields"] = list(dict.fromkeys(existing_item.get("matched_fields", []) + norm_item.get("matched_fields", [])))
@@ -1251,11 +1416,29 @@ def get_stored_cbir_results(
     Retrieve previously persisted CBIR comparison results from TiDB Cloud.
     """
     clean_case_id = str(case_id).strip()
-    c_int = int(clean_case_id) if clean_case_id.isdigit() else 0
+    case_row = None
+    if clean_case_id.isdigit():
+        case_row = db.query(Case).filter(Case.id == int(clean_case_id)).first()
+    if not case_row:
+        case_row = db.query(Case).filter(Case.case_id == clean_case_id).first()
+
+    c_int = case_row.id if case_row else (int(clean_case_id) if clean_case_id.isdigit() else 0)
 
     query = db.query(CBIRResult).filter(CBIRResult.case_id == c_int)
     if query_evidence_id:
-        q_int = int(query_evidence_id) if str(query_evidence_id).isdigit() else None
+        q_str = str(query_evidence_id).strip()
+        q_int = int(q_str) if q_str.isdigit() else None
+        if not q_int and case_row:
+            q_ev = db.query(Evidence).filter(Evidence.case_id == case_row.id, Evidence.evidence_id == q_str).first()
+            if q_ev:
+                q_int = q_ev.id
+            else:
+                q_rec = db.query(EvidenceRecord).filter(
+                    (EvidenceRecord.case_id == str(case_row.id)) | (EvidenceRecord.case_id == clean_case_id),
+                    EvidenceRecord.external_evidence_id == q_str
+                ).first()
+                if q_rec:
+                    q_int = q_rec.id
         if q_int:
             query = query.filter(CBIRResult.query_evidence_id == q_int)
 
@@ -1277,18 +1460,29 @@ def get_stored_cbir_results(
         )
 
     ev_ids = list({r.query_evidence_id for r in db_rows} | {r.candidate_evidence_id for r in db_rows})
-    ev_map = {ev.id: ev for ev in db.query(Evidence).filter(Evidence.id.in_(ev_ids)).all()}
+    ev_map = {ev.id: {"evidence_id": str(ev.evidence_id), "file_name": ev.file_name} for ev in db.query(Evidence).filter(Evidence.id.in_(ev_ids)).all()}
+    try:
+        rec_rows = db.query(EvidenceRecord).filter(EvidenceRecord.id.in_(ev_ids)).all()
+        for rec in rec_rows:
+            if rec.id not in ev_map:
+                ev_map[rec.id] = {
+                    "evidence_id": rec.external_evidence_id or str(rec.id),
+                    "file_name": rec.original_filename or rec.stored_filename or ""
+                }
+    except Exception:
+        pass
 
     q_ev_id = db_rows[0].query_evidence_id
     q_ev = ev_map.get(q_ev_id)
-    q_str = str(q_ev.evidence_id) if q_ev else str(q_ev_id)
-    q_fn = q_ev.file_name if q_ev else ""
+    q_str = q_ev["evidence_id"] if q_ev else str(q_ev_id)
+    q_fn = q_ev["file_name"] if q_ev else ""
 
     results = []
     for r in db_rows:
         c_ev = ev_map.get(r.candidate_evidence_id)
-        c_str = str(c_ev.evidence_id) if c_ev else str(r.candidate_evidence_id)
-        c_fn = c_ev.file_name if c_ev else ""
+        c_str = c_ev["evidence_id"] if c_ev else str(r.candidate_evidence_id)
+        c_fn = c_ev["file_name"] if c_ev else ""
+        c_prev_url = f"/cases/{clean_case_id}/evidence/{c_str}/preview"
 
         results.append(
             CBIRCandidateResult(
@@ -1311,7 +1505,12 @@ def get_stored_cbir_results(
                 recommendation=r.recommendation,
                 investigation_recommendation=r.recommendation,
                 reason=r.reason or "",
-                rank=r.rank
+                rank=r.rank,
+                preview_url=c_prev_url,
+                image_url=c_prev_url,
+                score=r.visual_similarity_score,
+                relevance_score=r.semantic_score,
+                relevance_score_display=f"{(r.visual_similarity_score or 0.0) * 100:.1f}%"
             )
         )
 
@@ -1342,15 +1541,56 @@ def get_cbir_candidate_detail(
     Get detailed breakdown for a single candidate image for the View Result Details modal.
     """
     clean_case_id = str(case_id).strip()
-    c_int = int(clean_case_id) if clean_case_id.isdigit() else 0
-    cand_int = int(candidate_evidence_id) if str(candidate_evidence_id).isdigit() else 0
+    case_row = None
+    if clean_case_id.isdigit():
+        case_row = db.query(Case).filter(Case.id == int(clean_case_id)).first()
+    if not case_row:
+        case_row = db.query(Case).filter(Case.case_id == clean_case_id).first()
+
+    c_int = case_row.id if case_row else (int(clean_case_id) if clean_case_id.isdigit() else 0)
+
+    cand_str = str(candidate_evidence_id).strip()
+    cand_int = int(cand_str) if cand_str.isdigit() else None
+    if not cand_int and case_row:
+        cand_ev = db.query(Evidence).filter(Evidence.case_id == case_row.id, Evidence.evidence_id == cand_str).first()
+        if cand_ev:
+            cand_int = cand_ev.id
+        else:
+            try:
+                cand_rec = db.query(EvidenceRecord).filter(
+                    (EvidenceRecord.case_id == str(case_row.id)) | (EvidenceRecord.case_id == clean_case_id),
+                    EvidenceRecord.external_evidence_id == cand_str
+                ).first()
+                if cand_rec:
+                    cand_int = cand_rec.id
+            except Exception:
+                pass
+
+    cand_int = cand_int or 0
 
     query = db.query(CBIRResult).filter(
         CBIRResult.case_id == c_int,
         CBIRResult.candidate_evidence_id == cand_int
     )
-    if query_evidence_id and str(query_evidence_id).isdigit():
-        query = query.filter(CBIRResult.query_evidence_id == int(query_evidence_id))
+    if query_evidence_id:
+        q_str = str(query_evidence_id).strip()
+        q_int = int(q_str) if q_str.isdigit() else None
+        if not q_int and case_row:
+            q_ev = db.query(Evidence).filter(Evidence.case_id == case_row.id, Evidence.evidence_id == q_str).first()
+            if q_ev:
+                q_int = q_ev.id
+            else:
+                try:
+                    q_rec = db.query(EvidenceRecord).filter(
+                        (EvidenceRecord.case_id == str(case_row.id)) | (EvidenceRecord.case_id == clean_case_id),
+                        EvidenceRecord.external_evidence_id == q_str
+                    ).first()
+                    if q_rec:
+                        q_int = q_rec.id
+                except Exception:
+                    pass
+        if q_int:
+            query = query.filter(CBIRResult.query_evidence_id == q_int)
 
     record = query.first()
     if not record:
@@ -1360,14 +1600,38 @@ def get_cbir_candidate_detail(
         )
 
     q_ev = db.query(Evidence).filter(Evidence.id == record.query_evidence_id).first()
+    q_str = str(q_ev.evidence_id) if q_ev else None
+    q_fn = q_ev.file_name if q_ev else None
+    if not q_str:
+        try:
+            q_rec = db.query(EvidenceRecord).filter(EvidenceRecord.id == record.query_evidence_id).first()
+            if q_rec:
+                q_str = q_rec.external_evidence_id or str(q_rec.id)
+                q_fn = q_rec.original_filename or q_rec.stored_filename
+        except Exception:
+            pass
+
     c_ev = db.query(Evidence).filter(Evidence.id == record.candidate_evidence_id).first()
+    c_str = str(c_ev.evidence_id) if c_ev else None
+    c_fn = c_ev.file_name if c_ev else None
+    if not c_str:
+        try:
+            c_rec = db.query(EvidenceRecord).filter(EvidenceRecord.id == record.candidate_evidence_id).first()
+            if c_rec:
+                c_str = c_rec.external_evidence_id or str(c_rec.id)
+                c_fn = c_rec.original_filename or c_rec.stored_filename
+        except Exception:
+            pass
+
+    c_str = c_str or str(record.candidate_evidence_id)
+    c_prev_url = f"/cases/{clean_case_id}/evidence/{c_str}/preview"
 
     cand_result = CBIRCandidateResult(
         case_id=clean_case_id,
-        query_evidence_id=str(q_ev.evidence_id) if q_ev else str(record.query_evidence_id),
-        query_filename=q_ev.file_name if q_ev else "",
-        candidate_evidence_id=str(c_ev.evidence_id) if c_ev else str(record.candidate_evidence_id),
-        candidate_filename=c_ev.file_name if c_ev else "",
+        query_evidence_id=q_str or str(record.query_evidence_id),
+        query_filename=q_fn or "",
+        candidate_evidence_id=c_str,
+        candidate_filename=c_fn or "",
         edge_similarity=record.edge_similarity,
         orb_similarity=record.orb_similarity,
         color_similarity=record.color_similarity,
@@ -1382,7 +1646,12 @@ def get_cbir_candidate_detail(
         recommendation=record.recommendation,
         investigation_recommendation=record.recommendation,
         reason=record.reason or "",
-        rank=record.rank
+        rank=record.rank,
+        preview_url=c_prev_url,
+        image_url=c_prev_url,
+        score=record.visual_similarity_score,
+        relevance_score=record.semantic_score,
+        relevance_score_display=f"{(record.visual_similarity_score or 0.0) * 100:.1f}%"
     )
 
     signals = {
@@ -1391,6 +1660,7 @@ def get_cbir_candidate_detail(
         "color_similarity": record.color_similarity,
         "grayscale_similarity": record.grayscale_similarity,
         "visual_similarity_score": record.visual_similarity_score,
+        "semantic_score": record.semantic_score,
         "sha256_exact_duplicate": record.sha256_exact_duplicate
     }
 

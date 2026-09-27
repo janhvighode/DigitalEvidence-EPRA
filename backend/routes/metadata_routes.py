@@ -197,16 +197,24 @@ def preview_evidence_file(
     """
     Controlled image preview stream.
     """
-    case = authorize_cyber_expert_case_access(db, case_id, current_user)
+    import mimetypes
+    from services.evidence_service import authorize_case_access, get_case_evidence_download
 
-    adapter = get_backend_adapter()
-    ev_item = adapter.get_evidence(evidence_id, case_id=str(case.case_id))
-    if not ev_item:
-        raise HTTPException(status_code=404, detail=f"Evidence #{evidence_id} not found in this case.")
+    case = authorize_case_access(db, case_id, current_user)
+    file_path, file_name, media_type = get_case_evidence_download(
+        db=db,
+        case_identifier=case_id,
+        evidence_identifier=evidence_id,
+        current_user=current_user
+    )
 
-    file_path, file_name, mime_type = StorageService.get_evidence_binary(ev_item, case)
+    safe_filename = Path(file_name).name
+    guessed_type, _ = mimetypes.guess_type(safe_filename)
+    content_type = media_type or guessed_type or "image/jpeg"
 
     return FileResponse(
         path=str(file_path),
-        media_type=mime_type or "image/jpeg"
+        filename=safe_filename,
+        media_type=content_type,
+        headers={"Content-Disposition": f'inline; filename="{safe_filename}"'}
     )

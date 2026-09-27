@@ -19,11 +19,22 @@ class HashVerificationTab extends StatefulWidget {
 class _HashVerificationTabState extends State<HashVerificationTab> {
   final ApiService _apiService = ApiService();
 
-  static const Color navy = Color(0xFF071B33);
+  Color get navy => Theme.of(context).brightness == Brightness.dark
+      ? Colors.white
+      : const Color(0xFF071B33);
   static const Color royalBlue = Color(0xFF0875F5);
-  static const Color mutedText = Color(0xFF64748B);
-  static const Color cardBg = Colors.white;
-  static const Color borderColor = Color(0xFFE2E8F0);
+  Color get mutedText => Theme.of(context).brightness == Brightness.dark
+      ? const Color(0xFF94A3B8)
+      : const Color(0xFF64748B);
+  Color get cardBg => Theme.of(context).brightness == Brightness.dark
+      ? const Color(0xFF16223F)
+      : Colors.white;
+  Color get borderColor => Theme.of(context).brightness == Brightness.dark
+      ? const Color(0xFF253457)
+      : const Color(0xFFE2E8F0);
+  Color get selectedRowBg => Theme.of(context).brightness == Brightness.dark
+      ? const Color(0xFF1E2D4A)
+      : const Color(0xFFD4E6FA);
 
   static const Color statusGreen = Color(0xFF10B981);
   static const Color statusRed = Color(0xFFEF4444);
@@ -52,10 +63,7 @@ class _HashVerificationTabState extends State<HashVerificationTab> {
   }
 
   Future<void> _loadData() async {
-    await Future.wait([
-      _loadSummary(),
-      _loadEvidenceList(),
-    ]);
+    await Future.wait([_loadSummary(), _loadEvidenceList()]);
   }
 
   Future<void> _loadSummary() async {
@@ -151,8 +159,9 @@ class _HashVerificationTabState extends State<HashVerificationTab> {
         final decoded = jsonDecode(response.body);
         if (mounted) {
           setState(() {
-            selectedEvidenceDetails =
-                decoded is Map<String, dynamic> ? decoded : null;
+            selectedEvidenceDetails = decoded is Map<String, dynamic>
+                ? decoded
+                : null;
             isLoadingDetails = false;
           });
         }
@@ -274,7 +283,7 @@ class _HashVerificationTabState extends State<HashVerificationTab> {
             color: Colors.black.withOpacity(0.03),
             blurRadius: 10,
             offset: const Offset(0, 3),
-          )
+          ),
         ],
       ),
       child: Row(
@@ -331,7 +340,7 @@ class _HashVerificationTabState extends State<HashVerificationTab> {
                 const SizedBox(height: 4),
                 Text(
                   caseName,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                     color: navy,
@@ -350,21 +359,31 @@ class _HashVerificationTabState extends State<HashVerificationTab> {
   // ============================================================
   Widget _buildHashSummaryCards() {
     final int total = caseSummary?["total_evidence"] ?? evidenceList.length;
-    final int verified = caseSummary?["verified"] ??
+    final int verified =
+        caseSummary?["verified"] ??
         evidenceList
-            .where((e) =>
-                e["integrity_status"]?.toString().toLowerCase() == "verified")
+            .where(
+              (e) =>
+                  e["integrity_status"]?.toString().toLowerCase() == "verified",
+            )
             .length;
-    final int tampered = caseSummary?["tampered"] ??
+    final int tampered =
+        caseSummary?["tampered"] ??
         evidenceList
-            .where((e) =>
-                e["integrity_status"]?.toString().toLowerCase() == "tampered")
+            .where(
+              (e) =>
+                  e["integrity_status"]?.toString().toLowerCase() == "tampered",
+            )
             .length;
-    final int pending = caseSummary?["pending"] ??
+    final int pending =
+        caseSummary?["pending"] ??
         evidenceList
-            .where((e) =>
-                e["integrity_status"]?.toString().toLowerCase() != "verified" &&
-                e["integrity_status"]?.toString().toLowerCase() != "tampered")
+            .where(
+              (e) =>
+                  e["integrity_status"]?.toString().toLowerCase() !=
+                      "verified" &&
+                  e["integrity_status"]?.toString().toLowerCase() != "tampered",
+            )
             .length;
 
     return Row(
@@ -438,7 +457,7 @@ class _HashVerificationTabState extends State<HashVerificationTab> {
                 title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 11.5,
                   fontWeight: FontWeight.w600,
                   color: mutedText,
@@ -485,7 +504,7 @@ class _HashVerificationTabState extends State<HashVerificationTab> {
                   color: royalBlue,
                 ),
                 const SizedBox(width: 8),
-                const Text(
+                Text(
                   "Evidence List",
                   style: TextStyle(
                     fontSize: 15,
@@ -496,7 +515,7 @@ class _HashVerificationTabState extends State<HashVerificationTab> {
                 const Spacer(),
                 Text(
                   "${evidenceList.length} items",
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
                     color: mutedText,
@@ -505,7 +524,7 @@ class _HashVerificationTabState extends State<HashVerificationTab> {
               ],
             ),
           ),
-          const Divider(height: 1, color: borderColor),
+          Divider(height: 1, color: borderColor),
           if (isLoadingEvidence)
             const Padding(
               padding: EdgeInsets.all(32),
@@ -522,8 +541,8 @@ class _HashVerificationTabState extends State<HashVerificationTab> {
               ),
             )
           else if (evidenceList.isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(32),
+            Padding(
+              padding: const EdgeInsets.all(32),
               child: Center(
                 child: Text(
                   "No evidence found for this case.",
@@ -537,7 +556,7 @@ class _HashVerificationTabState extends State<HashVerificationTab> {
               physics: const NeverScrollableScrollPhysics(),
               itemCount: evidenceList.length,
               separatorBuilder: (_, __) =>
-                  const Divider(height: 1, color: borderColor),
+                  Divider(height: 1, color: borderColor),
               itemBuilder: (context, index) {
                 final item = evidenceList[index];
                 final evId = item["evidence_id"]?.toString() ?? "-";
@@ -546,7 +565,8 @@ class _HashVerificationTabState extends State<HashVerificationTab> {
                 final fileSize = _formatFileSize(item["file_size"]);
                 final uploadedOn = _formatDate(item["uploaded_on"]);
                 final hash = item["current_hash"]?.toString() ?? "-";
-                final status = item["integrity_status"]?.toString() ?? "Unknown";
+                final status =
+                    item["integrity_status"]?.toString() ?? "Unknown";
 
                 final bool isSelected = selectedEvidenceId == evId;
                 final Color statusColor = _getStatusColor(status);
@@ -559,7 +579,7 @@ class _HashVerificationTabState extends State<HashVerificationTab> {
                       vertical: 14,
                     ),
                     color: isSelected
-                        ? const Color(0xFFF0F7FF)
+                        ? selectedRowBg
                         : Colors.transparent,
                     child: Row(
                       children: [
@@ -567,13 +587,17 @@ class _HashVerificationTabState extends State<HashVerificationTab> {
                           width: 36,
                           height: 36,
                           decoration: BoxDecoration(
-                            color: const Color(0xFFF1F5F9),
+                            color: Theme.of(context).brightness == Brightness.dark
+                                ? const Color(0xFF1E2D4A)
+                                : const Color(0xFFF1F5F9),
                             borderRadius: BorderRadius.circular(8),
                           ),
-                          child: const Icon(
+                          child: Icon(
                             Icons.insert_drive_file_outlined,
                             size: 20,
-                            color: Color(0xFF475569),
+                            color: Theme.of(context).brightness == Brightness.dark
+                                ? const Color(0xFF94A3B8)
+                                : const Color(0xFF475569),
                           ),
                         ),
                         const SizedBox(width: 14),
@@ -595,7 +619,7 @@ class _HashVerificationTabState extends State<HashVerificationTab> {
                                   const SizedBox(width: 8),
                                   Text(
                                     fileType,
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontSize: 11,
                                       color: mutedText,
                                     ),
@@ -607,7 +631,7 @@ class _HashVerificationTabState extends State<HashVerificationTab> {
                                 fileName,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 13,
                                   fontWeight: FontWeight.w700,
                                   color: navy,
@@ -621,7 +645,7 @@ class _HashVerificationTabState extends State<HashVerificationTab> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text(
+                              Text(
                                 "SHA-256 Hash",
                                 style: TextStyle(
                                   fontSize: 10.5,
@@ -634,11 +658,13 @@ class _HashVerificationTabState extends State<HashVerificationTab> {
                                 hash.length > 24
                                     ? "${hash.substring(0, 12)}...${hash.substring(hash.length - 12)}"
                                     : hash,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 11,
                                   fontFamily: 'monospace',
                                   fontWeight: FontWeight.w600,
-                                  color: Color(0xFF334155),
+                                  color: Theme.of(context).brightness == Brightness.dark
+                                      ? const Color(0xFFCBD5E1)
+                                      : const Color(0xFF334155),
                                 ),
                               ),
                             ],
@@ -651,7 +677,7 @@ class _HashVerificationTabState extends State<HashVerificationTab> {
                             children: [
                               Text(
                                 fileSize,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 11.5,
                                   fontWeight: FontWeight.w600,
                                   color: navy,
@@ -659,7 +685,7 @@ class _HashVerificationTabState extends State<HashVerificationTab> {
                               ),
                               Text(
                                 uploadedOn,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 10,
                                   color: mutedText,
                                 ),
@@ -757,15 +783,11 @@ class _HashVerificationTabState extends State<HashVerificationTab> {
             padding: const EdgeInsets.all(18),
             child: Row(
               children: [
-                const Icon(
-                  Icons.shield_outlined,
-                  size: 22,
-                  color: royalBlue,
-                ),
+                const Icon(Icons.shield_outlined, size: 22, color: royalBlue),
                 const SizedBox(width: 10),
                 Text(
                   "Forensic Verification Details - $evId",
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w800,
                     color: navy,
@@ -789,8 +811,8 @@ class _HashVerificationTabState extends State<HashVerificationTab> {
                         status.toLowerCase() == "verified"
                             ? Icons.check_circle_rounded
                             : (status.toLowerCase() == "tampered"
-                                ? Icons.cancel_rounded
-                                : Icons.help_outline_rounded),
+                                  ? Icons.cancel_rounded
+                                  : Icons.help_outline_rounded),
                         size: 15,
                         color: statusColor,
                       ),
@@ -809,7 +831,7 @@ class _HashVerificationTabState extends State<HashVerificationTab> {
               ],
             ),
           ),
-          const Divider(height: 1, color: borderColor),
+          Divider(height: 1, color: borderColor),
 
           // File Metadata Section
           Padding(
@@ -819,18 +841,10 @@ class _HashVerificationTabState extends State<HashVerificationTab> {
               children: [
                 Row(
                   children: [
-                    Expanded(
-                      child: _infoField("File Name", fileName),
-                    ),
-                    Expanded(
-                      child: _infoField("File Type", fileType),
-                    ),
-                    Expanded(
-                      child: _infoField("File Size", fileSize),
-                    ),
-                    Expanded(
-                      child: _infoField("Uploaded On", uploadedOn),
-                    ),
+                    Expanded(child: _infoField("File Name", fileName)),
+                    Expanded(child: _infoField("File Type", fileType)),
+                    Expanded(child: _infoField("File Size", fileSize)),
+                    Expanded(child: _infoField("Uploaded On", uploadedOn)),
                   ],
                 ),
                 const SizedBox(height: 16),
@@ -847,9 +861,13 @@ class _HashVerificationTabState extends State<HashVerificationTab> {
                 // Reference Hash
                 _hashDisplayField(
                   label: "Original / Reference SHA-256 Hash",
-                  hashValue: originalHash ?? "No reference hash provided (Untrusted source / Initial ingestion)",
+                  hashValue:
+                      originalHash ??
+                      "No reference hash provided (Untrusted source / Initial ingestion)",
                   icon: Icons.history_rounded,
-                  accentColor: originalHash != null ? const Color(0xFF64748B) : statusAmber,
+                  accentColor: originalHash != null
+                      ? const Color(0xFF64748B)
+                      : statusAmber,
                   isItalic: originalHash == null,
                 ),
                 const SizedBox(height: 18),
@@ -861,9 +879,7 @@ class _HashVerificationTabState extends State<HashVerificationTab> {
                   decoration: BoxDecoration(
                     color: statusColor.withOpacity(0.06),
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color: statusColor.withOpacity(0.25),
-                    ),
+                    border: Border.all(color: statusColor.withOpacity(0.25)),
                   ),
                   child: Row(
                     children: [
@@ -871,8 +887,8 @@ class _HashVerificationTabState extends State<HashVerificationTab> {
                         status.toLowerCase() == "verified"
                             ? Icons.verified_user_rounded
                             : (status.toLowerCase() == "tampered"
-                                ? Icons.gpp_bad_rounded
-                                : Icons.help_center_rounded),
+                                  ? Icons.gpp_bad_rounded
+                                  : Icons.help_center_rounded),
                         size: 32,
                         color: statusColor,
                       ),
@@ -885,8 +901,8 @@ class _HashVerificationTabState extends State<HashVerificationTab> {
                               status.toLowerCase() == "verified"
                                   ? "Evidence Integrity Verified"
                                   : (status.toLowerCase() == "tampered"
-                                      ? "Integrity Compromised: Tampering Detected"
-                                      : "Integrity Status Unknown / Pending Reference"),
+                                        ? "Integrity Compromised: Tampering Detected"
+                                        : "Integrity Status Unknown / Pending Reference"),
                               style: TextStyle(
                                 fontSize: 13.5,
                                 fontWeight: FontWeight.w800,
@@ -898,9 +914,9 @@ class _HashVerificationTabState extends State<HashVerificationTab> {
                               status.toLowerCase() == "verified"
                                   ? "The computed SHA-256 hash matches the trusted reference hash identically. The evidence is authentic."
                                   : (status.toLowerCase() == "tampered"
-                                      ? "The computed SHA-256 hash does not match the reference hash. The evidence content has been altered."
-                                      : "No prior trusted reference hash was supplied. Current hash is stored securely as the initial baseline."),
-                              style: const TextStyle(
+                                        ? "The computed SHA-256 hash does not match the reference hash. The evidence content has been altered."
+                                        : "No prior trusted reference hash was supplied. Current hash is stored securely as the initial baseline."),
+                              style: TextStyle(
                                 fontSize: 11.5,
                                 color: navy,
                               ),
@@ -909,7 +925,7 @@ class _HashVerificationTabState extends State<HashVerificationTab> {
                               const SizedBox(height: 6),
                               Text(
                                 "Verified by $verBy on $verDate",
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 10.5,
                                   color: mutedText,
                                   fontStyle: FontStyle.italic,
@@ -936,7 +952,7 @@ class _HashVerificationTabState extends State<HashVerificationTab> {
       children: [
         Text(
           label,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 11,
             fontWeight: FontWeight.w600,
             color: mutedText,
@@ -945,7 +961,7 @@ class _HashVerificationTabState extends State<HashVerificationTab> {
         const SizedBox(height: 3),
         Text(
           value,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 12.5,
             fontWeight: FontWeight.w700,
             color: navy,
@@ -984,7 +1000,9 @@ class _HashVerificationTabState extends State<HashVerificationTab> {
           width: double.infinity,
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
           decoration: BoxDecoration(
-            color: const Color(0xFFF8FAFC),
+            color: Theme.of(context).brightness == Brightness.dark
+                ? const Color(0xFF1E2D4A)
+                : const Color(0xFFF8FAFC),
             borderRadius: BorderRadius.circular(8),
             border: Border.all(color: borderColor),
           ),

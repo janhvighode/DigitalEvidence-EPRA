@@ -448,18 +448,7 @@ def get_case_evidence_download(
         ).first()
 
     if rec:
-        resolved_path = StorageService.resolve_evidence_path(
-            raw_path=rec.file_path,
-            case_id=case.id
-        )
-        if not resolved_path or not resolved_path.is_file():
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Evidence file is not available in persistent storage."
-            )
-        file_name = rec.original_filename or rec.stored_filename or "evidence.bin"
-        mime_type = rec.mime_type or mimetypes.guess_type(file_name)[0] or "application/octet-stream"
-        return resolved_path, file_name, mime_type
+        return StorageService.get_evidence_binary(rec, case)
 
     raise HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,

@@ -2,7 +2,7 @@ from uuid import uuid4
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, or_
 
 from models.evidence_record import EvidenceRecord
 from models.evidence import Evidence
@@ -13,6 +13,8 @@ from models.current_custody import CurrentCustodyInfo
 from models.user import User
 from models.role import Role
 from models.case import Case
+from models.cyber_cell import CyberCell
+from models.city import City
 from services.activity_service import ActivityService
 from services.notification_service import create_notification
 
@@ -28,9 +30,12 @@ class CustodyService:
         if not user:
             return "System Automated"
         if user.role_id:
-            role = db.query(Role).filter(Role.id == user.role_id).first()
-            if role and role.role_name:
-                return role.role_name
+            try:
+                role = db.query(Role).filter(Role.id == user.role_id).first()
+                if role and role.role_name:
+                    return role.role_name
+            except Exception:
+                pass
             role_map = {1: "Administrator", 2: "Investigator", 3: "Cyber Expert"}
             return role_map.get(user.role_id, "Investigator")
         return "Investigator"
@@ -412,10 +417,127 @@ class CustodyService:
     def get_current_custody(db: Session, evidence_id: str, case_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Current Custody Information card.
+        Resolves initial custodian from assigned Cyber Expert / Case Assignment when no subsequent transfer exists.
         Returns actual holder, department, timestamps, or null (no invented defaults).
         """
         clean_ev_id = str(evidence_id).strip()
         info = CustodyService.get_or_create_current_custody(db, clean_ev_id, case_id)
+
+        # 1. Authoritative check: If a completed transfer exists in TransferRecord, the recipient is the holder
+        latest_transfer = db.query(TransferRecord).filter(
+            TransferRecord.evidence_id == clean_ev_id,
+            TransferRecord.status == "COMPLETED"
+        ).order_by(TransferRecord.received_at.desc(), TransferRecord.initiated_at.desc()).first()
+
+        if latest_transfer:
+            changed = False
+            if info.current_holder_name != latest_transfer.recipient_name or info.current_holder_id != latest_transfer.recipient_id:
+                info.current_holder_name = latest_transfer.recipient_name
+                info.current_holder_id = latest_transfer.recipient_id
+                info.assigned_on = latest_transfer.received_at
+                if latest_transfer.receipt_remarks or latest_transfer.remarks:
+                    info.remarks = latest_transfer.receipt_remarks or latest_transfer.remarks
+                info.custody_status = "In Analysis"
+                changed = True
+            if changed:
+                db.commit()
+                db.refresh(info)
+        else:
+            # 2. No completed transfer: check if initial custodian or timestamps need resolution
+            try:
+                effective_case_id = info.case_id or case_id
+                case_obj = None
+                if effective_case_id and str(effective_case_id) != "UNKNOWN":
+                    cid_str = str(effective_case_id).strip()
+                    case_filters = [Case.case_id == cid_str]
+                    if cid_str.isdigit():
+                        case_filters.append(Case.id == int(cid_str))
+                    case_obj = db.query(Case).filter(or_(*case_filters)).first()
+
+                ev_filters = [Evidence.evidence_id == clean_ev_id]
+                if clean_ev_id.isdigit():
+                    ev_filters.append(Evidence.id == int(clean_ev_id))
+                ev = db.query(Evidence).filter(or_(*ev_filters)).first()
+
+                ev_rec_filters = [EvidenceRecord.external_evidence_id == clean_ev_id]
+                if clean_ev_id.isdigit():
+                    ev_rec_filters.append(EvidenceRecord.id == int(clean_ev_id))
+                ev_rec = db.query(EvidenceRecord).filter(or_(*ev_rec_filters)).first()
+
+                if not case_obj:
+                    if ev and ev.case_id:
+                        case_obj = db.query(Case).filter(Case.id == ev.case_id).first()
+                    elif ev_rec and ev_rec.case_id:
+                        cid_str = str(ev_rec.case_id).strip()
+                        c_filters = [Case.case_id == cid_str]
+                        if cid_str.isdigit():
+                            c_filters.append(Case.id == int(cid_str))
+                        case_obj = db.query(Case).filter(or_(*c_filters)).first()
+
+                changed = False
+                # Initial custodian resolution if holder is currently unassigned
+                if not info.current_holder_name and case_obj:
+                    custodian_user = None
+                    if case_obj.cyber_expert_id:
+                        custodian_user = db.query(User).filter(User.id == case_obj.cyber_expert_id).first()
+                    if not custodian_user and case_obj.investigator_id:
+                        custodian_user = db.query(User).filter(User.id == case_obj.investigator_id).first()
+                    if not custodian_user and ev_rec and ev_rec.investigator_id and str(ev_rec.investigator_id).isdigit():
+                        custodian_user = db.query(User).filter(User.id == int(ev_rec.investigator_id)).first()
+                    if not custodian_user and case_obj.created_by:
+                        custodian_user = db.query(User).filter(User.id == case_obj.created_by).first()
+
+                    if custodian_user:
+                        info.current_holder_id = str(custodian_user.id)
+                        info.current_holder_name = custodian_user.full_name or custodian_user.username
+                        info.current_holder_role = CustodyService.resolve_user_role_name(db, custodian_user)
+
+                        if not info.department and custodian_user.cyber_cell_id:
+                            cell = db.query(CyberCell).filter(CyberCell.id == custodian_user.cyber_cell_id).first()
+                            if cell:
+                                info.department = cell.cyber_cell_name
+                                if not info.location and cell.city_id:
+                                    city = db.query(City).filter(City.id == cell.city_id).first()
+                                    if city:
+                                        info.location = city.city_name
+
+                        if not info.assigned_on:
+                            if ev and ev.created_at:
+                                info.assigned_on = ev.created_at
+                            elif ev_rec and ev_rec.uploaded_at:
+                                info.assigned_on = ev_rec.uploaded_at
+                            elif case_obj.created_at:
+                                info.assigned_on = case_obj.created_at
+
+                        if not info.custody_status:
+                            info.custody_status = "In Analysis" if custodian_user.role_id == 3 else "In Custody"
+                        changed = True
+
+                # If holder is set, ensure assigned_on and remarks are clean and preserved
+                if info.current_holder_name:
+                    if not info.assigned_on:
+                        if ev and ev.created_at:
+                            info.assigned_on = ev.created_at
+                            changed = True
+                        elif ev_rec and ev_rec.uploaded_at:
+                            info.assigned_on = ev_rec.uploaded_at
+                            changed = True
+                        elif case_obj and case_obj.created_at:
+                            info.assigned_on = case_obj.created_at
+                            changed = True
+
+                    if info.remarks == "--":
+                        info.remarks = ev_rec.notes if (ev_rec and ev_rec.notes) else None
+                        changed = True
+                    elif not info.remarks and ev_rec and ev_rec.notes:
+                        info.remarks = ev_rec.notes
+                        changed = True
+
+                if changed:
+                    db.commit()
+                    db.refresh(info)
+            except Exception:
+                db.rollback()
 
         return {
             "evidence_id": clean_ev_id,
@@ -504,9 +626,11 @@ class CustodyService:
         if location is not None and location != info.location:
             changes.append(f"Location: '{info.location}' -> '{location}'")
             info.location = location
-        if remarks is not None and remarks != info.remarks:
-            changes.append(f"Remarks: '{info.remarks}' -> '{remarks}'")
-            info.remarks = remarks
+        if remarks is not None:
+            clean_remarks = None if str(remarks).strip() in ["--", ""] else remarks
+            if clean_remarks != info.remarks:
+                changes.append(f"Remarks: '{info.remarks}' -> '{clean_remarks}'")
+                info.remarks = clean_remarks
         if custody_status is not None and custody_status != info.custody_status:
             changes.append(f"Status: '{info.custody_status}' -> '{custody_status}'")
             info.custody_status = custody_status

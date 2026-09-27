@@ -10,11 +10,13 @@ class CBIRImageEvidenceItem(BaseModel):
     file_type: str
     file_size: int
     created_at: Optional[str] = None
+    preview_url: Optional[str] = None
+    image_url: Optional[str] = None
 
 
 class CBIRImagesListResponse(BaseModel):
     """List of available genuine image evidence for the selected case."""
-    case_id: int
+    case_id: Any
     total_images: int
     images: List[CBIRImageEvidenceItem]
 
@@ -61,6 +63,12 @@ class CBIRCandidateResult(BaseModel):
     investigation_recommendation: Optional[str] = None
     reason: str
     rank: int
+    preview_url: Optional[str] = None
+    image_url: Optional[str] = None
+    image_path: Optional[str] = None
+    score: Optional[float] = None
+    relevance_score: Optional[float] = None
+    relevance_score_display: Optional[str] = None
 
 
 class CBIRSearchSummary(BaseModel):

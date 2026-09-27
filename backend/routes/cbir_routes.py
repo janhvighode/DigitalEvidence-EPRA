@@ -263,7 +263,7 @@ def get_case_eligible_images(
     summary="List available genuine image evidence for query selection"
 )
 def list_case_images(
-    case_id: int,
+    case_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -282,8 +282,8 @@ def list_case_images(
     summary="Retrieve latest persisted CBIR comparison results for the case"
 )
 def get_cbir_results(
-    case_id: int,
-    query_evidence_id: Optional[int] = Query(default=None, description="Optional filter by query evidence ID"),
+    case_id: str,
+    query_evidence_id: Optional[str] = Query(default=None, description="Optional filter by query evidence ID"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -301,9 +301,9 @@ def get_cbir_results(
     summary="Retrieve candidate comparison details for View Details modal"
 )
 def get_candidate_details(
-    case_id: int,
-    candidate_evidence_id: int,
-    query_evidence_id: Optional[int] = Query(default=None, description="Optional query evidence ID context"),
+    case_id: str,
+    candidate_evidence_id: str,
+    query_evidence_id: Optional[str] = Query(default=None, description="Optional query evidence ID context"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):

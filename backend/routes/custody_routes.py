@@ -1,7 +1,8 @@
-from typing import Optional
+from typing import Optional, Union
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 
 from database.database import get_db
 from models.user import User
@@ -32,7 +33,7 @@ router = APIRouter(
 )
 
 
-def verify_cyber_expert_case_access(case_id: int, current_user: User, db: Session) -> Case:
+def verify_cyber_expert_case_access(case_id: Union[int, str], current_user: User, db: Session) -> Case:
     """
     Enforce case authorization and boundary:
     - Missing/invalid JWT -> 401 (handled by get_current_user)
@@ -48,7 +49,11 @@ def verify_cyber_expert_case_access(case_id: int, current_user: User, db: Sessio
             detail="Authentication required"
         )
 
-    case = db.query(Case).filter(Case.id == case_id).first()
+    clean_cid = str(case_id).strip()
+    case_filter = [Case.case_id == clean_cid]
+    if clean_cid.isdigit():
+        case_filter.append(Case.id == int(clean_cid))
+    case = db.query(Case).filter(or_(*case_filter)).first()
     if not case:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -68,8 +73,8 @@ def verify_cyber_expert_case_access(case_id: int, current_user: User, db: Sessio
                 detail=f"You are not assigned as Investigator to Case #{case_id}"
             )
     elif current_user.role_id == 1:
-        creator = db.query(User).filter(User.id == case.created_by).first()
-        if creator and creator.cyber_cell_id != current_user.cyber_cell_id:
+        creator = db.query(User).filter(User.id == case.created_by).first() if case.created_by else None
+        if not creator or creator.cyber_cell_id != current_user.cyber_cell_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Access denied: Case does not belong to your branch"
@@ -83,16 +88,36 @@ def verify_cyber_expert_case_access(case_id: int, current_user: User, db: Sessio
     return case
 
 
-def verify_evidence_in_case(case_id: int, evidence_id: str, db: Session) -> Evidence:
+def verify_evidence_in_case(case_id: Union[int, str], evidence_id: str, db: Session) -> Evidence:
     """
     Verify evidence exists and strictly belongs to the specified case.
     Rejects foreign evidence with 404 to avoid cross-case leakage.
+    Supports Evidence and EvidenceRecord fallback.
     """
     clean_id = str(evidence_id).strip()
-    ev = db.query(Evidence).filter(
-        (Evidence.evidence_id == clean_id) |
-        (Evidence.id == int(clean_id) if clean_id.isdigit() else False)
-    ).first()
+    clean_cid = str(case_id).strip()
+
+    ev_filter = [Evidence.evidence_id == clean_id]
+    if clean_id.isdigit():
+        ev_filter.append(Evidence.id == int(clean_id))
+    ev = db.query(Evidence).filter(or_(*ev_filter)).first()
+
+    if not ev:
+        rec_filter = [EvidenceRecord.external_evidence_id == clean_id]
+        if clean_id.isdigit():
+            rec_filter.append(EvidenceRecord.id == int(clean_id))
+        ev_rec = db.query(EvidenceRecord).filter(or_(*rec_filter)).first()
+        if ev_rec:
+            ev = Evidence(
+                id=ev_rec.id,
+                evidence_id=ev_rec.external_evidence_id or str(ev_rec.id),
+                case_id=int(ev_rec.case_id) if str(ev_rec.case_id).isdigit() else 0,
+                file_name=ev_rec.original_filename or ev_rec.stored_filename,
+                file_type=ev_rec.mime_type or "Unknown",
+                file_size=ev_rec.file_size_bytes or 0,
+                file_path=ev_rec.file_path,
+                status="Active"
+            )
 
     if not ev:
         raise HTTPException(
@@ -100,7 +125,18 @@ def verify_evidence_in_case(case_id: int, evidence_id: str, db: Session) -> Evid
             detail=f"Evidence '{evidence_id}' not found"
         )
 
-    if ev.case_id != case_id:
+    case_matches = False
+    if clean_cid.isdigit() and ev.case_id == int(clean_cid):
+        case_matches = True
+    else:
+        case_obj = db.query(Case).filter(
+            (Case.id == int(clean_cid) if clean_cid.isdigit() else False) |
+            (Case.case_id == clean_cid)
+        ).first()
+        if case_obj and ev.case_id == case_obj.id:
+            case_matches = True
+
+    if not case_matches:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Evidence '{evidence_id}' does not belong to Case #{case_id}"
@@ -524,7 +560,15 @@ def preview_evidence_image(
             detail=f"Preview is only supported for image evidence. Evidence '{ev.file_name}' is of type '{canonical_type}'."
         )
 
-    file_path, file_name, mime_type = StorageService.get_evidence_binary(ev, case)
+    try:
+        file_path, file_name, mime_type = StorageService.get_evidence_binary(ev, case)
+    except HTTPException as e:
+        if e.status_code == 404:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Evidence file not found / not available in persistent storage."
+            )
+        raise e
 
     return FileResponse(
         path=str(file_path),

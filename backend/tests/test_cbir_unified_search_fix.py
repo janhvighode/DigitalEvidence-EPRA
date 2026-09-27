@@ -203,13 +203,22 @@ class TestCBIRUnifiedSearchAndContent:
             case.cyber_expert_id = user.id
             db_session.commit()
 
-        # EV-6922-010 physical binary is historically missing from ephemeral storage -> expected clean 404
+        # EV-6922-009 physical binary is genuinely missing from persistent storage -> expected clean 404
         resp_missing = client.get(
-            "/cases/CASE-6922/evidence/EV-6922-010/preview",
+            "/cases/CASE-6922/evidence/EV-6922-009/preview",
             headers={"Authorization": f"Bearer {token}"}
         )
         assert resp_missing.status_code == 404
         assert "not found on disk" in resp_missing.json()["detail"] or "not available" in resp_missing.json()["detail"]
+
+        # EV-6922-010 physical binary (laptop.jpeg) is present in persistent storage -> expected 200 OK
+        resp_existing = client.get(
+            "/cases/CASE-6922/evidence/EV-6922-010/preview",
+            headers={"Authorization": f"Bearer {token}"}
+        )
+        assert resp_existing.status_code == 200
+        assert resp_existing.headers["content-type"] in ["image/jpeg", "image/jpg"]
+        assert len(resp_existing.content) > 0
 
         # Now test with a real physical binary dynamically created in persistent storage
         storage_dir = Path("uploads/evidence") / str(case.id)
