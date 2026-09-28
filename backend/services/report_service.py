@@ -372,6 +372,10 @@ def get_investigator_reports_table(
             "investigation_progress": progress,
             "last_updated": last_up,
             "last_updated_display": last_up_disp,
+            "created_at": last_up,
+            "generated_on": (active_rep.generated_at if active_rep else None),
+            "file_name": (active_rep.file_name if active_rep else None),
+            "filename": (active_rep.file_name if active_rep else None),
             "report_id": rep_id,
             "download_url": f"/reports/{rep_id}/download" if can_download and rep_id else (
                 f"/cases/{case.case_id}/reports/download/{rep_id}" if can_download and rep_id else None
@@ -597,6 +601,11 @@ def get_report_view_data(db: Session, case_or_report_id: str, current_user: User
         "is_draft": rep_rec.is_draft if rep_rec else False,
         "generated_at": gen_time,
         "generated_at_display": gen_time_disp,
+        "created_at": gen_time or case_obj.created_at,
+        "generated_on": gen_time,
+        "date": gen_time,
+        "generated_by": (rep_rec.investigator_name if rep_rec else (inv_user.full_name if inv_user else "System")),
+        "file_size": format_bytes(rep_rec.file_size_bytes) if rep_rec else "0 B",
         "investigator_name": inv_user.full_name if inv_user else "Unassigned",
         "investigator_id": str(case_obj.investigator_id) if case_obj.investigator_id else None,
         "assigned_cyber_expert": exp_user.full_name if exp_user else "Unassigned",
@@ -817,7 +826,8 @@ def get_report_pdf_file_path(db: Session, report_or_case_id: str, current_user: 
         )
 
     ext = ".json" if getattr(rep_rec, "file_format", "PDF") == "JSON" else ".pdf"
-    download_filename = f"{case_obj.case_id}_Forensic_Report{ext}"
+    clean_cid = str(case_obj.case_id or case_obj.id).strip()
+    download_filename = f"{clean_cid}_Forensic_Report{ext}"
     return target_path, download_filename
 
 

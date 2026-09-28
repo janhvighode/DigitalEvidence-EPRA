@@ -204,6 +204,12 @@ class AnalysisProgressSummaryResponse(BaseModel):
     partial_analysis: int
     high_critical_evidence: int
     overall_analysis_progress: float
+    total: Optional[int] = None
+    analyzed: Optional[int] = None
+    pending: Optional[int] = None
+    high_critical: Optional[int] = None
+    progress: Optional[float] = None
+    progress_percent: Optional[float] = None
 
 
 class EvidenceAnalysisItem(BaseModel):
@@ -285,6 +291,22 @@ class RelationshipNodeDetailResponse(BaseModel):
     properties: Dict[str, Any]
     connected_nodes_count: int
     connected_edges: List[Dict[str, Any]]
+    # Flattened top-level fields for frontend relationship view direct consumption:
+    evidence_id: Optional[str] = None
+    file_name: Optional[str] = None
+    file_type: Optional[str] = None
+    file_size: Optional[Any] = None
+    size: Optional[Any] = None
+    uploaded_on: Optional[Any] = None
+    created_at: Optional[Any] = None
+    analysis_status: Optional[str] = None
+    priority: Optional[str] = None
+    priority_level: Optional[str] = None
+    epra_score: Optional[Any] = None
+    score: Optional[Any] = None
+    epra_rank: Optional[Any] = None
+    rank: Optional[Any] = None
+    integrity_status: Optional[str] = None
 
 
 # ==========================================

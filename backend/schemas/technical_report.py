@@ -82,6 +82,10 @@ class ReportSummaryResponse(BaseModel):
     total_reports: Optional[int] = 0
     latest_report_name: Optional[str] = None
     latest_generated_at: Optional[str] = None
+    created_at: Optional[str] = None
+    generated_on: Optional[str] = None
+    total: Optional[int] = None
+    technical_reports: Optional[int] = None
 
 
 class ReportHistoryItem(BaseModel):
@@ -100,6 +104,14 @@ class ReportHistoryItem(BaseModel):
     generated_by_role: Optional[str] = None
     download_url: str
     preview_url: str
+    created_at: Optional[str] = None
+    generated_on: Optional[str] = None
+    date: Optional[str] = None
+    generated_at_display: Optional[str] = None
+    file_size: Optional[str] = None
+    file_name: Optional[str] = None
+    filename: Optional[str] = None
+    status: Optional[str] = "Completed"
 
 
 class ReportHistoryResponse(BaseModel):
@@ -130,3 +142,7 @@ class ReportGenerateResponse(BaseModel):
     department: Optional[str] = None
     file_size_bytes: int = 0
     file_size_formatted: str = "0 B"
+    created_at: Optional[str] = None
+    generated_on: Optional[str] = None
+    generated_at: Optional[str] = None
+    generated_by: Optional[str] = None

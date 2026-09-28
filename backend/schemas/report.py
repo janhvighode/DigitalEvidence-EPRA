@@ -47,6 +47,10 @@ class ReportTableItem(BaseModel):
     view_url: Optional[str] = None
     can_view: bool = False
     can_download: bool = False
+    created_at: Optional[Any] = None
+    generated_on: Optional[Any] = None
+    file_name: Optional[str] = None
+    filename: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -77,6 +81,11 @@ class ReportStructuredViewResponse(BaseModel):
     is_draft: bool = False
     generated_at: Optional[datetime] = None
     generated_at_display: Optional[str] = None
+    created_at: Optional[Any] = None
+    generated_on: Optional[Any] = None
+    date: Optional[Any] = None
+    generated_by: Optional[str] = None
+    file_size: Optional[str] = None
     investigator_name: str
     investigator_id: Optional[str] = None
     assigned_cyber_expert: Optional[str] = None

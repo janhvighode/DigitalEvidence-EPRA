@@ -1,9 +1,19 @@
 import os
+import re
 import html
 from pathlib import Path
 from uuid import uuid4
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
+
+
+def sanitize_report_component(val: Any) -> str:
+    """Sanitizes case ID or title into safe filesystem characters."""
+    if not val:
+        return ""
+    cleaned = re.sub(r'[^a-zA-Z0-9_\-]+', '_', str(val).strip())
+    cleaned = re.sub(r'_+', '_', cleaned).strip('_.')
+    return cleaned
 
 from reportlab.lib.pagesizes import letter
 from reportlab.lib import colors
@@ -81,9 +91,37 @@ class PDFService:
         report_dir.mkdir(parents=True, exist_ok=True)
 
         report_id = report_data.get("report_id") or str(uuid4())
-        case_id = str(report_data.get("case_id", "UNKNOWN_CASE"))
-        prefix = "draft_preview" if is_draft else "report"
-        filename = report_dir / f"{prefix}_{case_id}_{report_id}.pdf"
+        case_id = str(report_data.get("canonical_case_id") or report_data.get("case_id", "UNKNOWN_CASE"))
+        case_title = report_data.get("case_title") or ""
+
+        # Check if caller explicitly supplied a preferred filename
+        if report_data.get("file_name"):
+            cand_name = str(report_data["file_name"]).strip()
+            if not cand_name.lower().endswith(".pdf"):
+                cand_name += ".pdf"
+        elif report_data.get("filename"):
+            cand_name = str(report_data["filename"]).strip()
+            if not cand_name.lower().endswith(".pdf"):
+                cand_name += ".pdf"
+        else:
+            clean_cid = sanitize_report_component(case_id) or "CASE"
+            clean_title = sanitize_report_component(case_title)
+            if clean_title and clean_title.lower() != "case":
+                base_name = f"{clean_cid}_{clean_title}_Forensic_Report"
+            else:
+                base_name = f"{clean_cid}_Forensic_Report"
+
+            if is_draft:
+                base_name = f"Draft_{base_name}"
+
+            cand_name = f"{base_name}.pdf"
+            # Ensure unique filename on disk if collision exists
+            target_path = report_dir / cand_name
+            if target_path.exists():
+                short_uuid = str(report_id).replace("-", "")[:8]
+                cand_name = f"{base_name}_{short_uuid}.pdf"
+
+        filename = report_dir / cand_name
 
         # Document setup: 0.5 inch (36pt) margins
         doc = SimpleDocTemplate(

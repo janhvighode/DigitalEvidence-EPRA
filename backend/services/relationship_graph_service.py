@@ -181,16 +181,23 @@ class RelationshipGraphService:
                     "evidence_id": ev.evidence_id,
                     "file_name": ev.file_name,
                     "file_type": display_label,
-                    "file_size": ev.file_size,
+                    "file_size": format_bytes(ev.file_size),
+                    "size": format_bytes(ev.file_size),
+                    "file_size_bytes": ev.file_size,
                     "file_size_formatted": format_bytes(ev.file_size),
                     "sha256_hash": sha,
                     "verification_status": v_status,
+                    "integrity_status": v_status,
                     "status": ev.status or "Active",
                     "created_at": ev.created_at.isoformat() if ev.created_at else None,
+                    "uploaded_on": ev.created_at.isoformat() if ev.created_at else None,
                     "analysis_status": ep_status,
                     "priority": ep_priority,
+                    "priority_level": ep_priority,
                     "epra_score": ep_score,
-                    "rank": ep_rank
+                    "score": ep_score,
+                    "rank": ep_rank,
+                    "epra_rank": ep_rank
                 }
             )
             nodes_dict[node_id] = node

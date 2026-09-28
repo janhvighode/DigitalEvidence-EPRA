@@ -4,7 +4,7 @@ from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session, aliased
-from sqlalchemy import or_, func
+from sqlalchemy import or_, func, case as sql_case
 
 from models.case import Case
 from models.user import User
@@ -562,12 +562,17 @@ def get_investigator_assigned_case(
         case = db.query(Case).filter(
             or_(
                 Case.id == int(ident_str),
-                Case.case_id == ident_str
+                Case.case_id == ident_str,
+                Case.case_id == f"CASE-{ident_str}",
+                Case.case_id.ilike(f"%{ident_str}%")
             )
         ).first()
     else:
         case = db.query(Case).filter(
-            Case.case_id.ilike(ident_str)
+            or_(
+                Case.case_id.ilike(ident_str),
+                Case.case_id.ilike(f"%{ident_str}%")
+            )
         ).first()
 
     if not case:
@@ -1072,7 +1077,15 @@ def get_investigator_evidence_file(
             detail=f"Evidence '{evidence_identifier}' not found for this case"
         )
 
-    file_path, file_name, mime_type = StorageService.get_evidence_binary(evidence, case)
+    try:
+        file_path, file_name, mime_type = StorageService.get_evidence_binary(evidence, case)
+    except HTTPException as e:
+        if e.status_code == 404:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Evidence file not found on disk: {e.detail}"
+            )
+        raise
 
     if for_preview:
         is_image = mime_type.startswith("image/")
@@ -1135,7 +1148,7 @@ def get_investigator_analysis_summary(
         EPRAResult.analysis_status == "PARTIAL / PENDING INPUTS"
     ).distinct().count()
 
-    pending_analysis = max(0, total_evidence - analyzed_evidence - partial_analysis)
+    pending_analysis = max(0, total_evidence - analyzed_evidence)
 
     high_critical_evidence = db.query(EPRAResult.evidence_id).filter(
         EPRAResult.case_id == case.id,
@@ -1151,7 +1164,13 @@ def get_investigator_analysis_summary(
         pending_analysis=pending_analysis,
         partial_analysis=partial_analysis,
         high_critical_evidence=high_critical_evidence,
-        overall_analysis_progress=overall_analysis_progress
+        overall_analysis_progress=overall_analysis_progress,
+        total=total_evidence,
+        analyzed=analyzed_evidence,
+        pending=pending_analysis,
+        high_critical=high_critical_evidence,
+        progress=overall_analysis_progress,
+        progress_percent=overall_analysis_progress
     )
 
 
@@ -1217,7 +1236,11 @@ def get_investigator_analysis_evidence_repository(
     offset = (page - 1) * limit
     results = (
         query
-        .order_by(EPRAResult.rank.asc().nullslast(), Evidence.id.desc())
+        .order_by(
+            sql_case((EPRAResult.rank.is_(None), 1), else_=0),
+            EPRAResult.rank.asc(),
+            Evidence.id.desc()
+        )
         .offset(offset)
         .limit(limit)
         .all()
@@ -1503,13 +1526,29 @@ def get_investigator_relationship_node_detail(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(e)
         )
+    props = detail.get("properties") or {}
     return RelationshipNodeDetailResponse(
         node_id=detail["node_id"],
         node_type=detail["node_type"],
         label=detail["label"],
-        properties=detail["properties"],
+        properties=props,
         connected_nodes_count=detail["connected_nodes_count"],
-        connected_edges=detail["connected_edges"]
+        connected_edges=detail["connected_edges"],
+        evidence_id=props.get("evidence_id"),
+        file_name=props.get("file_name") or detail["label"],
+        file_type=props.get("file_type"),
+        file_size=props.get("file_size_formatted") or props.get("file_size"),
+        size=props.get("file_size_formatted") or props.get("file_size"),
+        uploaded_on=props.get("uploaded_on") or props.get("created_at"),
+        created_at=props.get("created_at"),
+        analysis_status=props.get("analysis_status"),
+        priority=props.get("priority"),
+        priority_level=props.get("priority"),
+        epra_score=props.get("epra_score"),
+        score=props.get("epra_score"),
+        epra_rank=props.get("epra_rank") or props.get("rank"),
+        rank=props.get("rank"),
+        integrity_status=props.get("integrity_status") or props.get("verification_status")
     )
 
 

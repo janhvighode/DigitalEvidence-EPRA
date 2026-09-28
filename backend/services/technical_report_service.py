@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, or_
 
 from schemas.technical_report import (
     ReportRequest,
@@ -161,7 +161,11 @@ class TechnicalReportService:
             "unknown_evidence": unknown,
             "total_reports": total_reports,
             "latest_report_name": latest_name,
-            "latest_generated_at": latest_dt
+            "latest_generated_at": latest_dt,
+            "created_at": latest_dt,
+            "generated_on": latest_dt,
+            "total": total_reports,
+            "technical_reports": total_reports
         }
 
     @classmethod
@@ -181,14 +185,27 @@ class TechnicalReportService:
         case_id = str(report.case_id).strip()
         num_case_id = int(case_id) if case_id.isdigit() else None
 
-        # Fetch genuine case details
+        # Fetch genuine case details with flexible resolver
         case_obj = None
         if num_case_id is not None:
-            case_obj = db.query(Case).filter(Case.id == num_case_id).first()
+            case_obj = db.query(Case).filter(
+                or_(
+                    Case.id == num_case_id,
+                    Case.case_id == case_id,
+                    Case.case_id == f"CASE-{case_id}",
+                    Case.case_id.ilike(f"%{case_id}%")
+                )
+            ).first()
         if not case_obj:
-            case_obj = db.query(Case).filter(Case.case_id == case_id).first()
+            case_obj = db.query(Case).filter(
+                or_(
+                    Case.case_id.ilike(case_id),
+                    Case.case_id.ilike(f"%{case_id}%")
+                )
+            ).first()
 
-        effective_title = report.case_title or (case_obj.title if case_obj else None) or f"Case {case_id}"
+        canonical_case_id = case_obj.case_id if (case_obj and case_obj.case_id) else case_id
+        effective_title = report.case_title or (case_obj.title if case_obj else None) or f"Case {canonical_case_id}"
         effective_crime = report.crime_type or (case_obj.description if case_obj and case_obj.description else None)
         effective_dept = report.department or "Cyber Crime Division"
 
@@ -434,6 +451,7 @@ class TechnicalReportService:
         report_data = {
             "report_id": report_id,
             "case_id": case_id,
+            "canonical_case_id": canonical_case_id,
             "case_title": effective_title,
             "crime_type": effective_crime,
             "report_type": report.report_type.value if hasattr(report.report_type, "value") else str(report.report_type),
@@ -473,6 +491,7 @@ class TechnicalReportService:
         report_id = report_data["report_id"]
         now_utc = datetime.now(timezone.utc)
         case_id = report_data["case_id"]
+        canonical_case_id = case_id
         effective_title = report_data["case_title"]
         effective_crime = report_data["crime_type"]
         effective_dept = report_data["department"]
@@ -655,20 +674,24 @@ class TechnicalReportService:
             "is_draft": is_draft,
             "message": "Draft preview generated successfully." if is_draft else "Report generated successfully.",
             "report_id": report_id,
-            "case_id": case_id,
+            "case_id": canonical_case_id,
             "report_type": report_data["report_type"],
             "file_format": "PDF",
             "file_name": file_path_obj.name,
             "pdf_path": str(file_path_obj.resolve()),
-            "download_url": f"/cases/{case_id}/reports/download/{report_id}" if not is_draft else None,
-            "preview_url": f"/cases/{case_id}/reports/preview/{report_id}" if not is_draft else None,
+            "download_url": f"/cases/{canonical_case_id}/reports/download/{report_id}" if not is_draft else None,
+            "preview_url": f"/cases/{canonical_case_id}/reports/preview/{report_id}" if not is_draft else None,
             "evidence_summary": evidence_summary,
             "total_evidence_files": total_ev,
             "selected_sections": active_sections,
             "crime_type": effective_crime,
             "department": effective_dept,
             "file_size_bytes": file_size_bytes,
-            "file_size_formatted": format_bytes(file_size_bytes)
+            "file_size_formatted": format_bytes(file_size_bytes),
+            "created_at": now_utc.isoformat(),
+            "generated_on": now_utc.isoformat(),
+            "generated_at": now_utc.isoformat(),
+            "generated_by": author_name
         }
 
     @staticmethod
@@ -713,6 +736,16 @@ class TechnicalReportService:
 
         items = []
         for r in records:
+            author_val = r.investigator_name
+            if (not author_val or author_val in ("Investigator", "System")) and r.generated_by_id:
+                if str(r.generated_by_id).isdigit():
+                    u_rec = db.query(User).filter(User.id == int(r.generated_by_id)).first()
+                    if u_rec and u_rec.full_name:
+                        author_val = u_rec.full_name
+
+            gen_iso = r.generated_at.isoformat() if r.generated_at else None
+            gen_formatted = r.generated_at.strftime("%d %b %Y, %H:%M") if r.generated_at else None
+
             items.append({
                 "report_id": r.id,
                 "report_name": r.file_name,
@@ -723,9 +756,17 @@ class TechnicalReportService:
                 "file_format": r.file_format,
                 "file_size_bytes": r.file_size_bytes or 0,
                 "file_size_formatted": format_bytes(r.file_size_bytes or 0),
-                "generated_at": r.generated_at.isoformat() if r.generated_at else None,
-                "generated_at_formatted": r.generated_at.strftime("%d %b %Y, %H:%M") if r.generated_at else None,
-                "generated_by": r.investigator_name,
+                "file_size": format_bytes(r.file_size_bytes or 0),
+                "file_name": r.file_name,
+                "filename": r.file_name,
+                "status": "Final" if (not r.is_draft) else "Draft",
+                "generated_at": gen_iso,
+                "generated_at_formatted": gen_formatted,
+                "generated_at_display": gen_formatted,
+                "created_at": gen_iso,
+                "generated_on": gen_iso,
+                "date": gen_iso,
+                "generated_by": author_val or "System",
                 "generated_by_role": r.generated_by_role,
                 "download_url": f"/cases/{clean_case_id}/reports/download/{r.id}",
                 "preview_url": f"/cases/{clean_case_id}/reports/preview/{r.id}"
