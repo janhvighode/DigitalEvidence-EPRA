@@ -820,6 +820,64 @@ def get_report_pdf_file_path(db: Session, report_or_case_id: str, current_user: 
                 target_path = local_manifest
 
     if not target_path or not target_path.exists() or not target_path.is_file() or target_path.stat().st_size == 0:
+        # Check if this is a genuine report with a known valid report type that can be auto-healed
+        from schemas.technical_report import ReportType, ReportRequest
+        valid_report_type = None
+        if rep_rec.report_type:
+            for rt in ReportType:
+                if rt.value == rep_rec.report_type or rt.name == rep_rec.report_type:
+                    valid_report_type = rt
+                    break
+
+        if valid_report_type is not None:
+            try:
+                from services.technical_report_service import TechnicalReportService, MANIFEST_DIR
+                from services.pdf_service import PDFService
+
+                report_req = ReportRequest(
+                    case_id=str(case_obj.case_id or case_obj.id),
+                    report_type=valid_report_type
+                )
+                report_data = TechnicalReportService.build_report_data(
+                    report=report_req,
+                    db=db,
+                    current_user=current_user,
+                    is_draft=False
+                )
+                report_data["report_id"] = rep_rec.id
+
+                if valid_report_type == ReportType.HASH_MANIFEST or getattr(rep_rec, "file_format", "PDF") == "JSON":
+                    MANIFEST_DIR.mkdir(parents=True, exist_ok=True)
+                    manifest_filename = rep_rec.file_name or f"manifest_{case_obj.case_id}_{rep_rec.id}.json"
+                    manifest_file_path = MANIFEST_DIR / manifest_filename
+                    manifest_json = {
+                        "manifest_version": "1.0.0",
+                        "report_id": rep_rec.id,
+                        "case_id": str(case_obj.case_id),
+                        "generated_at": datetime.now(timezone.utc).isoformat(),
+                        "hash_algorithm": "SHA-256",
+                        "total_evidence_files": len(report_data.get("evidence_records", []))
+                    }
+                    manifest_file_path.write_text(json.dumps(manifest_json, indent=2), encoding="utf-8")
+                    target_path = manifest_file_path
+                    rep_rec.file_path = str(manifest_file_path.resolve())
+                    rep_rec.file_name = manifest_filename
+                    rep_rec.file_size_bytes = manifest_file_path.stat().st_size
+                    db.commit()
+                else:
+                    DEFAULT_REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+                    gen_path = PDFService.generate_pdf(report_data, output_directory=str(DEFAULT_REPORTS_DIR), is_draft=False)
+                    gen_obj = Path(gen_path).resolve()
+                    if gen_obj.exists() and gen_obj.stat().st_size > 0:
+                        target_path = gen_obj
+                        rep_rec.file_path = str(gen_obj)
+                        rep_rec.file_name = gen_obj.name
+                        rep_rec.file_size_bytes = gen_obj.stat().st_size
+                        db.commit()
+            except Exception as ex:
+                logger.warning(f"Report auto-regeneration failed for case {case_obj.case_id}: {ex}")
+
+    if not target_path or not target_path.exists() or not target_path.is_file() or target_path.stat().st_size == 0:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Persisted report file not found on disk."

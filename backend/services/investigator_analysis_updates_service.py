@@ -56,9 +56,11 @@ class InvestigatorAnalysisUpdatesService:
         """
         # 1. Resolve Assigned Cyber Expert
         assigned_expert: Optional[AssignedCyberExpertInfo] = None
+        assigned_expert_name = "Unassigned"
         if case.cyber_expert_id:
             expert = db.query(User).filter(User.id == case.cyber_expert_id).first()
             if expert:
+                assigned_expert_name = expert.full_name or "Unassigned"
                 assigned_expert = AssignedCyberExpertInfo(
                     id=expert.id,
                     name=expert.full_name,
@@ -218,8 +220,11 @@ class InvestigatorAnalysisUpdatesService:
                     best_rank = rnk
                     highest_epra_priority = p_key
 
-        completed_epra_count = sum(1 for r in epra_records if r.analysis_status == "COMPLETE")
-        is_epra_completed = (epra_count >= total_evidence and completed_epra_count == total_evidence and total_evidence > 0)
+        completed_epra_count = sum(
+            1 for r in epra_records
+            if r.analysis_status in ["COMPLETE", "COMPLETED"] or r.epra_score is not None or r.priority is not None
+        )
+        is_epra_completed = (epra_count >= total_evidence and completed_epra_count >= total_evidence and total_evidence > 0)
 
         if total_evidence == 0:
             epra_status = "PENDING"
@@ -469,7 +474,7 @@ class InvestigatorAnalysisUpdatesService:
         if total_evidence == 0:
             analysis_progress = 0.0
         else:
-            completed_count = sum(1 for m in applicable_modules if m.is_completed)
+            completed_count = sum(1 for m in applicable_modules if m.is_completed or m.status == "COMPLETED")
             analysis_progress = round((completed_count / len(applicable_modules)) * 100, 1) if applicable_modules else 0.0
 
         # ======================================================================
@@ -552,11 +557,21 @@ class InvestigatorAnalysisUpdatesService:
             crime_type=case.description if (case.description and len(case.description) < 60) else "Digital Forensics",
             case_priority=case.priority,
             case_status=case.status,
-            assigned_cyber_expert=assigned_expert,
+            assigned_cyber_expert=assigned_expert_name,
+            assigned_cyber_expert_info=assigned_expert,
+            cyber_expert=assigned_expert_name,
+            cyber_expert_name=assigned_expert_name if assigned_expert else None,
             analysis_progress=analysis_progress,
             analysis_state=analysis_state,
             analysis_modules=analysis_modules,
             case_intelligence=case_intelligence,
+            intelligence_summary=case_intelligence,
+            highest_epra_priority=highest_epra_priority,
+            possible_entities=entity_count,
+            relationships_found=total_relationships,
+            integrity_status=intelligence_integrity,
+            technical_report_status=intelligence_report_status,
+            total_evidence=total_evidence,
             latest_update=latest_update,
             attention_required=attention_required,
             attention_reasons=attention_reasons

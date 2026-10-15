@@ -65,11 +65,21 @@ class CaseAnalysisOverviewItem(BaseModel):
     crime_type: Optional[str] = Field(None, description="Category of cyber crime")
     case_priority: str = Field(..., description="Case priority: Low, Medium, High, Critical")
     case_status: str = Field(..., description="Case status: Open, In Progress, Under Review, Closed")
-    assigned_cyber_expert: Optional[AssignedCyberExpertInfo] = None
+    assigned_cyber_expert: Optional[Any] = None
+    assigned_cyber_expert_info: Optional[AssignedCyberExpertInfo] = None
+    cyber_expert: Optional[str] = None
+    cyber_expert_name: Optional[str] = None
     analysis_progress: float = Field(..., ge=0.0, le=100.0, description="Genuine percentage of completed applicable modules (0-100%)")
     analysis_state: str = Field(..., description="Derived case analysis state: ATTENTION_REQUIRED, COMPLETED, IN_ANALYSIS, PENDING")
     analysis_modules: AnalysisModulesStatus
     case_intelligence: CaseIntelligenceSummary
+    intelligence_summary: Optional[CaseIntelligenceSummary] = None
+    highest_epra_priority: Optional[str] = None
+    possible_entities: int = 0
+    relationships_found: int = 0
+    integrity_status: str = "PENDING"
+    technical_report_status: str = "PENDING"
+    total_evidence: int = 0
     latest_update: Optional[CaseLatestUpdate] = None
     attention_required: bool = Field(False, description="True if genuine attention conditions are triggered")
     attention_reasons: List[str] = Field(default_factory=list, description="Specific factual reasons why attention is required")

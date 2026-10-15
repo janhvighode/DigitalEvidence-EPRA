@@ -492,7 +492,7 @@ def get_investigator_my_cases(
         # Analyzed evidence for this case
         analyzed_ev = db.query(EPRAResult.evidence_id).filter(
             EPRAResult.case_id == cid,
-            EPRAResult.analysis_status == "COMPLETE"
+            EPRAResult.analysis_status.in_(["COMPLETE", "COMPLETED"])
         ).distinct().count()
 
         pending_ev = max(0, total_ev - analyzed_ev)
@@ -1140,7 +1140,7 @@ def get_investigator_analysis_summary(
 
     analyzed_evidence = db.query(EPRAResult.evidence_id).filter(
         EPRAResult.case_id == case.id,
-        EPRAResult.analysis_status == "COMPLETE"
+        EPRAResult.analysis_status.in_(["COMPLETE", "COMPLETED"])
     ).distinct().count()
 
     partial_analysis = db.query(EPRAResult.evidence_id).filter(
@@ -1148,7 +1148,7 @@ def get_investigator_analysis_summary(
         EPRAResult.analysis_status == "PARTIAL / PENDING INPUTS"
     ).distinct().count()
 
-    pending_analysis = max(0, total_evidence - analyzed_evidence)
+    pending_analysis = max(0, total_evidence - analyzed_evidence - partial_analysis)
 
     high_critical_evidence = db.query(EPRAResult.evidence_id).filter(
         EPRAResult.case_id == case.id,
@@ -1527,28 +1527,52 @@ def get_investigator_relationship_node_detail(
             detail=str(e)
         )
     props = detail.get("properties") or {}
+    node_type = detail.get("node_type", "Evidence")
+    is_suspect = node_type in ["Suspect", "Possible Entity"]
+
+    # Clean scalar properties dictionary (no raw nested dicts or internal IDs)
+    clean_props = {
+        k: v for k, v in props.items()
+        if not isinstance(v, (dict, list)) and k not in ["numeric_id", "file_size_bytes"]
+    }
+
+    # Normalize fields for display across both Evidence and Suspect/Entity nodes
+    ev_id = props.get("evidence_id") or (props.get("suspect_id") if is_suspect else detail["label"])
+    f_name = props.get("file_name") or (props.get("suspect_name") if is_suspect else detail["label"])
+    f_type = props.get("file_type") or (props.get("entity_type") if is_suspect else "Evidence File")
+    f_size = props.get("file_size_formatted") or props.get("file_size") or (f"{props.get('linked_evidence_count', 0)} linked file(s)" if is_suspect else "N/A")
+    u_on = props.get("uploaded_on") or props.get("created_at") or "N/A"
+    c_at = props.get("created_at")
+    a_status = props.get("analysis_status") or ("Identified" if is_suspect else "Complete")
+    prio = props.get("priority") or ("High" if is_suspect and props.get("rank") == 1 else ("Medium" if is_suspect else "Low"))
+    if prio:
+        prio = prio.title()
+    e_score = props.get("epra_score") or props.get("score") or (props.get("total_epra_score") if is_suspect else 0.0)
+    e_rank = props.get("epra_rank") or props.get("rank") or (1 if is_suspect else 1)
+    i_status = props.get("integrity_status") or props.get("verification_status") or "Verified"
+
     return RelationshipNodeDetailResponse(
         node_id=detail["node_id"],
         node_type=detail["node_type"],
         label=detail["label"],
-        properties=props,
+        properties=clean_props,
         connected_nodes_count=detail["connected_nodes_count"],
         connected_edges=detail["connected_edges"],
-        evidence_id=props.get("evidence_id"),
-        file_name=props.get("file_name") or detail["label"],
-        file_type=props.get("file_type"),
-        file_size=props.get("file_size_formatted") or props.get("file_size"),
-        size=props.get("file_size_formatted") or props.get("file_size"),
-        uploaded_on=props.get("uploaded_on") or props.get("created_at"),
-        created_at=props.get("created_at"),
-        analysis_status=props.get("analysis_status"),
-        priority=props.get("priority"),
-        priority_level=props.get("priority"),
-        epra_score=props.get("epra_score"),
-        score=props.get("epra_score"),
-        epra_rank=props.get("epra_rank") or props.get("rank"),
-        rank=props.get("rank"),
-        integrity_status=props.get("integrity_status") or props.get("verification_status")
+        evidence_id=ev_id,
+        file_name=f_name,
+        file_type=f_type,
+        file_size=f_size,
+        size=f_size,
+        uploaded_on=u_on,
+        created_at=c_at,
+        analysis_status=a_status,
+        priority=prio,
+        priority_level=prio,
+        epra_score=e_score,
+        score=e_score,
+        epra_rank=e_rank,
+        rank=e_rank,
+        integrity_status=i_status
     )
 
 

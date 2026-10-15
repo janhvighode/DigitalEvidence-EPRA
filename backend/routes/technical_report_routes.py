@@ -297,14 +297,9 @@ def preview_existing_report(
             detail=f"Report #{clean_id} does not belong to Case #{case_id}."
         )
 
-    target_path = Path(record.file_path).resolve()
-    resolved_storage_root = DEFAULT_REPORTS_DIR.parent.resolve()
-
-    if not target_path.is_relative_to(resolved_storage_root):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied: report outside safe storage.")
-
-    if not target_path.exists() or not target_path.is_file():
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report file not found on disk.")
+    from services.report_service import get_report_pdf_file_path
+    pdf_path, download_filename = get_report_pdf_file_path(db, clean_id, current_user)
+    target_path = Path(pdf_path).resolve()
 
     media_type = "application/json" if record.file_format == "JSON" else "application/pdf"
     return FileResponse(

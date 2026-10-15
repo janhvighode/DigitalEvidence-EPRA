@@ -166,10 +166,11 @@ class RelationshipGraphService:
             v_status = h.integrity_status if h else "Pending"
 
             ep = epra_map.get(ev.id)
-            ep_priority = ep.priority if ep else None
-            ep_score = ep.epra_score if ep else None
+            ep_priority = ep.priority.title() if (ep and ep.priority) else None
+            ep_score = round(ep.epra_score, 2) if (ep and ep.epra_score is not None) else None
             ep_rank = ep.rank if ep else None
-            ep_status = ep.analysis_status if ep else "Pending"
+            ep_status = "COMPLETE" if (ep and (ep.analysis_status in ["COMPLETE", "COMPLETED"] or ep.epra_score is not None)) else (ep.analysis_status if ep else "Pending")
+            formatted_size = format_bytes(ev.file_size)
 
             node = GraphNode(
                 id=node_id,
@@ -181,10 +182,9 @@ class RelationshipGraphService:
                     "evidence_id": ev.evidence_id,
                     "file_name": ev.file_name,
                     "file_type": display_label,
-                    "file_size": format_bytes(ev.file_size),
-                    "size": format_bytes(ev.file_size),
-                    "file_size_bytes": ev.file_size,
-                    "file_size_formatted": format_bytes(ev.file_size),
+                    "file_size": formatted_size,
+                    "size": formatted_size,
+                    "file_size_formatted": formatted_size,
                     "sha256_hash": sha,
                     "verification_status": v_status,
                     "integrity_status": v_status,
@@ -206,20 +206,33 @@ class RelationshipGraphService:
         # B. Suspect Nodes (from real PossibleEntity records)
         for pe in entities:
             node_id = f"suspect_{pe.id}"
+            conf_val = pe.confidence_score
+            conf_str = f"{int(conf_val * 100)}%" if (conf_val is not None and conf_val <= 1.0) else (f"{conf_val}%" if conf_val is not None else "N/A")
+            total_score = round(pe.total_epra_score, 2) if pe.total_epra_score is not None else 0.0
             node = GraphNode(
                 id=node_id,
                 label=pe.suspect_name,
                 node_type="Suspect",
-                category=pe.entity_type,
+                category="Suspect",
                 properties={
                     "numeric_id": pe.id,
-                    "suspect_id": pe.suspect_id,
+                    "suspect_id": pe.suspect_id or f"SUSP-{pe.id}",
+                    "evidence_id": pe.suspect_id or f"SUSP-{pe.id}",
                     "suspect_name": pe.suspect_name,
-                    "entity_type": pe.entity_type,
-                    "rank": pe.rank,
-                    "total_epra_score": pe.total_epra_score,
-                    "linked_evidence_count": pe.linked_evidence_count,
-                    "confidence_score": pe.confidence_score
+                    "file_name": pe.suspect_name,
+                    "entity_type": pe.entity_type or "Suspect / Person",
+                    "file_type": pe.entity_type or "Suspect / Person",
+                    "rank": pe.rank or 1,
+                    "epra_rank": pe.rank or 1,
+                    "total_epra_score": total_score,
+                    "epra_score": total_score,
+                    "linked_evidence_count": pe.linked_evidence_count or 0,
+                    "file_size": f"{pe.linked_evidence_count or 0} linked file(s)",
+                    "file_size_formatted": f"{pe.linked_evidence_count or 0} linked file(s)",
+                    "confidence_score": pe.confidence_score,
+                    "analysis_status": "Identified",
+                    "priority": "High" if pe.rank == 1 else "Medium",
+                    "integrity_status": "Verified"
                 }
             )
             nodes_dict[node_id] = node
